@@ -98,14 +98,15 @@ npm run test
 
 All components must be thoroughly tested. We never use mocks for testing. We prefer fakes where necessary that can be easily substituted for the associated clients for thorough integration testing.
 
-## Contributing
+We'll facilitate testing of this library by creating an interface (Server) for
+common server operations (put stream entry, get stream entry).
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+In normal operation, the client will be passed a `TributaryServer(url)` which
+will perform the necessary raw server requests.
 
-## License
+However, in testing this enables us to pass in a `FakeServer` which stores all
+stream entries in memory. Crucially, this `FakeServer` MUST IMPLEMENT THE SAME
+HASH AND SIGNATURE VALIDATIONS THAT `tributary-server` DOES.
 
-MIT
+This will ensure smooth operation when we switch from testing to normal usage.
+
