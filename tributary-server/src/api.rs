@@ -8,18 +8,27 @@ use axum::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
+use hex;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
-// POST /:encoded_pubkey/:id
+// Helper function to compute a deterministic ID for a public key
+fn compute_pubkey_id(pubkey: &str) -> String {
+    // The 'pubkey' parameter is already the base64-encoded public key (URL-decoded from path)
+    // We want to use this directly in the ID to match the pubkey field in the database
+    pubkey.to_string()
+}
+
+// POST /:encoded_pubkey
 #[axum::debug_handler]
 pub async fn store_blob(
     State(db): State<Database>,
-    Path((encoded_pubkey, id)): Path<(String, String)>,
+    Path(encoded_pubkey): Path<String>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Extract headers
-    let body_hash = match headers.get("X-Tributary-Hash") {
+    let provided_tree_hash = match headers.get("X-Tributary-Hash") {
         Some(hash) => match hash.to_str() {
             Ok(h) => h,
             Err(_) => {
@@ -79,31 +88,63 @@ pub async fn store_blob(
         }
     };
 
-    // Compute the Merkle tree hash (chain hash)
-    let tree_hash = compute_merkle_hash(&latest_blob.hash, body_hash);
+    // Compute the body hash (what the tree hash should be based on)
+    let body_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(&body);
+        let result = hasher.finalize();
+        hex::encode(result)
+    };
 
-    // Create the data to be signed (includes the tree hash)
-    let data_to_sign = format!("{}:{}", tree_hash, general_purpose::STANDARD.encode(&body));
-    let data_to_sign_bytes = data_to_sign.as_bytes().to_vec();
+    // Compute the expected Merkle tree hash (what it should be based on the latest blob)
+    let expected_tree_hash = compute_merkle_hash(&latest_blob.hash, &body_hash);
 
-    // Verify the signature
+    // Validate that the provided tree hash matches our expectation
+    if provided_tree_hash != expected_tree_hash {
+        // Hash mismatch - client is out of sync
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Hash mismatch - possible chain mismatch",
+                "expected_hash": expected_tree_hash,
+                "provided_hash": provided_tree_hash,
+                "latest_sequence_number": latest_blob.sequence_number,
+                "latest_hash": latest_blob.hash
+            })),
+        );
+    }
+
+    // Create the data that should have been signed (includes the tree hash)
+    let expected_data_to_sign = format!(
+        "{}:{}",
+        expected_tree_hash,
+        general_purpose::URL_SAFE.encode(&body)
+    );
+    let expected_data_to_sign_bytes = expected_data_to_sign.as_bytes().to_vec();
+
+    // Verify the signature against the expected data
     let verification_request = SignatureVerificationRequest {
         pubkey: encoded_pubkey.clone(),
         signature: signature.to_string(),
-        data: data_to_sign_bytes.clone(),
+        data: expected_data_to_sign_bytes.clone(),
     };
 
     match verify_signature(&verification_request) {
         Ok(true) => {
             // Signature is valid, proceed with storing
+            let next_sequence_number = latest_blob.sequence_number + 1;
+            // Generate the blob ID as pubkey hash + sequence number
+            let pubkey_id = compute_pubkey_id(&encoded_pubkey);
+            let blob_id = format!("{}:{}", pubkey_id, next_sequence_number);
+
             let blob = Blob {
-                id: id.clone(),
+                id: blob_id.clone(),
                 pubkey: encoded_pubkey.clone(),
                 data: body.to_vec(),
-                hash: tree_hash.to_string(),
+                hash: expected_tree_hash.to_string(),
                 prior_hash: latest_blob.hash.clone(),
                 signature: signature.to_string(),
-                sequence_number: latest_blob.sequence_number + 1,
+                sequence_number: next_sequence_number,
                 created_at: Utc::now().naive_utc(),
             };
 
@@ -114,7 +155,7 @@ pub async fn store_blob(
                         StatusCode::OK,
                         Json(json!({
                             "status": "stored",
-                            "id": id,
+                            "id": blob_id,
                             "pubkey": encoded_pubkey,
                             "sequence_number": blob.sequence_number,
                             "hash": blob.hash
@@ -137,10 +178,17 @@ pub async fn store_blob(
                 }
             }
         }
-        Ok(false) => (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid signature"})),
-        ),
+        Ok(false) => {
+            // On signature verification failure, return latest blob info to help client sync
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Invalid signature - possible chain mismatch",
+                    "latest_sequence_number": latest_blob.sequence_number,
+                    "latest_hash": latest_blob.hash
+                })),
+            )
+        }
         Err(e) => {
             eprintln!("Signature verification error: {}", e);
             (

@@ -8,11 +8,12 @@ API sketch:
 
 - GET /{encoded-pubkey}/info
   .. body is JSON: `{"end": <last_id>}` ..
-- POST /{encoded-pubkey}/{id}
+- POST /{encoded-pubkey}
   Request Headers:
     X-Tributary-Hash: {tree hash}
     X-Tributary-Authorization: {signature}
   .. body is a binary blob, almost always encrypted ..
+  .. The blob ID is automatically generated as {pubkey}:{sequence_number} ..
 - GET /{encoded-pubkey}/{id}
   Response Headers:
     X-Tributary-Hash: {tree hash}
@@ -29,6 +30,11 @@ signed by the public key. On POST, it goes into `X-Tributary-Authorization`. On
 GET, it is returned in `X-Tributary-Signature`
 
 The server **must reject** posts that do not have a valid hash or signature.
+
+Each blob is identified by an ID that consists of the public key + sequence number:
+- First blob: `{pubkey}:1`
+- Second blob: `{pubkey}:2`
+- etc.
 
 # Static Sites
 

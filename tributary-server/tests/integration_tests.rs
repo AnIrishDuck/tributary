@@ -45,9 +45,7 @@ async fn test_store_and_retrieve_blob() {
 
     // Create test data
     let test_data = b"Hello, Tributary!";
-    let (body_hash, hash, signature) = user.sign_chained_data("", test_data); // Empty prior hash for first blob
-
-    let blob_id = "test-blob-1";
+    let (_body_hash, tree_hash, signature) = user.sign_chained_data("", test_data); // Empty prior hash for first blob
 
     // Store the blob
     let response = app
@@ -55,8 +53,8 @@ async fn test_store_and_retrieve_blob() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id))
-                .header("X-Tributary-Hash", &body_hash) // Send body hash, not tree hash
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash) // Send tree hash, not body hash
                 .header("X-Tributary-Authorization", &signature)
                 .body(Body::from(&test_data[..]))
                 .unwrap(),
@@ -69,9 +67,12 @@ async fn test_store_and_retrieve_blob() {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["status"], "stored");
-    assert_eq!(body["id"], blob_id);
+    assert!(body["id"].as_str().is_some()); // ID is now auto-generated
     assert_eq!(body["pubkey"], user.pubkey_base64);
     assert_eq!(body["sequence_number"], 1);
+
+    // Extract the auto-generated ID for later retrieval
+    let blob_id = body["id"].as_str().unwrap();
 
     // Retrieve the blob
     let response = app
@@ -90,7 +91,7 @@ async fn test_store_and_retrieve_blob() {
     let body: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["id"], blob_id);
     assert_eq!(body["pubkey"], user.pubkey_base64);
-    assert_eq!(body["hash"], hash);
+    assert_eq!(body["hash"], tree_hash);
     assert_eq!(body["prior_hash"], "");
     assert_eq!(body["sequence_number"], 1);
 
@@ -116,21 +117,19 @@ async fn test_store_blob_with_invalid_signature() {
 
     // Create test data
     let test_data = b"Hello, Tributary!";
-    let body_hash = user.compute_hash(test_data);
+    let (_, tree_hash, _) = user.sign_chained_data("", test_data);
 
     // Create an invalid signature (from a different key)
     let attacker = TestUser::new();
     let (_, _, invalid_signature) = attacker.sign_chained_data("", test_data);
-
-    let blob_id = "test-blob-2";
 
     // Try to store the blob with invalid signature
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id))
-                .header("X-Tributary-Hash", &body_hash)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash)
                 .header("X-Tributary-Authorization", &invalid_signature)
                 .body(Body::from(&test_data[..]))
                 .unwrap(),
@@ -138,8 +137,14 @@ async fn test_store_blob_with_invalid_signature() {
         .await
         .unwrap();
 
-    // Should get UNAUTHORIZED for invalid signature
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    // Should get BAD REQUEST for invalid signature
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    // Check that the error response contains the latest sequence number (0 for first blob)
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert!(body["error"].as_str().is_some());
+    assert_eq!(body["latest_sequence_number"], 0);
 }
 
 #[tokio::test]
@@ -156,13 +161,10 @@ async fn test_cannot_overwrite_blob() {
 
     // Create test data
     let test_data1 = b"First version";
-    let (body_hash1, hash1, signature1) = user.sign_chained_data("", test_data1);
+    let (_body_hash1, tree_hash1, signature1) = user.sign_chained_data("", test_data1);
 
     let test_data2 = b"Second version";
-    let body_hash2 = user.compute_hash(test_data2);
-    let (_, _, signature2) = user.sign_chained_data(&hash1, test_data2);
-
-    let blob_id = "test-blob-3";
+    let (_, tree_hash2, signature2) = user.sign_chained_data(&tree_hash1, test_data2);
 
     // Store the first version
     let response = app
@@ -170,8 +172,8 @@ async fn test_cannot_overwrite_blob() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id))
-                .header("X-Tributary-Hash", &body_hash1) // Send body hash, not tree hash
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash1) // Send tree hash, not body hash
                 .header("X-Tributary-Authorization", &signature1)
                 .body(Body::from(&test_data1[..]))
                 .unwrap(),
@@ -182,14 +184,20 @@ async fn test_cannot_overwrite_blob() {
     // First insert should succeed
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Try to store a second version with the same ID
+    // Extract the auto-generated ID from the first blob
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    let blob_id = body["id"].as_str().unwrap();
+    println!("Stored blob ID: {}", blob_id);
+
+    // Try to store a second version with the same ID (should fail with CONFLICT)
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id))
-                .header("X-Tributary-Hash", &body_hash2)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash2)
                 .header("X-Tributary-Authorization", &signature2)
                 .body(Body::from(&test_data2[..]))
                 .unwrap(),
@@ -197,25 +205,29 @@ async fn test_cannot_overwrite_blob() {
         .await
         .unwrap();
 
-    // Second insert should return CONFLICT
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    // Since each blob gets a unique sequence number, this won't actually be a conflict.
+    // The second blob will have a different ID. Let's verify we can still retrieve the first one.
+    assert_eq!(response.status(), StatusCode::OK);
 
-    // Retrieve the blob - should still be the first version
+    // Retrieve the first blob - should still be the first version
+    let retrieve_uri = format!("/{}/{}", url_encoded_pubkey, blob_id);
+    println!("Retrieving from URI: {}", retrieve_uri);
     let response = app
         .oneshot(
             Request::builder()
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id))
+                .uri(retrieve_uri)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
+    println!("Response status: {}", response.status());
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(body["hash"], hash1);
+    assert_eq!(body["hash"], tree_hash1);
 
     let returned_data = body["data"].as_array().unwrap();
     let returned_bytes: Vec<u8> = returned_data
@@ -274,9 +286,7 @@ async fn test_chained_hashing_and_merkle_tree() {
 
     // Create first blob
     let test_data1 = b"First blob in chain";
-    let (body_hash1, hash1, signature1) = user.sign_chained_data("", test_data1); // Empty prior hash for first blob
-
-    let blob_id1 = "chain-blob-1";
+    let (_body_hash1, tree_hash1, signature1) = user.sign_chained_data("", test_data1); // Empty prior hash for first blob
 
     // Store the first blob
     let response = app
@@ -284,8 +294,8 @@ async fn test_chained_hashing_and_merkle_tree() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id1))
-                .header("X-Tributary-Hash", &body_hash1) // Send body hash, not tree hash
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash1) // Send tree hash, not body hash
                 .header("X-Tributary-Authorization", &signature1)
                 .body(Body::from(&test_data1[..]))
                 .unwrap(),
@@ -295,11 +305,15 @@ async fn test_chained_hashing_and_merkle_tree() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
+    // Extract the auto-generated ID from the first blob
+    let body1 = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body1: Value = serde_json::from_slice(&body1).unwrap();
+    let _blob_id1 = body1["id"].as_str().unwrap().to_string();
+    let tree_hash1 = body1["hash"].as_str().unwrap().to_string();
+
     // Create second blob (should use hash1 as prior hash)
     let test_data2 = b"Second blob in chain";
-    let (body_hash2, hash2, signature2) = user.sign_chained_data(&hash1, test_data2); // Use hash1 as prior hash
-
-    let blob_id2 = "chain-blob-2";
+    let (_body_hash2, tree_hash2, signature2) = user.sign_chained_data(&tree_hash1, test_data2); // Use hash1 as prior hash
 
     // Store the second blob
     let response = app
@@ -307,8 +321,8 @@ async fn test_chained_hashing_and_merkle_tree() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id2))
-                .header("X-Tributary-Hash", &body_hash2) // Send body hash, not tree hash
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash2) // Send tree hash, not body hash
                 .header("X-Tributary-Authorization", &signature2)
                 .body(Body::from(&test_data2[..]))
                 .unwrap(),
@@ -318,32 +332,34 @@ async fn test_chained_hashing_and_merkle_tree() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let body: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(body["status"], "stored");
-    assert_eq!(body["id"], blob_id2);
-    assert_eq!(body["pubkey"], user.pubkey_base64);
-    assert_eq!(body["sequence_number"], 2);
+    // Extract the auto-generated ID from the second blob
+    let body2 = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body2: Value = serde_json::from_slice(&body2).unwrap();
+    let blob_id2 = body2["id"].as_str().unwrap().to_string();
+    println!("Stored blob ID: {}", blob_id2);
 
     // Retrieve the second blob and verify chaining
+    let retrieve_uri = format!("/{}/{}", url_encoded_pubkey, blob_id2);
+    println!("Retrieving from URI: {}", retrieve_uri);
     let response = app
         .oneshot(
             Request::builder()
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id2))
+                .uri(retrieve_uri)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
+    println!("Response status: {}", response.status());
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["id"], blob_id2);
     assert_eq!(body["pubkey"], user.pubkey_base64);
-    assert_eq!(body["hash"], hash2);
-    assert_eq!(body["prior_hash"], hash1); // Should match the first blob's hash
+    assert_eq!(body["hash"], tree_hash2);
+    assert_eq!(body["prior_hash"], tree_hash1); // Should match the first blob's hash
     assert_eq!(body["sequence_number"], 2);
 
     let returned_data = body["data"].as_array().unwrap();
@@ -368,9 +384,7 @@ async fn test_signature_verification_in_chain() {
 
     // Create first blob
     let test_data1 = b"First blob for signature test";
-    let (body_hash1, hash1, signature1) = user.sign_chained_data("", test_data1);
-
-    let blob_id1 = "signature-test-1";
+    let (_body_hash1, tree_hash1, signature1) = user.sign_chained_data("", test_data1);
 
     // Store the first blob
     let response = app
@@ -378,8 +392,8 @@ async fn test_signature_verification_in_chain() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id1))
-                .header("X-Tributary-Hash", &body_hash1) // Send body hash, not tree hash
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash1) // Send tree hash, not body hash
                 .header("X-Tributary-Authorization", &signature1)
                 .body(Body::from(&test_data1[..]))
                 .unwrap(),
@@ -389,11 +403,14 @@ async fn test_signature_verification_in_chain() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
+    // Extract the auto-generated ID from the first blob
+    let body1 = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body1: Value = serde_json::from_slice(&body1).unwrap();
+    let tree_hash1 = body1["hash"].as_str().unwrap().to_string();
+
     // Create second blob with valid signature
     let test_data2 = b"Second blob for signature test";
-    let (body_hash2, _hash2, signature2) = user.sign_chained_data(&hash1, test_data2);
-
-    let blob_id2 = "signature-test-2";
+    let (_body_hash2, tree_hash2, signature2) = user.sign_chained_data(&tree_hash1, test_data2);
 
     // Store the second blob
     let response = app
@@ -401,8 +418,8 @@ async fn test_signature_verification_in_chain() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id2))
-                .header("X-Tributary-Hash", &body_hash2)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash2)
                 .header("X-Tributary-Authorization", &signature2)
                 .body(Body::from(&test_data2[..]))
                 .unwrap(),
@@ -414,20 +431,18 @@ async fn test_signature_verification_in_chain() {
 
     // Try to store a third blob with an invalid signature
     let test_data3 = b"Third blob with invalid signature";
-    let body_hash3 = user.compute_hash(test_data3);
+    let _body_hash3 = user.compute_hash(test_data3);
 
     // Create an invalid signature by signing with wrong data
-    let (_, _, invalid_signature) = user.sign_chained_data(&hash1, test_data3); // Wrong prior hash
+    let (_, tree_hash3, invalid_signature) = user.sign_chained_data(&tree_hash1, test_data3); // Wrong prior hash
 
-    let blob_id3 = "signature-test-3";
-
-    // Try to store with invalid signature
+    // Try to store with invalid signature (using the new API pattern)
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id3))
-                .header("X-Tributary-Hash", &body_hash3)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash3)
                 .header("X-Tributary-Authorization", &invalid_signature)
                 .body(Body::from(&test_data3[..]))
                 .unwrap(),
@@ -435,8 +450,8 @@ async fn test_signature_verification_in_chain() {
         .await
         .unwrap();
 
-    // Should get UNAUTHORIZED for invalid signature
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    // Should get BAD REQUEST for invalid signature (as it should fail verification)
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -474,9 +489,7 @@ async fn test_collection_info_endpoint() {
 
     // Create test data
     let test_data1 = b"First blob for info test";
-    let (body_hash1, hash1, signature1) = user.sign_chained_data("", test_data1);
-
-    let blob_id1 = "info-test-1";
+    let (_body_hash1, tree_hash1, signature1) = user.sign_chained_data("", test_data1);
 
     // Store the first blob
     let response = app
@@ -484,8 +497,8 @@ async fn test_collection_info_endpoint() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id1))
-                .header("X-Tributary-Hash", &body_hash1)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash1)
                 .header("X-Tributary-Authorization", &signature1)
                 .body(Body::from(&test_data1[..]))
                 .unwrap(),
@@ -519,9 +532,7 @@ async fn test_collection_info_endpoint() {
 
     // Add a second blob
     let test_data2 = b"Second blob for info test";
-    let (body_hash2, _hash2, signature2) = user.sign_chained_data(&hash1, test_data2);
-
-    let blob_id2 = "info-test-2";
+    let (_body_hash2, tree_hash2, signature2) = user.sign_chained_data(&tree_hash1, test_data2);
 
     // Store the second blob
     let response = app
@@ -529,8 +540,8 @@ async fn test_collection_info_endpoint() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id2))
-                .header("X-Tributary-Hash", &body_hash2)
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash2)
                 .header("X-Tributary-Authorization", &signature2)
                 .body(Body::from(&test_data2[..]))
                 .unwrap(),
@@ -581,7 +592,7 @@ async fn create_test_app() -> axum::Router {
 
     axum::Router::new()
         .route("/health", axum::routing::get(health_check))
-        .route("/:encoded_pubkey/:id", axum::routing::post(api::store_blob))
+        .route("/:encoded_pubkey", axum::routing::post(api::store_blob))
         .route(
             "/:encoded_pubkey/:id",
             axum::routing::get(api::retrieve_blob),
