@@ -32,5 +32,7 @@ tributary-cli also enables the upload and retrieval of static sites:
 
 - `tributary-cli static up --write-key key.write static_root`
   .. uploads files, creates and puts directory listing, dumps directory json entry to stdout..
-- `tributary-cli static get --write-key key.write path/to/doc.html`
+- `tributary-cli static ls --write-key key.write`
+  .. fetches and prints the directory listing for the static site ..
+- `tributary-cli static cat --write-key key.write path/to/doc.html`
   .. fetches and prints the doc to stdout ..
