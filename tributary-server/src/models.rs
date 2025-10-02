@@ -1,0 +1,28 @@
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Blob {
+    pub id: String,
+    pub pubkey: String,  // Base64 encoded public key
+    pub data: Vec<u8>,   // Encrypted blob data
+    pub hash: String,    // Merkle tree hash
+    #[sqlx(default)]
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct BlobMetadata {
+    pub id: String,
+    pub pubkey: String,
+    pub hash: String,
+    #[sqlx(default)]
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignatureVerificationRequest {
+    pub pubkey: String,    // Base64 encoded public key
+    pub signature: String,  // Base64 encoded signature
+    pub data: Vec<u8>,     // Data that was signed
+}
