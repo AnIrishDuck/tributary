@@ -601,6 +601,10 @@ async fn create_test_app() -> axum::Router {
             "/:encoded_pubkey/info",
             axum::routing::get(api::get_collection_info),
         )
+        .route(
+            "/:encoded_pubkey/latest",
+            axum::routing::get(api::get_latest_blob),
+        )
         .with_state(db)
 }
 
@@ -612,4 +616,115 @@ async fn health_check() -> (StatusCode, axum::Json<serde_json::Value>) {
             "service": "tributary-server"
         })),
     )
+}
+
+#[tokio::test]
+async fn test_latest_blob_endpoint() {
+    let app = create_test_app().await;
+
+    // Create a test user
+    let user = TestUser::new();
+    let url_encoded_pubkey = user.get_url_encoded_pubkey();
+    println!(
+        "test_latest_blob_endpoint: Using pubkey: {}",
+        user.pubkey_base64
+    );
+
+    // Initially, there should be no latest blob for this user
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/latest", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Create test data
+    let test_data1 = b"First blob for latest test";
+    let (_body_hash1, tree_hash1, signature1) = user.sign_chained_data("", test_data1);
+
+    // Store the first blob
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash1)
+                .header("X-Tributary-Authorization", &signature1)
+                .body(Body::from(&test_data1[..]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Now get the latest blob
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/latest", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["pubkey"], user.pubkey_base64);
+    assert_eq!(body["hash"], tree_hash1);
+    assert_eq!(body["prior_hash"], "");
+    assert_eq!(body["sequence_number"], 1);
+
+    // Add a second blob
+    let test_data2 = b"Second blob for latest test";
+    let (_body_hash2, tree_hash2, signature2) = user.sign_chained_data(&tree_hash1, test_data2);
+
+    // Store the second blob
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/{}", url_encoded_pubkey))
+                .header("X-Tributary-Hash", &tree_hash2)
+                .header("X-Tributary-Authorization", &signature2)
+                .body(Body::from(&test_data2[..]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Now get the latest blob - should be the second one
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/latest", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["pubkey"], user.pubkey_base64);
+    assert_eq!(body["hash"], tree_hash2);
+    assert_eq!(body["prior_hash"], tree_hash1);
+    assert_eq!(body["sequence_number"], 2);
 }

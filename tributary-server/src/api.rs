@@ -258,3 +258,36 @@ pub async fn get_collection_info(
         }
     }
 }
+
+// GET /:encoded_pubkey/latest
+#[axum::debug_handler]
+pub async fn get_latest_blob(
+    State(db): State<Database>,
+    Path(encoded_pubkey): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match db.get_latest_blob(&encoded_pubkey).await {
+        Ok(Some(blob)) => (
+            StatusCode::OK,
+            Json(json!({
+                "id": blob.id,
+                "pubkey": blob.pubkey,
+                "hash": blob.hash,
+                "prior_hash": blob.prior_hash,
+                "signature": blob.signature,
+                "sequence_number": blob.sequence_number,
+                "created_at": blob.created_at.to_string()
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "No blobs found for this pubkey"})),
+        ),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to retrieve latest blob"})),
+            )
+        }
+    }
+}
