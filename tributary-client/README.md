@@ -13,7 +13,7 @@ Unlike traditional replication systems, tributary-client ensures that all write 
 ## Key Features
 
 1. **Persistence Guarantees**: Write operations are sent to the server and confirmed before local commitment
-2. **End-to-End Encryption**: All data is encrypted before transmission using tweetnacl-ts
+2. **End-to-End Encryption**: All data is encrypted before transmission using tweetnacl
 3. **PGLite Integration**: Seamless integration with PGLite for local database operations
 4. **Conflict Resolution**: Handles network failures and conflict resolution automatically
 5. **Cryptographic Signing**: All operations are cryptographically signed for authenticity
@@ -39,38 +39,45 @@ ENSURE THAT NONCES ARE UNIQUELY AND CRYPTOGRAPHICALLY GENERATED FOR EACH MESSAGE
 
 Failure to properly generate unique nonces can compromise the security of the entire system.
 
-## Usage
-
-### Installation
+## Installation
 
 ```bash
 npm install tributary-client
 ```
 
+## Usage
+
 ### Basic Setup
 
 ```typescript
-import { TributaryServer, TributaryClient } from 'tributary-client';
+import { TributaryClient, TributaryServer } from 'tributary-client';
 
 const client = new TributaryClient({
   server: new TributaryServer('https://your-tributary-server.com'),
-  privateKey: 'your-private-key',
+  privateKey: 'your-private-key-base64',
 });
-
 ```
 
 ### Configuration Options
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `serverUrl` | string | URL of the tributary-server instance |
-| `privateKey` | string | NaCl private key for signing |
-| `timeout` | number | Request timeout in milliseconds |
+| `server` | Server | Server implementation (TributaryServer or FakeServer) |
+| `privateKey` | string or Uint8Array | NaCl private key for signing |
+| `db` | PGlite | Optional existing PGlite instance |
 
 ## API
 
-The `TributaryClient` object should expose the exact same interface as the
-pglite client to ensure seamless compatibility.
+The `TributaryClient` object exposes methods for database operations:
+
+### query(query, params?)
+Execute SQL query with persistence guarantee
+
+### transaction(callback)
+Execute SQL transaction with persistence guarantee
+
+### sync(collectionId)
+Sync with server - retrieve and apply remote changes
 
 ## Development
 
@@ -88,15 +95,10 @@ npm run test
 
 All components must be thoroughly tested. We never use mocks for testing. We prefer fakes where necessary that can be easily substituted for the associated clients for thorough integration testing.
 
-We'll facilitate testing of this library by creating an interface (Server) for
-common server operations (put stream entry, get stream entry).
+We facilitate testing of this library by creating an interface (Server) for common server operations (put stream entry, get stream entry).
 
-In normal operation, the client will be passed a `TributaryServer(url)` which
-will perform the necessary raw server requests.
+In normal operation, the client will be passed a `TributaryServer(url)` which will perform the necessary raw server requests.
 
-However, in testing this enables us to pass in a `FakeServer` which stores all
-stream entries in memory. Crucially, this `FakeServer` MUST IMPLEMENT THE SAME
-HASH AND SIGNATURE VALIDATIONS THAT `tributary-server` DOES.
+However, in testing this enables us to pass in a `FakeServer` which stores all stream entries in memory. Crucially, this `FakeServer` MUST IMPLEMENT THE SAME HASH AND SIGNATURE VALIDATIONS THAT `tributary-server` DOES.
 
 This will ensure smooth operation when we switch from testing to normal usage.
-
