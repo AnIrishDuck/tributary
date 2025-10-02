@@ -1,0 +1,6 @@
+set -e
+
+mkdir -p .agent-docs
+rm -rf target/doc/
+cargo doc -p $1
+cp -r target/doc/ .agent-docs/$1
