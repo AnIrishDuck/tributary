@@ -5,9 +5,10 @@ use axum::{
 };
 use serde_json::json;
 use crate::models::{SignatureVerificationRequest, Blob};
-use crate::crypto::verify_signature;
+use crate::crypto::{verify_signature, compute_merkle_hash};
 use crate::db::Database;
 use chrono::Utc;
+use base64::{Engine as _, engine::general_purpose};
 
 // POST /:encoded_pubkey/:id
 #[axum::debug_handler]
@@ -18,7 +19,7 @@ pub async fn store_blob(
     body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Extract headers
-    let tree_hash = match headers.get("X-Tributary-Hash") {
+    let body_hash = match headers.get("X-Tributary-Hash") {
         Some(hash) => match hash.to_str() {
             Ok(h) => h,
             Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid X-Tributary-Hash header"}))),
@@ -34,11 +35,39 @@ pub async fn store_blob(
         None => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Missing X-Tributary-Authorization header"}))),
     };
     
+    // Get the previous blob to compute the chain
+    let latest_blob = match db.get_latest_blob(&encoded_pubkey).await {
+        Ok(Some(blob)) => blob,
+        Ok(None) => {
+            // This is the first blob in the chain
+            crate::models::BlobMetadata {
+                id: String::new(),
+                pubkey: encoded_pubkey.clone(),
+                hash: String::new(),
+                prior_hash: String::new(),
+                signature: String::new(),
+                sequence_number: 0,
+                created_at: Utc::now().naive_utc(),
+            }
+        },
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to retrieve latest blob"})));
+        }
+    };
+    
+    // Compute the Merkle tree hash (chain hash)
+    let tree_hash = compute_merkle_hash(&latest_blob.hash, body_hash);
+    
+    // Create the data to be signed (includes the tree hash)
+    let data_to_sign = format!("{}:{}", tree_hash, general_purpose::STANDARD.encode(&body));
+    let data_to_sign_bytes = data_to_sign.as_bytes().to_vec();
+    
     // Verify the signature
     let verification_request = SignatureVerificationRequest {
         pubkey: encoded_pubkey.clone(),
         signature: signature.to_string(),
-        data: body.to_vec(),
+        data: data_to_sign_bytes.clone(),
     };
     
     match verify_signature(&verification_request) {
@@ -49,6 +78,9 @@ pub async fn store_blob(
                 pubkey: encoded_pubkey.clone(),
                 data: body.to_vec(),
                 hash: tree_hash.to_string(),
+                prior_hash: latest_blob.hash.clone(),
+                signature: signature.to_string(),
+                sequence_number: latest_blob.sequence_number + 1,
                 created_at: Utc::now().naive_utc(),
             };
             
@@ -58,7 +90,9 @@ pub async fn store_blob(
                     (StatusCode::OK, Json(json!({
                         "status": "stored",
                         "id": id,
-                        "pubkey": encoded_pubkey
+                        "pubkey": encoded_pubkey,
+                        "sequence_number": blob.sequence_number,
+                        "hash": blob.hash
                     })))
                 },
                 Ok(false) => {
@@ -92,6 +126,9 @@ pub async fn retrieve_blob(
                 "pubkey": blob.pubkey,
                 "data": blob.data,
                 "hash": blob.hash,
+                "prior_hash": blob.prior_hash,
+                "signature": blob.signature,
+                "sequence_number": blob.sequence_number,
                 "created_at": blob.created_at.to_string()
             })))
         },

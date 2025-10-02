@@ -3,6 +3,7 @@ use rand::rngs::OsRng;
 use base64::{Engine as _, engine::general_purpose};
 use sha2::{Sha256, Digest};
 use urlencoding;
+use tributary_server::crypto::{compute_merkle_hash};
 
 pub struct TestUser {
     pub signing_key: SigningKey,
@@ -27,7 +28,7 @@ impl TestUser {
         urlencoding::encode(&self.pubkey_base64).to_string()
     }
     
-    pub fn sign_data(&self, data: &[u8]) -> String {
+    pub fn _sign_data(&self, data: &[u8]) -> String {
         let signature = self.signing_key.sign(data);
         general_purpose::STANDARD.encode(signature.to_bytes())
     }
@@ -37,5 +38,23 @@ impl TestUser {
         hasher.update(data);
         let result = hasher.finalize();
         hex::encode(result)
+    }
+    
+    pub fn sign_chained_data(&self, prior_hash: &str, data: &[u8]) -> (String, String, String) {
+        // Compute body hash
+        let body_hash = self.compute_hash(data);
+        
+        // Compute Merkle tree hash
+        let tree_hash = compute_merkle_hash(prior_hash, &body_hash);
+        
+        // Create the data to be signed (same as in the API)
+        let data_to_sign = format!("{}:{}", tree_hash, general_purpose::STANDARD.encode(data));
+        let data_to_sign_bytes = data_to_sign.as_bytes();
+        
+        // Sign the data
+        let signature = self.signing_key.sign(data_to_sign_bytes);
+        let signature_base64 = general_purpose::STANDARD.encode(signature.to_bytes());
+        
+        (body_hash, tree_hash, signature_base64)
     }
 }

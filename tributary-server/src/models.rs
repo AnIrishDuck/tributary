@@ -7,6 +7,9 @@ pub struct Blob {
     pub pubkey: String,  // Base64 encoded public key
     pub data: Vec<u8>,   // Encrypted blob data
     pub hash: String,    // Merkle tree hash
+    pub prior_hash: String,  // Previous hash in the chain
+    pub signature: String,   // Signature for this blob
+    pub sequence_number: i32, // Sequence number in the chain
     #[sqlx(default)]
     pub created_at: chrono::NaiveDateTime,
 }
@@ -16,6 +19,9 @@ pub struct BlobMetadata {
     pub id: String,
     pub pubkey: String,
     pub hash: String,
+    pub prior_hash: String,
+    pub signature: String,
+    pub sequence_number: i32,
     #[sqlx(default)]
     pub created_at: chrono::NaiveDateTime,
 }
