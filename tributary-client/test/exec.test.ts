@@ -1,0 +1,150 @@
+// Tests for exec functionality
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TributaryClient, FakeServer } from '../src/index';
+import { encodeBase64 } from 'tweetnacl-util';
+import nacl from 'tweetnacl';
+
+describe('Exec Functionality', () => {
+  let fakeServer: FakeServer;
+  let testKeyPair: nacl.SignKeyPair;
+  let testPrivateKeyBase64: string;
+
+  beforeEach(() => {
+    fakeServer = new FakeServer();
+    testKeyPair = nacl.sign.keyPair();
+    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
+  });
+
+  it('should execute CREATE TABLE command with exec', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Execute CREATE TABLE using exec
+    await client.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+    
+    // Verify table was created by querying it
+    const result = await client.query("SELECT * FROM users");
+    expect(result.rows).toEqual([]);
+  });
+
+  it('should execute INSERT command with exec', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Create table first
+    await client.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+    
+    // Execute INSERT using exec
+    await client.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+    
+    // Verify data was inserted
+    const result = await client.query("SELECT * FROM users");
+    expect(result.rows).toEqual([{ id: 1, name: 'Alice' }]);
+  });
+
+  it('should execute UPDATE command with exec', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Create table and insert data first
+    await client.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+    await client.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+    
+    // Execute UPDATE using exec
+    await client.exec("UPDATE users SET name = 'Bob' WHERE id = 1");
+    
+    // Verify data was updated
+    const result = await client.query("SELECT * FROM users");
+    expect(result.rows).toEqual([{ id: 1, name: 'Bob' }]);
+  });
+
+  it('should execute DELETE command with exec', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Create table and insert data first
+    await client.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+    await client.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+    await client.exec("INSERT INTO users (id, name) VALUES (2, 'Bob')");
+    
+    // Execute DELETE using exec
+    await client.exec("DELETE FROM users WHERE id = 1");
+    
+    // Verify data was deleted
+    const result = await client.query("SELECT * FROM users");
+    expect(result.rows).toEqual([{ id: 2, name: 'Bob' }]);
+  });
+
+  it('should persist exec operations to server with proper chaining', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Execute multiple exec operations
+    await client.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+    await client.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+    await client.exec("INSERT INTO users (id, name) VALUES (2, 'Bob')");
+    
+    // Get all blobs from the fake server
+    const anyFakeServer = fakeServer as any;
+    const blobs = Array.from(anyFakeServer.blobs.values());
+    
+    // Verify we have 3 blobs
+    expect(blobs.length).toBe(3);
+    
+    // Sort blobs by sequence number
+    blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    
+    // Verify the chaining:
+    // 1. First blob should have empty priorHash
+    expect(blobs[0].priorHash).toBe('');
+    
+    // 2. Each subsequent blob should have the previous blob's hash as priorHash
+    expect(blobs[1].priorHash).toBe(blobs[0].hash);
+    expect(blobs[2].priorHash).toBe(blobs[1].hash);
+  });
+
+  it('should support exec in transactions with mixed query and exec operations', async () => {
+    const client = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'test-collection'
+    });
+    
+    // Execute a transaction that uses both query and exec
+    const result = await client.transaction(async (tx) => {
+      await tx.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+      await tx.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+      await tx.exec("INSERT INTO users (id, name) VALUES (2, 'Bob')");
+      
+      // Also use query to check results within the transaction
+      const queryResult = await tx.query("SELECT COUNT(*) as count FROM users");
+      expect(queryResult.rows[0].count).toBe(2);
+      
+      return "transaction completed";
+    });
+    
+    expect(result).toBe("transaction completed");
+    
+    // Verify that all operations were executed
+    const finalResult = await client.query("SELECT * FROM users");
+    expect(finalResult.rows).toEqual([
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
+    ]);
+  });
+});
