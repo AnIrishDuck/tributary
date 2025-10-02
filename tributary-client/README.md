@@ -50,16 +50,13 @@ npm install tributary-client
 ### Basic Setup
 
 ```typescript
-import { TributaryClient } from 'tributary-client';
+import { TributaryServer, TributaryClient } from 'tributary-client';
 
 const client = new TributaryClient({
-  serverUrl: 'https://your-tributary-server.com',
+  server: new TributaryServer('https://your-tributary-server.com'),
   privateKey: 'your-private-key',
-  collectionId: 'your-collection-id'
 });
 
-// Execute SQL with guaranteed server persistence
-await client.executeSQL('INSERT INTO documents (title, content) VALUES (?, ?)', ['Title', 'Content']);
 ```
 
 ### Configuration Options
@@ -68,19 +65,12 @@ await client.executeSQL('INSERT INTO documents (title, content) VALUES (?, ?)', 
 |--------|------|-------------|
 | `serverUrl` | string | URL of the tributary-server instance |
 | `privateKey` | string | NaCl private key for signing |
-| `collectionId` | string | Unique identifier for the collection |
 | `timeout` | number | Request timeout in milliseconds |
 
 ## API
 
-### `executeSQL(sql, params?)`
-Execute SQL with guaranteed server persistence.
-
-### `sync()`
-Force synchronization with server.
-
-### `getStatus()`
-Get client synchronization status.
+The `TributaryClient` object should expose the exact same interface as the
+pglite client to ensure seamless compatibility.
 
 ## Development
 
