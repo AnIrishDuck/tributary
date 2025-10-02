@@ -18,8 +18,7 @@ This project is organized into several components:
 - **tributary-server** - a rust server responsible for storing the raw encrypted
   binary streams and blobs
 - **tributary-cli** - a typescript cli command useful for debugging and testing
-- **tributary-replicate** - a pglite plugin responsible for replicating the
-  pglite transaction log to and from **tributary-server**
+- **tributary-client** - a typescript library that wraps PGLite with persistence guarantees
 - **tributary-catalog** - a react application for listing and managing all user
   collections.
 - **docents** - where we maintain official docents
