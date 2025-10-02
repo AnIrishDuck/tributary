@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_check))
         .route("/:encoded_pubkey/:id", post(api::store_blob))
         .route("/:encoded_pubkey/:id", get(api::retrieve_blob))
+        .route("/:encoded_pubkey/info", get(api::get_collection_info))
         .with_state(db)
         .layer(TraceLayer::new_for_http());
 

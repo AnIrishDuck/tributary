@@ -405,6 +405,122 @@ async fn test_signature_verification_in_chain() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[tokio::test]
+async fn test_collection_info_endpoint() {
+    let app = create_test_app().await;
+    
+    // Create a test user
+    let user = TestUser::new();
+    let url_encoded_pubkey = user.get_url_encoded_pubkey();
+    println!("test_collection_info_endpoint: Using pubkey: {}", user.pubkey_base64);
+    
+    // Initially, there should be no blobs for this user
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/info", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["pubkey"], user.pubkey_base64);
+    assert_eq!(body["blob_count"], 0);
+    assert!(body["first_blob_timestamp"].is_null());
+    assert!(body["last_blob_timestamp"].is_null());
+    
+    // Create test data
+    let test_data1 = b"First blob for info test";
+    let (body_hash1, hash1, signature1) = user.sign_chained_data("", test_data1);
+    
+    let blob_id1 = "info-test-1";
+    
+    // Store the first blob
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id1))
+                .header("X-Tributary-Hash", &body_hash1)
+                .header("X-Tributary-Authorization", &signature1)
+                .body(Body::from(&test_data1[..]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    
+    // Check info after first blob
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/info", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["pubkey"], user.pubkey_base64);
+    assert_eq!(body["blob_count"], 1);
+    assert!(!body["first_blob_timestamp"].is_null());
+    assert!(!body["last_blob_timestamp"].is_null());
+    assert_eq!(body["first_blob_timestamp"], body["last_blob_timestamp"]);
+    
+    // Add a second blob
+    let test_data2 = b"Second blob for info test";
+    let (body_hash2, _hash2, signature2) = user.sign_chained_data(&hash1, test_data2);
+    
+    let blob_id2 = "info-test-2";
+    
+    // Store the second blob
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/{}/{}", url_encoded_pubkey, blob_id2))
+                .header("X-Tributary-Hash", &body_hash2)
+                .header("X-Tributary-Authorization", &signature2)
+                .body(Body::from(&test_data2[..]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    
+    // Check info after second blob
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/{}/info", url_encoded_pubkey))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["pubkey"], user.pubkey_base64);
+    assert_eq!(body["blob_count"], 2);
+    assert!(!body["first_blob_timestamp"].is_null());
+    assert!(!body["last_blob_timestamp"].is_null());
+    assert_ne!(body["first_blob_timestamp"], body["last_blob_timestamp"]);
+}
+
 // Helper function to create a test app
 async fn create_test_app() -> axum::Router {
     use tributary_server::api;
@@ -422,6 +538,7 @@ async fn create_test_app() -> axum::Router {
         .route("/health", axum::routing::get(health_check))
         .route("/:encoded_pubkey/:id", axum::routing::post(api::store_blob))
         .route("/:encoded_pubkey/:id", axum::routing::get(api::retrieve_blob))
+        .route("/:encoded_pubkey/info", axum::routing::get(api::get_collection_info))
         .with_state(db)
 }
 

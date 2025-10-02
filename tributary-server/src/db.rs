@@ -127,4 +127,24 @@ impl Database {
         
         Ok(result)
     }
+    
+    pub async fn get_collection_info(&self, pubkey: &str) -> Result<crate::models::CollectionInfo, sqlx::Error> {
+        let row = sqlx::query!(
+            "SELECT 
+                COUNT(*) as blob_count,
+                MIN(created_at) as first_blob_timestamp,
+                MAX(created_at) as last_blob_timestamp
+            FROM blobs 
+            WHERE pubkey = $1",
+            pubkey
+        )
+        .fetch_one(&*self.pool)
+        .await?;
+
+        Ok(crate::models::CollectionInfo {
+            blob_count: row.blob_count.unwrap_or(0),
+            first_blob_timestamp: row.first_blob_timestamp,
+            last_blob_timestamp: row.last_blob_timestamp,
+        })
+    }
 }

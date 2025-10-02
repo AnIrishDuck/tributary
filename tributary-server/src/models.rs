@@ -27,6 +27,13 @@ pub struct BlobMetadata {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CollectionInfo {
+    pub blob_count: i64,
+    pub first_blob_timestamp: Option<chrono::NaiveDateTime>,
+    pub last_blob_timestamp: Option<chrono::NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SignatureVerificationRequest {
     pub pubkey: String,    // Base64 encoded public key
     pub signature: String,  // Base64 encoded signature

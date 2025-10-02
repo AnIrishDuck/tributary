@@ -139,3 +139,25 @@ pub async fn retrieve_blob(
         }
     }
 }
+
+// GET /:encoded_pubkey/info
+#[axum::debug_handler]
+pub async fn get_collection_info(
+    State(db): State<Database>,
+    Path(encoded_pubkey): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match db.get_collection_info(&encoded_pubkey).await {
+        Ok(info) => {
+            (StatusCode::OK, Json(json!({
+                "pubkey": encoded_pubkey,
+                "blob_count": info.blob_count,
+                "first_blob_timestamp": info.first_blob_timestamp.map(|ts| ts.to_string()),
+                "last_blob_timestamp": info.last_blob_timestamp.map(|ts| ts.to_string()),
+            })))
+        },
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to retrieve collection info"})))
+        }
+    }
+}
