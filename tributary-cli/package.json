@@ -1,0 +1,30 @@
+{
+  "name": "tributary-cli",
+  "version": "1.0.0",
+  "description": "Command-line interface for Tributary operations with local key management and SQL command execution.",
+  "main": "dist/index.js",
+  "bin": {
+    "tributary": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.10",
+    "commander": "^14.0.1",
+    "fs-extra": "^11.3.2",
+    "tributary-client": "file:../tributary-client",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.6.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -14,7 +14,6 @@ export class TributaryServer implements Server {
 
   async storeBlob(
     pubkey: string,
-    id: string,
     data: Uint8Array,
     hash: string,
     priorHash: string,
