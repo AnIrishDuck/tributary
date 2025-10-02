@@ -23,13 +23,14 @@ export class FakeServer implements Server {
 
   async storeBlob(
     pubkey: string,
-    id: string,
     data: Uint8Array,
     hash: string,
     priorHash: string,
     signature: string,
     sequenceNumber: number
   ): Promise<boolean> {
+    // Generate ID based on pubkey and sequence number to match server behavior
+    const id = `${pubkey}:${sequenceNumber}`;
     const key = `${pubkey}:${id}`;
     
     // Check if blob already exists
@@ -156,5 +157,37 @@ export class FakeServer implements Server {
     const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  
+  async getLatestBlobMetadata(
+    pubkey: string
+  ): Promise<{
+    id: string;
+    pubkey: string;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  } | null> {
+    let latestSequence = -1;
+    let latestBlob: {
+      id: string;
+      pubkey: string;
+      hash: string;
+      priorHash: string;
+      signature: string;
+      sequenceNumber: number;
+      createdAt: Date;
+    } | null = null;
+    
+    for (const blob of this.blobs.values()) {
+      if (blob.pubkey === pubkey && blob.sequenceNumber > latestSequence) {
+        latestSequence = blob.sequenceNumber;
+        latestBlob = { ...blob };
+      }
+    }
+    
+    return latestBlob;
   }
 }

@@ -61,7 +61,7 @@ export class TributaryClient {
   async query(query: string, params?: any[]) {
     // For read operations, we can execute directly on local DB
     if (this.isReadQuery(query)) {
-      return await this.pglite.query(query, params);
+      return await this.pglite.query(query, params as any);
     }
     
     // For write operations, we need to ensure server persistence BEFORE local commit
@@ -77,7 +77,7 @@ export class TributaryClient {
     await this.ensureServerPersistence(transactionEntry);
     
     // Now execute locally since we have server confirmation
-    const result = await this.pglite.query(query, params);
+    const result = await this.pglite.query(query, params as any);
     
     // Update the transaction entry with the result
     transactionEntry.result = result;
@@ -104,7 +104,7 @@ export class TributaryClient {
     await this.ensureServerPersistence(transactionEntry);
     
     // Now execute locally since we have server confirmation
-    await this.pglite.exec(query, params);
+    await this.pglite.exec(query, params as any);
   }
 
   /**
@@ -185,15 +185,21 @@ export class TributaryClient {
    * @param transactionEntry The transaction log entry to persist
    */
   private async ensureServerPersistence(transactionEntry: TransactionLogEntry): Promise<void> {
+    // Get the latest blob metadata from the server for proper chaining
+    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    
+    // Use the latest hash from the server for chaining, or empty string if no blobs exist
+    const priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
+    
+    // Use the next sequence number based on the server's latest blob
+    this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+    
     // Serialize the transaction data
     const transactionData = JSON.stringify(transactionEntry);
     const dataBytes = new TextEncoder().encode(transactionData);
     
     // Compute body hash (SHA256 of the data)
     const bodyHash = await this.computeHash(dataBytes);
-    
-    // Use the latest hash as the prior hash for chaining
-    const priorHash = this.latestHash;
     
     // Compute Merkle tree hash
     const treeHash = await this.computeMerkleHash(priorHash, bodyHash);
@@ -206,14 +212,10 @@ export class TributaryClient {
     const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
     const signature = encodeBase64(signatureBytes);
     
-    // Increment sequence number
-    this.sequenceNumber++;
-    
     try {
       // Store the blob on the server
       const success = await this.server.storeBlob(
         this.getPublicKeyBase64(),
-        transactionEntry.id,
         dataBytes,
         treeHash,
         priorHash,
@@ -225,11 +227,11 @@ export class TributaryClient {
         throw new Error('Failed to persist transaction on server');
       }
       
-      // Update our latest hash for the next transaction
+      // Update our local latest hash for consistency
       this.latestHash = treeHash;
     } catch (error) {
       // Re-throw with a more specific error message
-      throw new Error('Failed to persist transaction on server');
+      throw new Error(`Failed to persist transaction on server: ${(error as Error).message}`);
     }
   }
 

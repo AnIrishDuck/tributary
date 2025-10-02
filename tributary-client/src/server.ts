@@ -5,7 +5,6 @@ export interface Server {
   /**
    * Store an encrypted blob with signature verification
    * @param pubkey Base64 encoded public key
-   * @param id Unique identifier for the blob
    * @param data Encrypted blob data
    * @param hash Merkle tree hash
    * @param priorHash Previous hash in the chain
@@ -15,7 +14,6 @@ export interface Server {
    */
   storeBlob(
     pubkey: string,
-    id: string,
     data: Uint8Array,
     hash: string,
     priorHash: string,
@@ -36,6 +34,23 @@ export interface Server {
     id: string;
     pubkey: string;
     data: Uint8Array;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  } | null>;
+  
+  /**
+   * Get the latest blob metadata for a given public key
+   * @param pubkey Base64 encoded public key
+   * @returns Promise resolving to latest blob metadata or null if no blobs exist
+   */
+  getLatestBlobMetadata(
+    pubkey: string
+  ): Promise<{
+    id: string;
+    pubkey: string;
     hash: string;
     priorHash: string;
     signature: string;

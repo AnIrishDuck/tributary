@@ -21,16 +21,15 @@ export class TributaryServer implements Server {
     signature: string,
     sequenceNumber: number
   ): Promise<boolean> {
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
-    
-    // Compute body hash (SHA256 of the data)
-    const bodyHash = await this.computeHash(data);
+    // The server now auto-generates IDs based on pubkey and sequence number
+    // We don't send the ID in the URL anymore, just the pubkey
+    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}`;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
-        'X-Tributary-Hash': bodyHash,
+        'X-Tributary-Hash': hash, // Send the tree hash (Merkle hash)
         'X-Tributary-Authorization': signature
       },
       body: data as any
@@ -42,7 +41,8 @@ export class TributaryServer implements Server {
       // Conflict - blob already exists
       return false;
     } else {
-      throw new Error(`Failed to store blob: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to store blob: ${response.status} ${response.statusText} - ${errorText}`);
     }
   }
 
@@ -85,10 +85,43 @@ export class TributaryServer implements Server {
       throw new Error(`Failed to retrieve blob: ${response.status} ${response.statusText}`);
     }
   }
-
-  private async computeHash(data: Uint8Array): Promise<string> {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  async getLatestBlobMetadata(
+    pubkey: string
+  ): Promise<{
+    id: string;
+    pubkey: string;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  } | null> {
+    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/latest`;
+    
+    try {
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const blob = await response.json();
+        
+        return {
+          id: blob.id,
+          pubkey: blob.pubkey,
+          hash: blob.hash,
+          priorHash: blob.prior_hash,
+          signature: blob.signature,
+          sequenceNumber: blob.sequence_number,
+          createdAt: new Date(blob.created_at)
+        };
+      } else if (response.status === 404) {
+        // No blobs found for this pubkey, return null
+        return null;
+      } else {
+        throw new Error(`Failed to retrieve latest blob metadata: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to retrieve latest blob metadata: ${(error as Error).message}`);
+    }
   }
 }
