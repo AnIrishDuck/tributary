@@ -4,11 +4,11 @@ use sqlx::FromRow;
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Blob {
     pub id: String,
-    pub pubkey: String,  // Base64 encoded public key
-    pub data: Vec<u8>,   // Encrypted blob data
-    pub hash: String,    // Merkle tree hash
-    pub prior_hash: String,  // Previous hash in the chain
-    pub signature: String,   // Signature for this blob
+    pub pubkey: String,       // Base64 encoded public key
+    pub data: Vec<u8>,        // Encrypted blob data
+    pub hash: String,         // Merkle tree hash
+    pub prior_hash: String,   // Previous hash in the chain
+    pub signature: String,    // Signature for this blob
     pub sequence_number: i32, // Sequence number in the chain
     #[sqlx(default)]
     pub created_at: chrono::NaiveDateTime,
@@ -36,6 +36,6 @@ pub struct CollectionInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SignatureVerificationRequest {
     pub pubkey: String,    // Base64 encoded public key
-    pub signature: String,  // Base64 encoded signature
+    pub signature: String, // Base64 encoded signature
     pub data: Vec<u8>,     // Data that was signed
 }

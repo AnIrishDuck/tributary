@@ -1,8 +1,8 @@
 // Database module for tributary-server
 // This module will handle all database operations
 
-use sqlx::PgPool;
 use crate::models::{Blob, BlobMetadata};
+use sqlx::PgPool;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -28,7 +28,7 @@ impl Database {
         )
         .execute(&pool)
         .await?;
-        
+
         // Add new columns if they don't exist (for backward compatibility)
         let _ = sqlx::query(
             r#"
@@ -38,7 +38,7 @@ impl Database {
         )
         .execute(&pool)
         .await;
-        
+
         let _ = sqlx::query(
             r#"
             ALTER TABLE blobs 
@@ -47,7 +47,7 @@ impl Database {
         )
         .execute(&pool)
         .await;
-        
+
         let _ = sqlx::query(
             r#"
             ALTER TABLE blobs 
@@ -56,17 +56,19 @@ impl Database {
         )
         .execute(&pool)
         .await;
-        
-        Ok(Database { pool: Arc::new(pool) })
+
+        Ok(Database {
+            pool: Arc::new(pool),
+        })
     }
-    
+
     pub async fn clear_all_test_data(&self) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM blobs WHERE id LIKE 'test-%' OR id LIKE 'chain-%' OR id LIKE 'signature-test-%'")
             .execute(&*self.pool)
             .await?;
         Ok(())
     }
-    
+
     pub async fn store_blob(&self, blob: &Blob) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             "INSERT INTO blobs (id, pubkey, data, hash, prior_hash, signature, sequence_number, created_at) 
@@ -88,7 +90,7 @@ impl Database {
         let rows_affected = result.rows_affected();
         Ok(rows_affected > 0)
     }
-    
+
     pub async fn retrieve_blob(&self, pubkey: &str, id: &str) -> Result<Option<Blob>, sqlx::Error> {
         let result = sqlx::query_as::<_, Blob>(
             "SELECT id, pubkey, data, hash, prior_hash, signature, sequence_number, created_at FROM blobs WHERE pubkey = $1 AND id = $2"
@@ -97,11 +99,15 @@ impl Database {
         .bind(id)
         .fetch_optional(&*self.pool)
         .await?;
-        
+
         Ok(result)
     }
-    
-    pub async fn get_blob_metadata(&self, pubkey: &str, id: &str) -> Result<Option<BlobMetadata>, sqlx::Error> {
+
+    pub async fn get_blob_metadata(
+        &self,
+        pubkey: &str,
+        id: &str,
+    ) -> Result<Option<BlobMetadata>, sqlx::Error> {
         let result = sqlx::query_as::<_, BlobMetadata>(
             "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at FROM blobs WHERE pubkey = $1 AND id = $2"
         )
@@ -109,26 +115,29 @@ impl Database {
         .bind(id)
         .fetch_optional(&*self.pool)
         .await?;
-        
+
         Ok(result)
     }
-    
+
     pub async fn get_latest_blob(&self, pubkey: &str) -> Result<Option<BlobMetadata>, sqlx::Error> {
         let result = sqlx::query_as::<_, BlobMetadata>(
             "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at 
              FROM blobs 
              WHERE pubkey = $1 
              ORDER BY sequence_number DESC 
-             LIMIT 1"
+             LIMIT 1",
         )
         .bind(pubkey)
         .fetch_optional(&*self.pool)
         .await?;
-        
+
         Ok(result)
     }
-    
-    pub async fn get_collection_info(&self, pubkey: &str) -> Result<crate::models::CollectionInfo, sqlx::Error> {
+
+    pub async fn get_collection_info(
+        &self,
+        pubkey: &str,
+    ) -> Result<crate::models::CollectionInfo, sqlx::Error> {
         let row = sqlx::query!(
             "SELECT 
                 COUNT(*) as blob_count,

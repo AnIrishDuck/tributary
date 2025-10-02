@@ -1,10 +1,11 @@
 use axum::{
+    http::StatusCode,
     routing::{get, post},
-    Router, Json, http::StatusCode,
+    Json, Router,
 };
-use tower_http::trace::TraceLayer;
 use serde_json::json;
 use std::net::SocketAddr;
+use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tributary_server::api;
 use tributary_server::db::Database;
@@ -21,7 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Initialize database
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/postgres".to_string());
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/postgres".to_string());
     let db = Database::new(&database_url).await?;
 
     // Build our application with routes
@@ -34,7 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(TraceLayer::new_for_http());
 
     // Get the server address from environment or use default
-    let server_address = std::env::var("SERVER_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
+    let server_address =
+        std::env::var("SERVER_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let addr: SocketAddr = server_address.parse()?;
 
     println!("Starting Tributary server at {}", addr);
@@ -51,6 +54,6 @@ async fn health_check() -> (StatusCode, Json<serde_json::Value>) {
         Json(json!({
             "status": "healthy",
             "service": "tributary-server"
-        }))
+        })),
     )
 }

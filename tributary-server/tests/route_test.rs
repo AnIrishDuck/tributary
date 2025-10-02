@@ -1,10 +1,10 @@
+use axum::Json;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use tower::util::ServiceExt; // for `oneshot` and `ready`
-use axum::Json;
 use serde_json::json;
+use tower::util::ServiceExt; // for `oneshot` and `ready`
 
 async fn test_get_handler() -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::OK, Json(json!({"method": "GET"})))
@@ -16,9 +16,11 @@ async fn test_post_handler() -> (StatusCode, Json<serde_json::Value>) {
 
 #[tokio::test]
 async fn test_route_combining() {
-    let app = axum::Router::new()
-        .route("/test/:id", axum::routing::get(test_get_handler).post(test_post_handler));
-    
+    let app = axum::Router::new().route(
+        "/test/:id",
+        axum::routing::get(test_get_handler).post(test_post_handler),
+    );
+
     // Test GET request
     let response = app
         .clone()
@@ -33,7 +35,7 @@ async fn test_route_combining() {
         .unwrap();
 
     println!("GET response status: {}", response.status());
-    
+
     // Test POST request
     let response = app
         .oneshot(
