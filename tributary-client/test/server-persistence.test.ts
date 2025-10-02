@@ -340,8 +340,17 @@ describe('Server Persistence', () => {
     const blobs = Array.from(anyFakeServer.blobs.values());
     expect(blobs.length).toBe(1); // One transaction blob
     
-    // Decode the data to see what's inside
-    const decodedData = new TextDecoder().decode(blobs[0].data);
+    // Decode and decrypt the data to see what's inside
+    // First, we need to create a temporary client to use its decryptData method
+    const tempClient = new TributaryClient({
+      server: fakeServer,
+      privateKey: testPrivateKeyBase64,
+      collectionId: 'temp-collection'
+    });
+    
+    // Decrypt the blob data
+    const decryptedData = (tempClient as any).decryptData(blobs[0].data);
+    const decodedData = new TextDecoder().decode(decryptedData);
     const transactionEntry = JSON.parse(decodedData);
     
     // Check that the params exist and have the right length

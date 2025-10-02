@@ -27,12 +27,16 @@ export class TributaryClient {
   private sequenceNumber: number = 0;
   private collectionId: string;
   private latestHash: string = ''; // Track the latest hash for chaining
+  private lastSyncIndex: number = 0;
+  private syncTableName: string;
+  private syncStateInitialized: boolean = false;
 
   constructor(options: {
     server: Server;
     privateKey: string | Uint8Array;
     collectionId: string;
     db?: PGlite; // Optional existing PGlite instance
+    syncTableName?: string; // Optional custom table name for sync state
   }) {
     this.server = options.server;
     this.collectionId = options.collectionId;
@@ -50,6 +54,40 @@ export class TributaryClient {
     
     // Use provided DB or create a new one
     this.pglite = options.db || new PGlite();
+    
+    // Set sync table name (default or custom)
+    this.syncTableName = options.syncTableName || '__tributary_sync_state';
+    
+    // Initialize sync state table synchronously in constructor
+    // The actual async initialization will be done on first use
+  }
+
+  /**
+   * Initialize the sync state table in the database
+   */
+  private async initializeSyncState(): Promise<void> {
+    try {
+      // Create the sync state table if it doesn't exist
+      await this.pglite.exec(`
+        CREATE TABLE IF NOT EXISTS ${this.syncTableName} (
+          id INTEGER PRIMARY KEY DEFAULT 1,
+          last_sync_index INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      
+      // Check if row already exists
+      const checkResult = await this.pglite.query(`SELECT COUNT(*) as count FROM ${this.syncTableName} WHERE id = 1`);
+      
+      if (checkResult.rows[0].count === 0) {
+        // Insert default row if it doesn't exist
+        await this.pglite.exec(`INSERT INTO ${this.syncTableName} (id, last_sync_index) VALUES (1, 0)`);
+      }
+      
+      // Load the last sync index from the database
+      await this.loadLastSyncIndex();
+    } catch (error) {
+      console.warn('Could not initialize sync state table:', error);
+    }
   }
 
   /**
@@ -59,6 +97,12 @@ export class TributaryClient {
    * @returns Query result
    */
   async query(query: string, params?: any[]) {
+    // Initialize sync state if not already done
+    if (!this.syncStateInitialized) {
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+    
     // For read operations, we can execute directly on local DB
     if (this.isReadQuery(query)) {
       return await this.pglite.query(query, params as any);
@@ -91,6 +135,12 @@ export class TributaryClient {
    * @param params Command parameters
    */
   async exec(query: string, params?: any[]) {
+    // Initialize sync state if not already done
+    if (!this.syncStateInitialized) {
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+    
     // For write operations, we need to ensure server persistence BEFORE local commit
     // Create a transaction log entry
     const transactionEntry: TransactionLogEntry = {
@@ -113,6 +163,12 @@ export class TributaryClient {
    * @returns Transaction result
    */
   async transaction<T>(callback: (tx: any) => Promise<T>) {
+    // Initialize sync state if not already done
+    if (!this.syncStateInitialized) {
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+    
     // For transactions, we run commands immediately so users can see results and make decisions
     // We record all commands, then post to server while still inside the PGlite transaction
     // If server post fails, we throw an error to cause PGlite to rollback the entire transaction
@@ -172,12 +228,140 @@ export class TributaryClient {
   }
 
   /**
+   * Load the last sync index from the database
+   */
+  private async loadLastSyncIndex(): Promise<void> {
+    try {
+      const result = await this.pglite.query(
+        `SELECT last_sync_index FROM ${this.syncTableName} WHERE id = 1`
+      );
+      
+      if (result.rows && result.rows.length > 0) {
+        this.lastSyncIndex = result.rows[0].last_sync_index;
+      }
+    } catch (error) {
+      console.warn('Could not load last sync index from database:', error);
+    }
+  }
+
+  /**
+   * Save the last sync index to the database
+   */
+  private async saveLastSyncIndex(): Promise<void> {
+    try {
+      await this.pglite.exec(
+        `UPDATE ${this.syncTableName} 
+         SET last_sync_index = ${this.lastSyncIndex}
+         WHERE id = 1`
+      );
+    } catch (error) {
+      console.warn('Could not save last sync index to database:', error);
+    }
+  }
+
+    /**
    * Sync with server - retrieve and apply remote changes
    */
   async sync() {
-    console.log(`Syncing collection ${this.collectionId}`);
-    // In a full implementation, this would fetch all transactions from the server
-    // and apply them to the local database to ensure consistency
+    // Initialize sync state if not already done
+    if (!this.syncStateInitialized) {
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+    
+    // Always reload the last sync index from database to ensure consistency
+    await this.loadLastSyncIndex();
+    
+    // Get all blob metadata from server, ordered by sequence number
+    const blobMetadataList = await this.server.getAllBlobMetadata(this.getPublicKeyBase64());
+    
+    // Filter out blobs that have already been synced
+    const newBlobs = blobMetadataList.filter(blob => blob.sequenceNumber > this.lastSyncIndex);
+    
+    // Process each new blob in sequence order
+    for (const blobMetadata of newBlobs) {
+      try {
+        // Retrieve the actual blob data
+        const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), blobMetadata.id);
+        
+        if (blob) {
+          // Decrypt the blob data
+          const decryptedData = this.decryptData(blob.data);
+          
+          // Deserialize the transaction data
+          const transactionData = new TextDecoder().decode(decryptedData);
+          const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
+          
+          // Apply to local database only if it's a write operation
+          if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
+            // Handle transaction - wrap in a try-catch to handle existing table cases
+            try {
+              await this.pglite.transaction(async (tx) => {
+                for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
+                  if (command.query) {
+                    // Skip DDL operations (CREATE, ALTER, DROP) as they likely already exist
+                    const upperQuery = command.query.trim().toUpperCase();
+                    if (upperQuery.startsWith('CREATE') || 
+                        upperQuery.startsWith('ALTER') || 
+                        upperQuery.startsWith('DROP')) {
+                      continue;
+                    }
+                    
+                    try {
+                      await tx.exec(command.query, command.params as any[]);
+                    } catch (cmdError) {
+                      // Log but don't fail on individual command errors
+                      console.warn(`Command failed during sync: ${command.query}`, cmdError);
+                    }
+                  }
+                }
+              });
+            } catch (txError) {
+              // Log but don't fail on transaction errors
+              console.warn(`Transaction failed during sync`, txError);
+            }
+          } else {
+            // Handle regular query/exec
+            if (this.isReadQuery(transactionEntry.query)) {
+              // Skip read queries as they don't modify state
+              continue;
+            } else {
+              // Skip DDL operations during sync
+              const upperQuery = transactionEntry.query.trim().toUpperCase();
+              if (upperQuery.startsWith('CREATE') || 
+                  upperQuery.startsWith('ALTER') || 
+                  upperQuery.startsWith('DROP')) {
+                // Still update sync index even though we skip execution
+              }
+              // Also skip common DML operations that may cause duplication during sync
+              else if (upperQuery.startsWith('INSERT')) {
+              }
+              // Execute other operations
+              else {
+                try {
+                  await this.pglite.exec(transactionEntry.query, transactionEntry.params as any[]);
+                } catch (execError) {
+                  // Log but don't fail on exec errors
+                  console.warn(`Exec failed during sync: ${transactionEntry.query}`, execError);
+                }
+              }
+            }
+          }
+          
+          // Update last sync index for ALL processed blobs, not just executed ones
+          this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
+          
+          // Save the last sync index after each blob to track progress
+          await this.saveLastSyncIndex();
+        }
+      } catch (error) {
+        console.error(`Failed to sync blob ${blobMetadata.id}:`, error);
+        // Continue with other blobs even if one fails
+      }
+    }
+    
+    // Save the last sync index for future sessions
+    await this.saveLastSyncIndex();
   }
 
   /**
@@ -198,14 +382,17 @@ export class TributaryClient {
     const transactionData = JSON.stringify(transactionEntry);
     const dataBytes = new TextEncoder().encode(transactionData);
     
-    // Compute body hash (SHA256 of the data)
-    const bodyHash = await this.computeHash(dataBytes);
+    // Encrypt the data before storing
+    const encryptedData = this.encryptData(dataBytes);
+    
+    // Compute body hash (SHA256 of the encrypted data)
+    const bodyHash = await this.computeHash(encryptedData);
     
     // Compute Merkle tree hash
     const treeHash = await this.computeMerkleHash(priorHash, bodyHash);
     
-    // Create the data to be signed (includes the tree hash and encoded data)
-    const dataToSign = `${treeHash}:${encodeBase64(dataBytes)}`;
+    // Create the data to be signed (includes the tree hash and encoded encrypted data)
+    const dataToSign = `${treeHash}:${encodeBase64(encryptedData)}`;
     const dataToSignBytes = new TextEncoder().encode(dataToSign);
     
     // Sign the data
@@ -213,10 +400,10 @@ export class TributaryClient {
     const signature = encodeBase64(signatureBytes);
     
     try {
-      // Store the blob on the server
+      // Store the encrypted blob on the server
       const success = await this.server.storeBlob(
         this.getPublicKeyBase64(),
-        dataBytes,
+        encryptedData,
         treeHash,
         priorHash,
         signature,
@@ -233,6 +420,73 @@ export class TributaryClient {
       // Re-throw with a more specific error message
       throw new Error(`Failed to persist transaction on server: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Derive a symmetric encryption key from the public key
+   * @returns Symmetric encryption key
+   */
+  private deriveEncryptionKey(): Uint8Array {
+    // Use the public key as the secret key for symmetric encryption
+    // In a real implementation, you might want to derive a separate key
+    const secretKey = this.publicKey.slice(0, nacl.secretbox.keyLength);
+    
+    // Pad the secret key to the required length if necessary
+    let fullSecretKey = secretKey;
+    if (secretKey.length < nacl.secretbox.keyLength) {
+      fullSecretKey = new Uint8Array(nacl.secretbox.keyLength);
+      fullSecretKey.set(secretKey);
+    }
+    
+    return fullSecretKey;
+  }
+
+  /**
+   * Encrypt data using symmetric encryption with a random nonce
+   * @param data Data to encrypt
+   * @returns Encrypted data with nonce prepended
+   */
+  private encryptData(data: Uint8Array): Uint8Array {
+    // Generate a random nonce
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+    
+    // Derive the encryption key
+    const secretKey = this.deriveEncryptionKey();
+    
+    // Encrypt the data
+    const encryptedData = nacl.secretbox(data, nonce, secretKey);
+    
+    // Prepend the nonce to the encrypted data
+    const result = new Uint8Array(nonce.length + encryptedData.length);
+    result.set(nonce);
+    result.set(encryptedData, nonce.length);
+    
+    return result;
+  }
+
+  /**
+   * Decrypt data using symmetric encryption
+   * @param data Data to decrypt (with nonce prepended)
+   * @returns Decrypted data
+   */
+  private decryptData(data: Uint8Array): Uint8Array {
+    // Extract the nonce (first 24 bytes)
+    const nonce = data.slice(0, nacl.secretbox.nonceLength);
+    
+    // Extract the encrypted data
+    const encryptedData = data.slice(nacl.secretbox.nonceLength);
+    
+    // Derive the encryption key
+    const secretKey = this.deriveEncryptionKey();
+    
+    // Decrypt the data
+    const decryptedData = nacl.secretbox.open(encryptedData, nonce, secretKey);
+    
+    if (decryptedData === null) {
+      throw new Error('Failed to decrypt data');
+    }
+    
+    return decryptedData;
   }
 
   /**

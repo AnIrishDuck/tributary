@@ -152,9 +152,10 @@ program
   .option('-d, --db <path>', 'Local database file path for persistence')
   .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
   .option('-t, --test', 'Use test mode with FakeServer')
+  .option('-n, --no-sync', 'Disable automatic sync with server before executing command')
   .action(async (sql, options) => {
     try {
-      if (!sql) {
+      if (!sql && options.sync) {
         console.log('No SQL command provided. Use --help for more information.');
         process.exit(1);
       }
@@ -170,7 +171,8 @@ program
           readKey: options.readkey,
           writeKey: options.writekey,
           localDb: options.db,
-          collectionId: options.collection
+          collectionId: options.collection,
+          sync: options.sync // This will be true by default, false if --no-sync is specified
         });
         console.log('Result:', result);
       }

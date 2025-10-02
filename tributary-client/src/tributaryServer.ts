@@ -123,4 +123,70 @@ export class TributaryServer implements Server {
       throw new Error(`Failed to retrieve latest blob metadata: ${(error as Error).message}`);
     }
   }
+  
+  /**
+   * Get all blob metadata for a given public key, ordered by sequence number
+   * This is a simplified implementation that assumes sequential numbering starts at 1
+   */
+  async getAllBlobMetadata(
+    pubkey: string
+  ): Promise<Array<{
+    id: string;
+    pubkey: string;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  }>> {
+    // First get the latest blob to determine the highest sequence number
+    const latestBlob = await this.getLatestBlobMetadata(pubkey);
+    
+    if (!latestBlob) {
+      return [];
+    }
+    
+    const maxSequenceNumber = latestBlob.sequenceNumber;
+    const blobMetadataList: Array<{
+      id: string;
+      pubkey: string;
+      hash: string;
+      priorHash: string;
+      signature: string;
+      sequenceNumber: number;
+      createdAt: Date;
+    }> = [];
+    
+    // Try to fetch each blob from 1 to maxSequenceNumber
+    // This assumes sequential numbering with no gaps
+    for (let seq = 1; seq <= maxSequenceNumber; seq++) {
+      try {
+        const blobId = `${pubkey}:${seq}`;
+        const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(blobId)}`;
+        
+        const response = await fetch(url);
+        
+        if (response.ok) {
+          const blob = await response.json();
+          
+          blobMetadataList.push({
+            id: blob.id,
+            pubkey: blob.pubkey,
+            hash: blob.hash,
+            priorHash: blob.prior_hash,
+            signature: blob.signature,
+            sequenceNumber: blob.sequence_number,
+            createdAt: new Date(blob.created_at)
+          });
+        }
+        // If 404, just continue (blob doesn't exist or numbering isn't sequential)
+      } catch (error) {
+        // Continue with next sequence number on error
+        console.warn(`Failed to fetch blob ${seq}:`, (error as Error).message);
+      }
+    }
+    
+    // Sort by sequence number to ensure proper order
+    return blobMetadataList.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+  }
 }

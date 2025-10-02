@@ -10,13 +10,16 @@ The tributary-client library enables end-to-end encrypted database operations wi
 
 Unlike traditional replication systems, tributary-client ensures that all write operations are persisted on the server before being committed locally. This approach provides stronger consistency guarantees and eliminates the possibility of data loss due to client failures.
 
+For synchronization, the client tracks the last sync index directly in the local database to avoid replaying commands. This eliminates multiple sources of state and ensures consistency.
+
 ## Key Features
 
 1. **Persistence Guarantees**: Write operations are sent to the server and confirmed before local commitment
 2. **End-to-End Encryption**: All data is encrypted before transmission using tweetnacl
 3. **PGLite Integration**: Seamless integration with PGLite for local database operations
-4. **Conflict Resolution**: Handles network failures and conflict resolution automatically
-5. **Cryptographic Signing**: All operations are cryptographically signed for authenticity
+4. **Sync State Management**: Sync progress tracked in local database to prevent command replay
+5. **Conflict Resolution**: Handles network failures and conflict resolution automatically
+6. **Cryptographic Signing**: All operations are cryptographically signed for authenticity
 
 ## Architecture
 
@@ -26,7 +29,8 @@ The client library implements a write-through cache pattern where:
 2. Operations are sent to tributary-server with cryptographic signatures
 3. Server confirms persistence before client commits locally
 4. Read operations can be served from local PGLite instance
-5. Synchronization handles network disruptions gracefully
+5. Sync state is tracked in a special `__tributary_sync_state` table in the local database
+6. Synchronization handles network disruptions gracefully
 
 ## Security Model
 
@@ -64,7 +68,18 @@ const client = new TributaryClient({
 |--------|------|-------------|
 | `server` | Server | Server implementation (TributaryServer or FakeServer) |
 | `privateKey` | string or Uint8Array | NaCl private key for signing |
+| `collectionId` | string | Unique identifier for the collection |
 | `db` | PGlite | Optional existing PGlite instance |
+| `syncTableName` | string | Optional custom table name for sync state (default: `__tributary_sync_state`) |
+
+### Sync State Management
+
+The client automatically creates and manages a special table (`__tributary_sync_state` by default) in the local database to track synchronization progress. This table contains:
+
+- `id`: Primary key (always 1)
+- `last_sync_index`: The highest sequence number that has been synced
+
+This approach ensures that sync state is preserved even when the client is recreated with the same database instance, preventing duplicate processing of operations.
 
 ## API
 
@@ -73,11 +88,22 @@ The `TributaryClient` object exposes methods for database operations:
 ### query(query, params?)
 Execute SQL query with persistence guarantee
 
+### exec(query, params?)
+Execute SQL command with persistence guarantee
+
 ### transaction(callback)
 Execute SQL transaction with persistence guarantee
 
-### sync(collectionId)
+### sync()
 Sync with server - retrieve and apply remote changes
+
+When syncing, the client:
+1. Fetches all operations from the server
+2. Filters out operations that have already been processed (based on `last_sync_index`)
+3. Applies only new operations to the local database
+4. Updates the sync state in the local database
+
+Note: During sync, DDL operations (CREATE, ALTER, DROP) are skipped as they are assumed to already exist in the local database.
 
 ## Development
 

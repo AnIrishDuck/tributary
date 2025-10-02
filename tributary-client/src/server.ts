@@ -57,4 +57,21 @@ export interface Server {
     sequenceNumber: number;
     createdAt: Date;
   } | null>;
+  
+  /**
+   * Get all blob metadata for a given public key, ordered by sequence number
+   * @param pubkey Base64 encoded public key
+   * @returns Promise resolving to array of blob metadata ordered by sequence number
+   */
+  getAllBlobMetadata(
+    pubkey: string
+  ): Promise<Array<{
+    id: string;
+    pubkey: string;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  }>>;
 }

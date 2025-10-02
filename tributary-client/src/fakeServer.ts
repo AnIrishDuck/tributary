@@ -190,4 +190,24 @@ export class FakeServer implements Server {
     
     return latestBlob;
   }
+  
+  async getAllBlobMetadata(
+    pubkey: string
+  ): Promise<Array<{
+    id: string;
+    pubkey: string;
+    hash: string;
+    priorHash: string;
+    signature: string;
+    sequenceNumber: number;
+    createdAt: Date;
+  }>> {
+    // Filter blobs by pubkey and sort by sequence number
+    const blobs = Array.from(this.blobs.values())
+      .filter(blob => blob.pubkey === pubkey)
+      .sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    
+    // Return a copy of each blob to prevent external modification
+    return blobs.map(blob => ({ ...blob }));
+  }
 }

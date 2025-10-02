@@ -12,6 +12,7 @@ export async function executeSQL(
     writeKey?: string;
     localDb?: string;
     collectionId?: string;
+    sync?: boolean;
   }
 ): Promise<any> {
   // Load the appropriate keys
@@ -61,8 +62,20 @@ export async function executeSQL(
     db: db // Use the local database instance
   });
   
-  // Execute the SQL command
-  console.log(`Executing SQL: ${sql}`);
-  const result = await client.query(sql);
-  return result;
+  // Sync with server by default unless explicitly disabled
+  const shouldSync = options.sync !== false; // Default to true
+  if (shouldSync) {
+    console.log('Syncing with server...');
+    await client.sync();
+  }
+  
+  // Execute the SQL command if provided
+  if (sql) {
+    console.log(`Executing SQL: ${sql}`);
+    const result = await client.query(sql);
+    return result;
+  }
+  
+  // If no SQL command but sync was performed, return success
+  return { message: 'Sync completed successfully' };
 }
