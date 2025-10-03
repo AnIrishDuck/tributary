@@ -68,19 +68,23 @@ export class TributaryClient {
   private async initializeSyncState(): Promise<void> {
     try {
       // Create the sync state table if it doesn't exist
-      await this.pglite.exec(`
-        CREATE TABLE IF NOT EXISTS ${this.syncTableName} (
+      await this.pglite.exec(
+        `CREATE TABLE IF NOT EXISTS ${this.syncTableName} (
           id INTEGER PRIMARY KEY DEFAULT 1,
           last_sync_index INTEGER NOT NULL DEFAULT 0
-        )
-      `);
+        )`
+      );
       
       // Check if row already exists
-      const checkResult = await this.pglite.query(`SELECT COUNT(*) as count FROM ${this.syncTableName} WHERE id = 1`);
+      const checkResult: any = await this.pglite.query(
+        `SELECT COUNT(*) as count FROM ${this.syncTableName} WHERE id = 1`
+      );
       
       if (checkResult.rows[0].count === 0) {
         // Insert default row if it doesn't exist
-        await this.pglite.exec(`INSERT INTO ${this.syncTableName} (id, last_sync_index) VALUES (1, 0)`);
+        await this.pglite.exec(
+          `INSERT INTO ${this.syncTableName} (id, last_sync_index) VALUES (1, 0)`
+        );
       }
       
       // Load the last sync index from the database
@@ -232,7 +236,7 @@ export class TributaryClient {
    */
   private async loadLastSyncIndex(): Promise<void> {
     try {
-      const result = await this.pglite.query(
+      const result: any = await this.pglite.query(
         `SELECT last_sync_index FROM ${this.syncTableName} WHERE id = 1`
       );
       
@@ -249,6 +253,7 @@ export class TributaryClient {
    */
   private async saveLastSyncIndex(): Promise<void> {
     try {
+      // Use string interpolation for now to avoid parameter binding issues
       await this.pglite.exec(
         `UPDATE ${this.syncTableName} 
          SET last_sync_index = ${this.lastSyncIndex}
@@ -308,7 +313,7 @@ export class TributaryClient {
                     }
                     
                     try {
-                      await tx.exec(command.query, command.params as any[]);
+                      await tx.exec(command.query);
                     } catch (cmdError) {
                       // Log but don't fail on individual command errors
                       console.warn(`Command failed during sync: ${command.query}`, cmdError);
@@ -339,7 +344,7 @@ export class TributaryClient {
               // Execute other operations
               else {
                 try {
-                  await this.pglite.exec(transactionEntry.query, transactionEntry.params as any[]);
+                  await this.pglite.exec(transactionEntry.query);
                 } catch (execError) {
                   // Log but don't fail on exec errors
                   console.warn(`Exec failed during sync: ${transactionEntry.query}`, execError);
@@ -369,37 +374,56 @@ export class TributaryClient {
    * @param transactionEntry The transaction log entry to persist
    */
   private async ensureServerPersistence(transactionEntry: TransactionLogEntry): Promise<void> {
+    console.log('ensureServerPersistence: Starting persistence for transaction', transactionEntry);
+    
     // Get the latest blob metadata from the server for proper chaining
     const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    console.log('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
     
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
     const priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
+    console.log('ensureServerPersistence: Using priorHash:', priorHash);
     
     // Use the next sequence number based on the server's latest blob
     this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+    console.log('ensureServerPersistence: Using sequenceNumber:', this.sequenceNumber);
     
     // Serialize the transaction data
     const transactionData = JSON.stringify(transactionEntry);
     const dataBytes = new TextEncoder().encode(transactionData);
+    console.log('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
     
     // Encrypt the data before storing
     const encryptedData = this.encryptData(dataBytes);
+    console.log('ensureServerPersistence: Encrypted data length:', encryptedData.length);
     
     // Compute body hash (SHA256 of the encrypted data)
     const bodyHash = await this.computeHash(encryptedData);
+    console.log('ensureServerPersistence: Computed bodyHash:', bodyHash);
     
     // Compute Merkle tree hash
     const treeHash = await this.computeMerkleHash(priorHash, bodyHash);
+    console.log('ensureServerPersistence: Computed treeHash:', treeHash);
     
     // Create the data to be signed (includes the tree hash and encoded encrypted data)
-    const dataToSign = `${treeHash}:${encodeBase64(encryptedData)}`;
+    // Use URL-safe base64 encoding to match what the server expects
+    const standardBase64 = encodeBase64(encryptedData);
+    const urlSafeBase64 = standardBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const dataToSign = `${treeHash}:${urlSafeBase64}`;
     const dataToSignBytes = new TextEncoder().encode(dataToSign);
+    console.log('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
+    console.log('ensureServerPersistence: Data to sign (first 100 chars):', dataToSign.substring(0, 100));
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
     const signature = encodeBase64(signatureBytes);
+    console.log('ensureServerPersistence: Generated signature length:', signature.length);
     
     try {
+      console.log('ensureServerPersistence: Attempting to store blob with treeHash:', treeHash);
+      console.log('ensureServerPersistence: Prior hash:', priorHash);
+      console.log('ensureServerPersistence: Sequence number:', this.sequenceNumber);
+      
       // Store the encrypted blob on the server
       const success = await this.server.storeBlob(
         this.getPublicKeyBase64(),
@@ -414,9 +438,12 @@ export class TributaryClient {
         throw new Error('Failed to persist transaction on server');
       }
       
+      console.log('ensureServerPersistence: Successfully stored blob');
+      
       // Update our local latest hash for consistency
       this.latestHash = treeHash;
     } catch (error) {
+      console.error('ensureServerPersistence: Error storing blob:', error);
       // Re-throw with a more specific error message
       throw new Error(`Failed to persist transaction on server: ${(error as Error).message}`);
     }
@@ -496,14 +523,20 @@ export class TributaryClient {
    */
   private async computeHash(data: Uint8Array): Promise<string> {
     if (typeof crypto !== 'undefined' && crypto.subtle) {
-      // Browser or Node.js with crypto support
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      try {
+        // Browser or Node.js with crypto support
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const result = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        console.log(`computeHash: Successfully computed real hash for ${data.length} bytes`);
+        return result;
+      } catch (error) {
+        console.error(`computeHash: Crypto API failed:`, error);
+        throw new Error(`Failed to compute hash: ${(error as Error).message}`);
+      }
     } else {
-      // Fallback for environments without crypto support
-      // In a real implementation, we would use a proper SHA256 library
-      return 'hash-placeholder';
+      console.error(`computeHash: Crypto API not available. typeof crypto: ${typeof crypto}`);
+      throw new Error('Crypto API not available - cannot compute hash. This is a critical error that breaks signature verification.');
     }
   }
 

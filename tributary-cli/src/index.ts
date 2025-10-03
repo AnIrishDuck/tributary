@@ -165,7 +165,46 @@ program
         const { testPsqlCommand } = await import('./test-psql');
         // For test mode, we'll run a simple test instead of executing the SQL directly
         console.log('Running test mode...');
-        await testPsqlCommand();
+        if (sql) {
+          // If SQL was provided, we should execute it in test mode rather than run default test
+          console.log('Executing custom SQL in test mode:', sql);
+          
+          // Generate a test key pair
+          const keyPair = generateKeyPair();
+          console.log('Generated test key pair');
+          
+          // Create a FakeServer instance for testing
+          const fakeServer = new FakeServer();
+          console.log('Created FakeServer instance');
+          
+          // Create a local database instance
+          const db = new PGlite();
+          console.log('Created local PGlite database');
+          
+          // Create a client instance
+          const client = new TributaryClient({
+            server: fakeServer,
+            privateKey: keyPair.secretKey,
+            collectionId: 'test-collection',
+            db: db
+          });
+          console.log('Created TributaryClient instance');
+          
+          try {
+            // Execute the provided SQL
+            console.log('Executing SQL command...');
+            const result = await client.query(sql);
+            console.log('SQL command executed successfully');
+            console.log('Result:', result);
+            return;
+          } catch (error) {
+            console.error('SQL execution failed:', (error as Error).message);
+            throw error;
+          }
+        } else {
+          // For test mode with no SQL, we run the default test
+          await testPsqlCommand();
+        }
       } else {
         const result = await executeSQL(sql, {
           readKey: options.readkey,
