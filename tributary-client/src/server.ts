@@ -6,7 +6,7 @@ export interface Server {
    * Store an encrypted blob with signature verification
    * @param pubkey Base64 encoded public key
    * @param data Encrypted blob data
-   * @param hash Merkle tree hash
+   * @param hash Concatenated hash (priorHash + bodyHash)
    * @param priorHash Previous hash in the chain
    * @param signature Cryptographic signature
    * @param sequenceNumber Sequence number in the chain

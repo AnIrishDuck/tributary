@@ -28,7 +28,7 @@ export class TributaryServer implements Server {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
-        'X-Tributary-Hash': hash, // Send the tree hash (Merkle hash)
+        'X-Tributary-Hash': hash, // Send the concatenated hash
         'X-Tributary-Authorization': signature
       },
       body: data as any

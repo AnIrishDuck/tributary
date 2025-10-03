@@ -401,18 +401,14 @@ export class TributaryClient {
     const bodyHash = await this.computeHash(encryptedData);
     console.log('ensureServerPersistence: Computed bodyHash:', bodyHash);
     
-    // Compute Merkle tree hash
-    const treeHash = await this.computeMerkleHash(priorHash, bodyHash);
-    console.log('ensureServerPersistence: Computed treeHash:', treeHash);
+    // Compute simple hash (priorHash + bodyHash concatenated)
+    const hash = `${priorHash}${bodyHash}`;
+    console.log('ensureServerPersistence: Computed hash:', hash);
     
-    // Create the data to be signed (includes the tree hash and encoded encrypted data)
-    // Use URL-safe base64 encoding to match what the server expects
-    const standardBase64 = encodeBase64(encryptedData);
-    const urlSafeBase64 = standardBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    const dataToSign = `${treeHash}:${urlSafeBase64}`;
-    const dataToSignBytes = new TextEncoder().encode(dataToSign);
+    // Create the data to be signed (just the concatenated hash)
+    const dataToSignBytes = new TextEncoder().encode(hash);
     console.log('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
-    console.log('ensureServerPersistence: Data to sign (first 100 chars):', dataToSign.substring(0, 100));
+    console.log('ensureServerPersistence: Data to sign:', hash);
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
@@ -420,7 +416,7 @@ export class TributaryClient {
     console.log('ensureServerPersistence: Generated signature length:', signature.length);
     
     try {
-      console.log('ensureServerPersistence: Attempting to store blob with treeHash:', treeHash);
+      console.log('ensureServerPersistence: Attempting to store blob with hash:', hash);
       console.log('ensureServerPersistence: Prior hash:', priorHash);
       console.log('ensureServerPersistence: Sequence number:', this.sequenceNumber);
       
@@ -428,7 +424,7 @@ export class TributaryClient {
       const success = await this.server.storeBlob(
         this.getPublicKeyBase64(),
         encryptedData,
-        treeHash,
+        hash,
         priorHash,
         signature,
         this.sequenceNumber
@@ -441,7 +437,7 @@ export class TributaryClient {
       console.log('ensureServerPersistence: Successfully stored blob');
       
       // Update our local latest hash for consistency
-      this.latestHash = treeHash;
+      this.latestHash = hash;
     } catch (error) {
       console.error('ensureServerPersistence: Error storing blob:', error);
       // Re-throw with a more specific error message
@@ -522,33 +518,33 @@ export class TributaryClient {
    * @returns Hex-encoded hash
    */
   private async computeHash(data: Uint8Array): Promise<string> {
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-      try {
-        // Browser or Node.js with crypto support
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const result = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        console.log(`computeHash: Successfully computed real hash for ${data.length} bytes`);
-        return result;
-      } catch (error) {
-        console.error(`computeHash: Crypto API failed:`, error);
-        throw new Error(`Failed to compute hash: ${(error as Error).message}`);
+    // Try to use Node.js crypto if available
+    try {
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256');
+      hash.update(Buffer.from(data));
+      const result = hash.digest('hex');
+      console.log(`computeHash: Successfully computed hash for ${data.length} bytes using Node.js crypto`);
+      return result;
+    } catch (nodeCryptoError) {
+      // Fallback to Web Crypto API
+      if (typeof crypto !== 'undefined' && crypto.subtle) {
+        try {
+          // Browser or Node.js with crypto support
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const result = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+          console.log(`computeHash: Successfully computed real hash for ${data.length} bytes using Web Crypto`);
+          return result;
+        } catch (webCryptoError) {
+          console.error(`computeHash: Web Crypto API failed:`, webCryptoError);
+          throw new Error(`Failed to compute hash with both Node.js and Web Crypto: ${webCryptoError}`);
+        }
+      } else {
+        console.error(`computeHash: Neither Node.js nor Web Crypto API available. typeof crypto: ${typeof crypto}`);
+        throw new Error('Neither Node.js nor Web Crypto API available - cannot compute hash. This is a critical error that breaks signature verification.');
       }
-    } else {
-      console.error(`computeHash: Crypto API not available. typeof crypto: ${typeof crypto}`);
-      throw new Error('Crypto API not available - cannot compute hash. This is a critical error that breaks signature verification.');
     }
-  }
-
-  /**
-   * Compute Merkle tree hash from prior hash and body hash
-   * @param priorHash Previous hash in the chain
-   * @param bodyHash Hash of the current data
-   * @returns Hex-encoded Merkle hash
-   */
-  private async computeMerkleHash(priorHash: string, bodyHash: string): Promise<string> {
-    const data = new TextEncoder().encode(priorHash + bodyHash);
-    return await this.computeHash(data);
   }
 
   private isReadQuery(query: string): boolean {

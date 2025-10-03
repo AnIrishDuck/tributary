@@ -52,10 +52,10 @@ export class FakeServer implements Server {
     // Compute body hash
     const bodyHash = await this.computeHash(data);
     
-    // Compute Merkle tree hash (same as tributary-server)
-    const treeHash = await this.computeMerkleHash(priorHash, bodyHash);
+    // Compute simple hash (priorHash + bodyHash concatenated)
+    const expectedHash = `${priorHash}${bodyHash}`;
     
-    if (treeHash !== hash) {
+    if (expectedHash !== hash) {
       throw new Error('Invalid hash');
     }
     
@@ -135,9 +135,8 @@ export class FakeServer implements Server {
       const pubkeyBytes = decodeBase64(pubkey);
       const signatureBytes = decodeBase64(signature);
       
-      // Create the data that was signed (same as in tributary-server)
-      const dataToSign = `${hash}:${encodeBase64(data)}`;
-      const dataToSignBytes = new TextEncoder().encode(dataToSign);
+      // Create the data that was signed (just the concatenated hash)
+      const dataToSignBytes = new TextEncoder().encode(hash);
       
       // Verify the signature using nacl
       return nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
@@ -147,16 +146,19 @@ export class FakeServer implements Server {
   }
 
   private async computeHash(data: Uint8Array): Promise<string> {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  private async computeMerkleHash(priorHash: string, bodyHash: string): Promise<string> {
-    const data = new TextEncoder().encode(priorHash + bodyHash);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    // Try to use Node.js crypto if available
+    try {
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256');
+      hash.update(Buffer.from(data));
+      const result = hash.digest('hex');
+      return result;
+    } catch (nodeCryptoError) {
+      // Fallback to Web Crypto API
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
   }
   
   async getLatestBlobMetadata(

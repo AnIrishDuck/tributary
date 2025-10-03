@@ -1,4 +1,4 @@
-use crate::crypto::{compute_merkle_hash, verify_signature};
+use crate::crypto::verify_signature;
 use crate::db::Database;
 use crate::models::{Blob, SignatureVerificationRequest};
 use axum::{
@@ -6,7 +6,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Json,
 };
-use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
 use hex;
 use serde_json::json;
@@ -28,7 +27,7 @@ pub async fn store_blob(
     body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Extract headers
-    let provided_tree_hash = match headers.get("X-Tributary-Hash") {
+    let provided_hash = match headers.get("X-Tributary-Hash") {
         Some(hash) => match hash.to_str() {
             Ok(h) => h,
             Err(_) => {
@@ -88,7 +87,7 @@ pub async fn store_blob(
         }
     };
 
-    // Compute the body hash (what the tree hash should be based on)
+    // Compute the body hash
     let body_hash = {
         let mut hasher = Sha256::new();
         hasher.update(&body);
@@ -96,37 +95,32 @@ pub async fn store_blob(
         hex::encode(result)
     };
 
-    // Compute the expected Merkle tree hash (what it should be based on the latest blob)
-    let expected_tree_hash = compute_merkle_hash(&latest_blob.hash, &body_hash);
+    // The expected hash is just prior_hash + body_hash concatenated
+    let expected_hash = format!("{}{}", latest_blob.hash, body_hash);
 
-    // Validate that the provided tree hash matches our expectation
-    if provided_tree_hash != expected_tree_hash {
+    // Validate that the provided hash matches our expectation
+    if provided_hash != expected_hash {
         // Hash mismatch - client is out of sync
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Hash mismatch - possible chain mismatch",
-                "expected_hash": expected_tree_hash,
-                "provided_hash": provided_tree_hash,
+                "expected_hash": expected_hash,
+                "provided_hash": provided_hash,
                 "latest_sequence_number": latest_blob.sequence_number,
                 "latest_hash": latest_blob.hash
             })),
         );
     }
 
-    // Create the data that should have been signed (includes the tree hash)
-    let expected_data_to_sign = format!(
-        "{}:{}",
-        expected_tree_hash,
-        general_purpose::URL_SAFE.encode(&body)
-    );
-    let expected_data_to_sign_bytes = expected_data_to_sign.as_bytes().to_vec();
+    // Create the data that should have been signed (prior_hash + body_hash)
+    let expected_data_to_sign = expected_hash.as_bytes().to_vec();
 
     // Verify the signature against the expected data
     let verification_request = SignatureVerificationRequest {
         pubkey: encoded_pubkey.clone(),
         signature: signature.to_string(),
-        data: expected_data_to_sign_bytes.clone(),
+        data: expected_data_to_sign,
     };
 
     match verify_signature(&verification_request) {
@@ -141,7 +135,7 @@ pub async fn store_blob(
                 id: blob_id.clone(),
                 pubkey: encoded_pubkey.clone(),
                 data: body.to_vec(),
-                hash: expected_tree_hash.to_string(),
+                hash: expected_hash.to_string(),
                 prior_hash: latest_blob.hash.clone(),
                 signature: signature.to_string(),
                 sequence_number: next_sequence_number,

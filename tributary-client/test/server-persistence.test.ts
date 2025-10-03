@@ -11,13 +11,6 @@ async function computeHashInTest(data: Uint8Array): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function computeMerkleHashInTest(priorHash: string, bodyHash: string): Promise<string> {
-  const data = new TextEncoder().encode(priorHash + bodyHash);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 describe('Server Persistence', () => {
   let fakeServer: FakeServer;
   let testKeyPair: nacl.SignKeyPair;
@@ -79,7 +72,7 @@ describe('Server Persistence', () => {
     // This would be more thoroughly tested in a more complete implementation
   });
 
-  it('should properly chain merkle tree hashes for multiple entries', async () => {
+  it('should properly chain hashes for multiple entries', async () => {
     const client = new TributaryClient({
       server: fakeServer,
       privateKey: testPrivateKeyBase64,
@@ -109,13 +102,13 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that each blob's hash was computed correctly using the Merkle tree
+    // 3. Verify that each blob's hash was computed correctly (priorHash + bodyHash)
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const priorHash = blob.priorHash;
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedTreeHash = await computeMerkleHashInTest(priorHash, bodyHash);
-      expect(blob.hash).toBe(expectedTreeHash);
+      const expectedHash = `${priorHash}${bodyHash}`;
+      expect(blob.hash).toBe(expectedHash);
     }
   });
 
@@ -141,16 +134,15 @@ describe('Server Persistence', () => {
     const pubkeyBytes = decodeBase64(blob.pubkey);
     const signatureBytes = decodeBase64(blob.signature);
     
-    // Recreate the data that was signed (same as in client and server)
-    const dataToSign = `${blob.hash}:${encodeBase64(blob.data)}`;
-    const dataToSignBytes = new TextEncoder().encode(dataToSign);
+    // Recreate the data that was signed (just the concatenated hash)
+    const dataToSignBytes = new TextEncoder().encode(blob.hash);
     
     // Verify the signature using nacl
     const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
     expect(isValid).toBe(true);
   });
 
-  it('should replicate the exact merkle tree structure from server integration tests', async () => {
+  it('should replicate the exact hash structure from server integration tests', async () => {
     const client = new TributaryClient({
       server: fakeServer,
       privateKey: testPrivateKeyBase64,
@@ -178,20 +170,19 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that hashes are computed correctly as Merkle trees
+    // 3. Verify that hashes are computed correctly (priorHash + bodyHash)
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedTreeHash = await computeMerkleHashInTest(blob.priorHash, bodyHash);
-      expect(blob.hash).toBe(expectedTreeHash);
+      const expectedHash = `${blob.priorHash}${bodyHash}`;
+      expect(blob.hash).toBe(expectedHash);
     }
     
     // 4. Verify all signatures are valid
     for (const blob of blobs) {
       const pubkeyBytes = decodeBase64(blob.pubkey);
       const signatureBytes = decodeBase64(blob.signature);
-      const dataToSign = `${blob.hash}:${encodeBase64(blob.data)}`;
-      const dataToSignBytes = new TextEncoder().encode(dataToSign);
+      const dataToSignBytes = new TextEncoder().encode(blob.hash);
       const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
       expect(isValid).toBe(true);
     }
@@ -248,7 +239,7 @@ describe('Server Persistence', () => {
     expect(serverStoreCalls).toBe(2); // One for CREATE TABLE, one for INSERT
   });
 
-  it('should properly chain merkle tree hashes for exec entries', async () => {
+  it('should properly chain hashes for exec entries', async () => {
     const client = new TributaryClient({
       server: fakeServer,
       privateKey: testPrivateKeyBase64,
@@ -278,13 +269,13 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that each blob's hash was computed correctly using the Merkle tree
+    // 3. Verify that each blob's hash was computed correctly (priorHash + bodyHash)
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const priorHash = blob.priorHash;
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedTreeHash = await computeMerkleHashInTest(priorHash, bodyHash);
-      expect(blob.hash).toBe(expectedTreeHash);
+      const expectedHash = `${priorHash}${bodyHash}`;
+      expect(blob.hash).toBe(expectedHash);
     }
   });
 

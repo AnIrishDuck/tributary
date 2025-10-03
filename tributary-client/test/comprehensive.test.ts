@@ -52,12 +52,11 @@ describe('TributaryClient Components', () => {
     const bodyHash = await computeHash(data);
     const priorHash = '';
     
-    // Compute Merkle tree hash
-    const hash = await computeMerkleHash(priorHash, bodyHash);
+    // Compute simple hash (priorHash + bodyHash concatenated)
+    const hash = `${priorHash}${bodyHash}`;
     
-    // Create the data to be signed
-    const dataToSign = `${hash}:${encodeBase64(data)}`;
-    const dataToSignBytes = new TextEncoder().encode(dataToSign);
+    // Create the data to be signed (just the concatenated hash)
+    const dataToSignBytes = new TextEncoder().encode(hash);
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, testKeyPair.secretKey);
@@ -93,12 +92,11 @@ describe('TributaryClient Components', () => {
     const bodyHash = await computeHash(data);
     const priorHash = '';
     
-    // Compute Merkle tree hash
-    const hash = await computeMerkleHash(priorHash, bodyHash);
+    // Compute simple hash (priorHash + bodyHash concatenated)
+    const hash = `${priorHash}${bodyHash}`;
     
-    // Create the data to be signed
-    const dataToSign = `${hash}:${encodeBase64(data)}`;
-    const dataToSignBytes = new TextEncoder().encode(dataToSign);
+    // Create the data to be signed (just the concatenated hash)
+    const dataToSignBytes = new TextEncoder().encode(hash);
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, testKeyPair.secretKey);
@@ -144,13 +142,6 @@ describe('TributaryClient Components', () => {
 
 // Helper functions for testing
 async function computeHash(data: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function computeMerkleHash(priorHash: string, bodyHash: string): Promise<string> {
-  const data = new TextEncoder().encode(priorHash + bodyHash);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
