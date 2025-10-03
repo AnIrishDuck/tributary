@@ -1,5 +1,6 @@
 // Implementation of Server interface that communicates with tributary-server
 import { Server } from './server';
+import { warn } from './logger';
 
 // Import tweetnacl-util functions
 const util = require('tweetnacl-util');
@@ -182,7 +183,7 @@ export class TributaryServer implements Server {
         // If 404, just continue (blob doesn't exist or numbering isn't sequential)
       } catch (error) {
         // Continue with next sequence number on error
-        console.warn(`Failed to fetch blob ${seq}:`, (error as Error).message);
+        warn(`Failed to fetch blob ${seq}:`, (error as Error).message);
       }
     }
     

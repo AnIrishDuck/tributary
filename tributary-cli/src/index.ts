@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey } from './key';
 import { executeSQL } from './psql';
 import { testPsqlCommand } from './test-psql';
+import { logger, info, error, warn } from './logger';
 
 // Comprehensive test function
 import { TributaryClient, FakeServer } from 'tributary-client';
@@ -11,20 +12,20 @@ import { loadKeyPair } from './key';
 import { PGlite } from '@electric-sql/pglite';
 
 async function comprehensivePsqlTest() {
-  console.log('Running comprehensive psql command test...');
+  info('Running comprehensive psql command test...');
   
   try {
     // Load our existing test key
     const keyPair = await loadKeyPair('test-key');
-    console.log('Loaded existing test key');
+    info('Loaded existing test key');
     
     // Create a FakeServer instance for testing
     const fakeServer = new FakeServer();
-    console.log('Created FakeServer instance');
+    info('Created FakeServer instance');
     
     // Create a local database instance
     const db = new PGlite();
-    console.log('Created local PGlite database');
+    info('Created local PGlite database');
     
     // Create a client instance
     const client = new TributaryClient({
@@ -33,10 +34,10 @@ async function comprehensivePsqlTest() {
       collectionId: 'comprehensive-test-collection',
       db: db
     });
-    console.log('Created TributaryClient instance');
+    info('Created TributaryClient instance');
     
     // Test a series of SQL operations
-    console.log('\n--- Testing CREATE TABLE ---');
+    info('\n--- Testing CREATE TABLE ---');
     await client.exec(`
       CREATE TABLE IF NOT EXISTS notes (
         id SERIAL PRIMARY KEY,
@@ -45,57 +46,57 @@ async function comprehensivePsqlTest() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Created notes table');
+    info('Created notes table');
     
-    console.log('\n--- Testing INSERT operations ---');
+    info('\n--- Testing INSERT operations ---');
     await client.exec(
       "INSERT INTO notes (title, content) VALUES ('First Note', 'This is the content of the first note')",
     );
-    console.log('Inserted first note');
+    info('Inserted first note');
     
     await client.exec(
       "INSERT INTO notes (title, content) VALUES ('Second Note', 'This is the content of the second note')",
     );
-    console.log('Inserted second note');
+    info('Inserted second note');
     
-    console.log('\n--- Testing SELECT query ---');
+    info('\n--- Testing SELECT query ---');
     const selectResult = await client.query('SELECT * FROM notes ORDER BY id');
-    console.log('Selected notes:', selectResult.rows);
+    info('Selected notes:', selectResult.rows);
     
-    console.log('\n--- Testing UPDATE operation ---');
+    info('\n--- Testing UPDATE operation ---');
     await client.exec("UPDATE notes SET content = 'Updated content' WHERE title = 'First Note'");
-    console.log('Updated first note');
+    info('Updated first note');
     
-    console.log('\n--- Testing SELECT after UPDATE ---');
+    info('\n--- Testing SELECT after UPDATE ---');
     const updatedResult = await client.query('SELECT * FROM notes WHERE title = \'First Note\'');
-    console.log('Updated note:', updatedResult.rows[0]);
+    info('Updated note:', updatedResult.rows[0]);
     
-    console.log('\n--- Testing DELETE operation ---');
+    info('\n--- Testing DELETE operation ---');
     await client.exec("DELETE FROM notes WHERE title = 'Second Note'");
-    console.log('Deleted second note');
+    info('Deleted second note');
     
-    console.log('\n--- Testing SELECT after DELETE ---');
+    info('\n--- Testing SELECT after DELETE ---');
     const finalResult = await client.query('SELECT * FROM notes');
-    console.log('Remaining notes:', finalResult.rows);
+    info('Remaining notes:', finalResult.rows);
     
-    console.log('\n--- Testing transaction ---');
+    info('\n--- Testing transaction ---');
     await client.transaction(async (tx) => {
       await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 1', 'Content 1')");
       await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 2', 'Content 2')");
       // Let's also query within the transaction to verify we can see our changes
       const txQueryResult = await tx.query('SELECT COUNT(*) as count FROM notes');
-      console.log('Count within transaction:', txQueryResult.rows[0]);
+      info('Count within transaction:', txQueryResult.rows[0]);
     });
-    console.log('Transaction completed successfully');
+    info('Transaction completed successfully');
     
-    console.log('\n--- Final verification ---');
+    info('\n--- Final verification ---');
     const finalVerification = await client.query('SELECT * FROM notes ORDER BY id');
-    console.log('Final notes in database:', finalVerification.rows);
+    info('Final notes in database:', finalVerification.rows);
     
-    console.log('\nAll comprehensive tests passed!');
+    info('\nAll comprehensive tests passed!');
     return true;
   } catch (error) {
-    console.error('Comprehensive test failed:', (error as Error).message);
+    error('Comprehensive test failed:', (error as Error).message);
     throw error;
   }
 }
@@ -117,28 +118,28 @@ program
     try {
       if (options.generate) {
         const keyName = options.generate;
-        console.log(`Generating new key pair: ${keyName}`);
+        info(`Generating new key pair: ${keyName}`);
         const keyPair = generateKeyPair();
         await saveKeyPair(keyName, keyPair);
-        console.log(`Key pair '${keyName}' generated and saved successfully.`);
+        info(`Key pair '${keyName}' generated and saved successfully.`);
       } else if (options.list) {
-        console.log('Available keys:');
+        info('Available keys:');
         const keys = await listKeys();
         if (keys.length === 0) {
-          console.log('  No keys found.');
+          info('  No keys found.');
         } else {
-          keys.forEach(key => console.log(`  ${key}`));
+          keys.forEach(key => info(`  ${key}`));
         }
       } else if (options.show) {
         const keyName = options.show;
         const keyDetails = await showKey(keyName);
-        console.log(`Key: ${keyName}`);
-        console.log(`Public Key: ${keyDetails.publicKey}`);
+        info(`Key: ${keyName}`);
+        info(`Public Key: ${keyDetails.publicKey}`);
       } else {
-        console.log('Please specify a key operation. Use --help for more information.');
+        info('Please specify a key operation. Use --help for more information.');
       }
     } catch (error) {
-      console.error('Error:', (error as Error).message);
+      error('Error:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -156,7 +157,7 @@ program
   .action(async (sql, options) => {
     try {
       if (!sql && options.sync) {
-        console.log('No SQL command provided. Use --help for more information.');
+        info('No SQL command provided. Use --help for more information.');
         process.exit(1);
       }
       
@@ -164,22 +165,22 @@ program
         // Import the test version of executeSQL
         const { testPsqlCommand } = await import('./test-psql');
         // For test mode, we'll run a simple test instead of executing the SQL directly
-        console.log('Running test mode...');
+        info('Running test mode...');
         if (sql) {
           // If SQL was provided, we should execute it in test mode rather than run default test
-          console.log('Executing custom SQL in test mode:', sql);
+          info('Executing custom SQL in test mode:', sql);
           
           // Generate a test key pair
           const keyPair = generateKeyPair();
-          console.log('Generated test key pair');
+          info('Generated test key pair');
           
           // Create a FakeServer instance for testing
           const fakeServer = new FakeServer();
-          console.log('Created FakeServer instance');
+          info('Created FakeServer instance');
           
           // Create a local database instance
           const db = new PGlite();
-          console.log('Created local PGlite database');
+          info('Created local PGlite database');
           
           // Create a client instance
           const client = new TributaryClient({
@@ -188,17 +189,17 @@ program
             collectionId: 'test-collection',
             db: db
           });
-          console.log('Created TributaryClient instance');
+          info('Created TributaryClient instance');
           
           try {
             // Execute the provided SQL
-            console.log('Executing SQL command...');
+            info('Executing SQL command...');
             const result = await client.query(sql);
-            console.log('SQL command executed successfully');
-            console.log('Result:', result);
+            info('SQL command executed successfully');
+            info('Result:', result);
             return;
           } catch (error) {
-            console.error('SQL execution failed:', (error as Error).message);
+            error('SQL execution failed:', (error as Error).message);
             throw error;
           }
         } else {
@@ -213,10 +214,10 @@ program
           collectionId: options.collection,
           sync: options.sync // This will be true by default, false if --no-sync is specified
         });
-        console.log('Result:', result);
+        info('Result:', result);
       }
     } catch (error) {
-      console.error('Error:', (error as Error).message);
+      error('Error:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -226,11 +227,11 @@ program
   .description('Run tests for Tributary CLI')
   .action(async () => {
     try {
-      console.log('Running Tributary CLI tests...');
+      info('Running Tributary CLI tests...');
       await testPsqlCommand();
-      console.log('All tests completed successfully!');
+      info('All tests completed successfully!');
     } catch (error) {
-      console.error('Test failed:', (error as Error).message);
+      error('Test failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -240,11 +241,11 @@ program
   .description('Run comprehensive tests for Tributary CLI')
   .action(async () => {
     try {
-      console.log('Running comprehensive Tributary CLI tests...');
+      info('Running comprehensive Tributary CLI tests...');
       await comprehensivePsqlTest();
-      console.log('All comprehensive tests completed successfully!');
+      info('All comprehensive tests completed successfully!');
     } catch (error) {
-      console.error('Comprehensive test failed:', (error as Error).message);
+      error('Comprehensive test failed:', (error as Error).message);
       process.exit(1);
     }
   });

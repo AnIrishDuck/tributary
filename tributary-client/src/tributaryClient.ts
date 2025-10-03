@@ -9,6 +9,7 @@ const { encodeBase64, decodeBase64 } = util;
 import nacl from 'tweetnacl';
 
 import { Server } from './server';
+import { logger, warn, error, info, debug } from './logger';
 
 // Type definitions for our transaction log
 interface TransactionLogEntry {
@@ -89,8 +90,8 @@ export class TributaryClient {
       
       // Load the last sync index from the database
       await this.loadLastSyncIndex();
-    } catch (error) {
-      console.warn('Could not initialize sync state table:', error);
+    } catch (error: unknown) {
+      warn('Could not initialize sync state table:', error as Error);
     }
   }
 
@@ -243,8 +244,8 @@ export class TributaryClient {
       if (result.rows && result.rows.length > 0) {
         this.lastSyncIndex = result.rows[0].last_sync_index;
       }
-    } catch (error) {
-      console.warn('Could not load last sync index from database:', error);
+    } catch (error: unknown) {
+      warn('Could not load last sync index from database:', error as Error);
     }
   }
 
@@ -259,8 +260,8 @@ export class TributaryClient {
          SET last_sync_index = ${this.lastSyncIndex}
          WHERE id = 1`
       );
-    } catch (error) {
-      console.warn('Could not save last sync index to database:', error);
+    } catch (error: unknown) {
+      warn('Could not save last sync index to database:', error as Error);
     }
   }
 
@@ -316,14 +317,14 @@ export class TributaryClient {
                       await tx.exec(command.query);
                     } catch (cmdError) {
                       // Log but don't fail on individual command errors
-                      console.warn(`Command failed during sync: ${command.query}`, cmdError);
+                      warn(`Command failed during sync: ${command.query}`, cmdError);
                     }
                   }
                 }
               });
             } catch (txError) {
               // Log but don't fail on transaction errors
-              console.warn(`Transaction failed during sync`, txError);
+              warn(`Transaction failed during sync`, txError);
             }
           } else {
             // Handle regular query/exec
@@ -347,7 +348,7 @@ export class TributaryClient {
                   await this.pglite.exec(transactionEntry.query);
                 } catch (execError) {
                   // Log but don't fail on exec errors
-                  console.warn(`Exec failed during sync: ${transactionEntry.query}`, execError);
+                  warn(`Exec failed during sync: ${transactionEntry.query}`, execError);
                 }
               }
             }
@@ -359,8 +360,8 @@ export class TributaryClient {
           // Save the last sync index after each blob to track progress
           await this.saveLastSyncIndex();
         }
-      } catch (error) {
-        console.error(`Failed to sync blob ${blobMetadata.id}:`, error);
+      } catch (err: unknown) {
+        error(`Failed to sync blob ${blobMetadata.id}:`, err as Error);
         // Continue with other blobs even if one fails
       }
     }
@@ -374,51 +375,51 @@ export class TributaryClient {
    * @param transactionEntry The transaction log entry to persist
    */
   private async ensureServerPersistence(transactionEntry: TransactionLogEntry): Promise<void> {
-    console.log('ensureServerPersistence: Starting persistence for transaction', transactionEntry);
+    info('ensureServerPersistence: Starting persistence for transaction', transactionEntry);
     
     // Get the latest blob metadata from the server for proper chaining
     const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
-    console.log('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
+    debug('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
     
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
     const priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
-    console.log('ensureServerPersistence: Using priorHash:', priorHash);
+    debug('ensureServerPersistence: Using priorHash:', priorHash);
     
     // Use the next sequence number based on the server's latest blob
     this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
-    console.log('ensureServerPersistence: Using sequenceNumber:', this.sequenceNumber);
+    debug('ensureServerPersistence: Using sequenceNumber:', this.sequenceNumber);
     
     // Serialize the transaction data
     const transactionData = JSON.stringify(transactionEntry);
     const dataBytes = new TextEncoder().encode(transactionData);
-    console.log('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
+    debug('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
     
     // Encrypt the data before storing
     const encryptedData = this.encryptData(dataBytes);
-    console.log('ensureServerPersistence: Encrypted data length:', encryptedData.length);
+    debug('ensureServerPersistence: Encrypted data length:', encryptedData.length);
     
     // Compute body hash (SHA256 of the encrypted data)
     const bodyHash = await this.computeHash(encryptedData);
-    console.log('ensureServerPersistence: Computed bodyHash:', bodyHash);
+    debug('ensureServerPersistence: Computed bodyHash:', bodyHash);
     
     // Compute simple hash (priorHash + bodyHash concatenated)
     const hash = `${priorHash}${bodyHash}`;
-    console.log('ensureServerPersistence: Computed hash:', hash);
+    debug('ensureServerPersistence: Computed hash:', hash);
     
     // Create the data to be signed (just the concatenated hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
-    console.log('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
-    console.log('ensureServerPersistence: Data to sign:', hash);
+    debug('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
+    debug('ensureServerPersistence: Data to sign:', hash);
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
     const signature = encodeBase64(signatureBytes);
-    console.log('ensureServerPersistence: Generated signature length:', signature.length);
+    debug('ensureServerPersistence: Generated signature length:', signature.length);
     
     try {
-      console.log('ensureServerPersistence: Attempting to store blob with hash:', hash);
-      console.log('ensureServerPersistence: Prior hash:', priorHash);
-      console.log('ensureServerPersistence: Sequence number:', this.sequenceNumber);
+      debug('ensureServerPersistence: Attempting to store blob with hash:', hash);
+      debug('ensureServerPersistence: Prior hash:', priorHash);
+      debug('ensureServerPersistence: Sequence number:', this.sequenceNumber);
       
       // Store the encrypted blob on the server
       const success = await this.server.storeBlob(
@@ -434,14 +435,14 @@ export class TributaryClient {
         throw new Error('Failed to persist transaction on server');
       }
       
-      console.log('ensureServerPersistence: Successfully stored blob');
+      info('ensureServerPersistence: Successfully stored blob');
       
       // Update our local latest hash for consistency
       this.latestHash = hash;
-    } catch (error) {
-      console.error('ensureServerPersistence: Error storing blob:', error);
+    } catch (err: unknown) {
+      error('ensureServerPersistence: Error storing blob:', err as Error);
       // Re-throw with a more specific error message
-      throw new Error(`Failed to persist transaction on server: ${(error as Error).message}`);
+      throw new Error(`Failed to persist transaction on server: ${(err as Error).message}`);
     }
   }
 
@@ -524,7 +525,7 @@ export class TributaryClient {
       const hash = crypto.createHash('sha256');
       hash.update(Buffer.from(data));
       const result = hash.digest('hex');
-      console.log(`computeHash: Successfully computed hash for ${data.length} bytes using Node.js crypto`);
+      debug(`computeHash: Successfully computed hash for ${data.length} bytes using Node.js crypto`);
       return result;
     } catch (nodeCryptoError) {
       // Fallback to Web Crypto API
@@ -534,14 +535,14 @@ export class TributaryClient {
           const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const result = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-          console.log(`computeHash: Successfully computed real hash for ${data.length} bytes using Web Crypto`);
+          debug(`computeHash: Successfully computed real hash for ${data.length} bytes using Web Crypto`);
           return result;
-        } catch (webCryptoError) {
-          console.error(`computeHash: Web Crypto API failed:`, webCryptoError);
-          throw new Error(`Failed to compute hash with both Node.js and Web Crypto: ${webCryptoError}`);
+        } catch (err: unknown) {
+          error(`computeHash: Web Crypto API failed:`, err as Error);
+          throw new Error(`Failed to compute hash with both Node.js and Web Crypto: ${err}`);
         }
       } else {
-        console.error(`computeHash: Neither Node.js nor Web Crypto API available. typeof crypto: ${typeof crypto}`);
+        error(`computeHash: Neither Node.js nor Web Crypto API available. typeof crypto: ${typeof crypto}`);
         throw new Error('Neither Node.js nor Web Crypto API available - cannot compute hash. This is a critical error that breaks signature verification.');
       }
     }
