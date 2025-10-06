@@ -57,11 +57,16 @@ build-cli:
 	@echo "Building tributary-cli..."
 	cd tributary-cli && npm run build
 
+# Build tributary-client bundle
+.PHONY: build-client
+build-client:
+	@echo "Building tributary-client..."
+	cd tributary-client && npm run build
+
 # Convenience target to ensure all dependencies are built
 .PHONY: build-all
-build-all: build-cli
+build-all: build-cli build-client
 	@echo "Ensuring all components are built..."
-	cd tributary-client && npm run build
 
 # Clean test databases that might be left over
 .PHONY: clean-test-dbs
@@ -88,6 +93,7 @@ help:
 	@echo "  test-client      - Run tributary-client tests"
 	@echo "  test-cli-scripts - Run cli-tests scripts"
 	@echo "  build-cli        - Build tributary-cli"
+	@echo "  build-client     - Build tributary-client bundle"
 	@echo "  build-all        - Build all components"
 	@echo "  clean-test-dbs   - Remove test databases"
 	@echo "  clean            - Clean build artifacts"
