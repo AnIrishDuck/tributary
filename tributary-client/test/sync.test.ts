@@ -78,7 +78,7 @@ describe('Sync Functionality', () => {
     });
     
     // Execute operations 
-    await client1.query("CREATE TABLE items (id INTEGER, value TEXT)");
+    await client1.query("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
     await client1.query("INSERT INTO items VALUES (1, 'item1')");
     await client1.query("INSERT INTO items VALUES (2, 'item2')");
     

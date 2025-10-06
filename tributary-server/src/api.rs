@@ -1,4 +1,4 @@
-use crate::crypto::verify_signature;
+use crate::crypto::{verify_signature, compute_hash, compute_chain_hash};
 use crate::db::Database;
 use crate::models::{Blob, SignatureVerificationRequest};
 use axum::{
@@ -7,9 +7,7 @@ use axum::{
     response::Json,
 };
 use chrono::Utc;
-use hex;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 // Helper function to compute a deterministic ID for a public key
 fn compute_pubkey_id(pubkey: &str) -> String {
@@ -26,6 +24,12 @@ pub async fn store_blob(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
+    println!("DEBUG: Received blob storage request for pubkey: {}", encoded_pubkey);
+    println!("DEBUG: Body length: {} bytes", body.len());
+    // DEBUG: Print first 16 bytes of the body for comparison
+    let preview_bytes: Vec<u8> = body.slice(0..std::cmp::min(16, body.len())).to_vec();
+    println!("DEBUG: First 16 bytes of body: {:?}", preview_bytes);
+    
     // Extract headers
     let provided_hash = match headers.get("X-Tributary-Hash") {
         Some(hash) => match hash.to_str() {
@@ -88,15 +92,12 @@ pub async fn store_blob(
     };
 
     // Compute the body hash
-    let body_hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(&body);
-        let result = hasher.finalize();
-        hex::encode(result)
-    };
+    let body_hash = compute_hash(&body);
+    println!("DEBUG: Computed body hash: {}", body_hash);
 
-    // The expected hash is just prior_hash + body_hash concatenated
-    let expected_hash = format!("{}{}", latest_blob.hash, body_hash);
+    // The expected hash is computed using chain hash function - this ensures fixed-length hashes
+    let expected_hash = compute_chain_hash(&latest_blob.hash, &body);
+    println!("DEBUG: Computed expected hash: {}", expected_hash);
 
     // Validate that the provided hash matches our expectation
     if provided_hash != expected_hash {
@@ -107,13 +108,14 @@ pub async fn store_blob(
                 "error": "Hash mismatch - possible chain mismatch",
                 "expected_hash": expected_hash,
                 "provided_hash": provided_hash,
+                "body_hash": body_hash,  // Include the computed body hash
                 "latest_sequence_number": latest_blob.sequence_number,
                 "latest_hash": latest_blob.hash
             })),
         );
     }
 
-    // Create the data that should have been signed (prior_hash + body_hash)
+    // Create the data that should have been signed (the hash)
     let expected_data_to_sign = expected_hash.as_bytes().to_vec();
 
     // Verify the signature against the expected data

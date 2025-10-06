@@ -102,12 +102,13 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that each blob's hash was computed correctly (priorHash + bodyHash)
+    // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const priorHash = blob.priorHash;
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedHash = `${priorHash}${bodyHash}`;
+      const concatenated = `${priorHash}${bodyHash}`;
+      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
       expect(blob.hash).toBe(expectedHash);
     }
   });
@@ -170,11 +171,12 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that hashes are computed correctly (priorHash + bodyHash)
+    // 3. Verify that hashes are computed correctly (SHA256(priorHash + bodyHash))
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedHash = `${blob.priorHash}${bodyHash}`;
+      const concatenated = `${blob.priorHash}${bodyHash}`;
+      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
       expect(blob.hash).toBe(expectedHash);
     }
     
@@ -269,12 +271,13 @@ describe('Server Persistence', () => {
     expect(blobs[1].priorHash).toBe(blobs[0].hash);
     expect(blobs[2].priorHash).toBe(blobs[1].hash);
     
-    // 3. Verify that each blob's hash was computed correctly (priorHash + bodyHash)
+    // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
       const priorHash = blob.priorHash;
       const bodyHash = await computeHashInTest(blob.data);
-      const expectedHash = `${priorHash}${bodyHash}`;
+      const concatenated = `${priorHash}${bodyHash}`;
+      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
       expect(blob.hash).toBe(expectedHash);
     }
   });

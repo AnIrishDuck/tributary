@@ -3,8 +3,7 @@
 import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey } from './key';
 import { executeSQL } from './psql';
-import { testPsqlCommand } from './test-psql';
-import { logger, info, error, warn } from './logger';
+import { logger, info, error as errorLog, warn } from './logger';
 
 // Comprehensive test function
 import { TributaryClient, FakeServer } from 'tributary-client';
@@ -96,7 +95,7 @@ async function comprehensivePsqlTest() {
     info('\nAll comprehensive tests passed!');
     return true;
   } catch (error) {
-    error('Comprehensive test failed:', (error as Error).message);
+    errorLog('Comprehensive test failed:', (error as Error).message);
     throw error;
   }
 }
@@ -139,7 +138,7 @@ program
         info('Please specify a key operation. Use --help for more information.');
       }
     } catch (error) {
-      error('Error:', (error as Error).message);
+      errorLog('Error:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -162,8 +161,6 @@ program
       }
       
       if (options.test) {
-        // Import the test version of executeSQL
-        const { testPsqlCommand } = await import('./test-psql');
         // For test mode, we'll run a simple test instead of executing the SQL directly
         info('Running test mode...');
         if (sql) {
@@ -199,12 +196,12 @@ program
             info('Result:', result);
             return;
           } catch (error) {
-            error('SQL execution failed:', (error as Error).message);
+            errorLog('SQL execution failed:', (error as Error).message);
             throw error;
           }
         } else {
-          // For test mode with no SQL, we run the default test
-          await testPsqlCommand();
+          // For test mode with no SQL, run comprehensive test
+          await comprehensivePsqlTest();
         }
       } else {
         const result = await executeSQL(sql, {
@@ -217,7 +214,7 @@ program
         info('Result:', result);
       }
     } catch (error) {
-      error('Error:', (error as Error).message);
+      errorLog('Error:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -228,10 +225,10 @@ program
   .action(async () => {
     try {
       info('Running Tributary CLI tests...');
-      await testPsqlCommand();
+      await comprehensivePsqlTest();
       info('All tests completed successfully!');
     } catch (error) {
-      error('Test failed:', (error as Error).message);
+      errorLog('Test failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -245,7 +242,7 @@ program
       await comprehensivePsqlTest();
       info('All comprehensive tests completed successfully!');
     } catch (error) {
-      error('Comprehensive test failed:', (error as Error).message);
+      errorLog('Comprehensive test failed:', (error as Error).message);
       process.exit(1);
     }
   });

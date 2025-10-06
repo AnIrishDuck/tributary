@@ -43,13 +43,16 @@ impl TestUser {
         // Compute body hash
         let body_hash = self.compute_hash(data);
 
-        // The hash is just prior_hash + body_hash concatenated
-        let hash = format!("{}{}", prior_hash, body_hash);
+        // Compute the tree hash: SHA256(prior_hash + body_hash)
+        let concatenated = format!("{}{}", prior_hash, body_hash);
+        let mut hasher = Sha256::new();
+        hasher.update(concatenated.as_bytes());
+        let tree_hash = hex::encode(hasher.finalize());
 
-        // Sign the concatenated hash
-        let signature = self.signing_key.sign(hash.as_bytes());
+        // Sign the tree hash
+        let signature = self.signing_key.sign(tree_hash.as_bytes());
         let signature_base64 = general_purpose::URL_SAFE.encode(signature.to_bytes());
 
-        (body_hash, hash, signature_base64)
+        (body_hash, tree_hash, signature_base64)
     }
 }

@@ -278,15 +278,23 @@ export class TributaryClient {
     // Always reload the last sync index from database to ensure consistency
     await this.loadLastSyncIndex();
     
+    // Log start sequence number and hash when sync begins
+    const initialLastSyncIndex = this.lastSyncIndex;
+    info(`SYNC START: Last sync index = ${initialLastSyncIndex}`);
+    
     // Get all blob metadata from server, ordered by sequence number
     const blobMetadataList = await this.server.getAllBlobMetadata(this.getPublicKeyBase64());
     
     // Filter out blobs that have already been synced
     const newBlobs = blobMetadataList.filter(blob => blob.sequenceNumber > this.lastSyncIndex);
     
+    info(`SYNC START: Found ${newBlobs.length} new blobs to process (from sequence ${this.lastSyncIndex + 1} onwards)`);
+    
     // Process each new blob in sequence order
     for (const blobMetadata of newBlobs) {
       try {
+        info(`SYNC PROCESSING: Retrieving blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber} and hash ${blobMetadata.hash}`);
+        
         // Retrieve the actual blob data
         const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), blobMetadata.id);
         
@@ -297,6 +305,8 @@ export class TributaryClient {
           // Deserialize the transaction data
           const transactionData = new TextDecoder().decode(decryptedData);
           const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
+          
+          info(`SYNC APPLYING: Processing blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
           
           // Apply to local database only if it's a write operation
           if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
@@ -339,10 +349,7 @@ export class TributaryClient {
                   upperQuery.startsWith('DROP')) {
                 // Still update sync index even though we skip execution
               }
-              // Also skip common DML operations that may cause duplication during sync
-              else if (upperQuery.startsWith('INSERT')) {
-              }
-              // Execute other operations
+              // Execute all other operations including INSERT
               else {
                 try {
                   await this.pglite.exec(transactionEntry.query);
@@ -359,12 +366,17 @@ export class TributaryClient {
           
           // Save the last sync index after each blob to track progress
           await this.saveLastSyncIndex();
+          
+          info(`SYNC PROCESSED: Successfully processed blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
         }
       } catch (err: unknown) {
         error(`Failed to sync blob ${blobMetadata.id}:`, err as Error);
         // Continue with other blobs even if one fails
       }
     }
+    
+    // Log end sequence number when sync ends
+    info(`SYNC END: Last sync index changed from ${initialLastSyncIndex} to ${this.lastSyncIndex}`);
     
     // Save the last sync index for future sessions
     await this.saveLastSyncIndex();
@@ -394,19 +406,27 @@ export class TributaryClient {
     const dataBytes = new TextEncoder().encode(transactionData);
     debug('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
     
+    // DEBUG: Print the exact bytes in the body
+    debug('ensureServerPersistence: Raw transaction data bytes:', Array.from(dataBytes));
+    debug('ensureServerPersistence: Raw transaction data as string:', transactionData);
+    
     // Encrypt the data before storing
     const encryptedData = this.encryptData(dataBytes);
     debug('ensureServerPersistence: Encrypted data length:', encryptedData.length);
+    
+    // DEBUG: Print first 16 bytes of encrypted data for comparison
+    const previewBytes = encryptedData.slice(0, Math.min(16, encryptedData.length));
+    debug('ensureServerPersistence: First 16 bytes of encrypted data:', Array.from(previewBytes));
     
     // Compute body hash (SHA256 of the encrypted data)
     const bodyHash = await this.computeHash(encryptedData);
     debug('ensureServerPersistence: Computed bodyHash:', bodyHash);
     
-    // Compute simple hash (priorHash + bodyHash concatenated)
-    const hash = `${priorHash}${bodyHash}`;
+    // Compute chain hash using the prior hash and body hash
+    const hash = await this.computeChainHash(priorHash, bodyHash);
     debug('ensureServerPersistence: Computed hash:', hash);
     
-    // Create the data to be signed (just the concatenated hash)
+    // Create the data to be signed (just the hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
     debug('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
     debug('ensureServerPersistence: Data to sign:', hash);
@@ -417,6 +437,15 @@ export class TributaryClient {
     debug('ensureServerPersistence: Generated signature length:', signature.length);
     
     try {
+      // Log detailed information before attempting to store blob
+      debug('ensureServerPersistence: Attempting to store blob with detailed info:', {
+        sequenceNumber: this.sequenceNumber,
+        priorHash: priorHash,
+        bodyHash: bodyHash,
+        computedHash: hash,
+        dataLength: encryptedData.length
+      });
+      
       debug('ensureServerPersistence: Attempting to store blob with hash:', hash);
       debug('ensureServerPersistence: Prior hash:', priorHash);
       debug('ensureServerPersistence: Sequence number:', this.sequenceNumber);
@@ -434,6 +463,9 @@ export class TributaryClient {
       if (!success) {
         throw new Error('Failed to persist transaction on server');
       }
+      
+      // Log successful stream write with hash and sequence number
+      info(`STREAM WRITE SUCCESS: Stored blob with sequence ${this.sequenceNumber} and hash ${hash}`);
       
       info('ensureServerPersistence: Successfully stored blob');
       
@@ -546,6 +578,19 @@ export class TributaryClient {
         throw new Error('Neither Node.js nor Web Crypto API available - cannot compute hash. This is a critical error that breaks signature verification.');
       }
     }
+  }
+
+  /**
+   * Compute chain hash from prior chain hash and body hash
+   * This ensures that hashes don't grow indefinitely by using SHA256(priorHash + bodyHash)
+   * @param priorHash The previous chain hash (or empty string for first entry)
+   * @param bodyHash The hash of the body data
+   * @returns The computed chain hash
+   */
+  private async computeChainHash(priorHash: string, bodyHash: string): Promise<string> {
+    // Concatenate prior_hash + body_hash, then compute SHA256 of the result
+    const concatenated = `${priorHash}${bodyHash}`;
+    return await this.computeHash(new TextEncoder().encode(concatenated));
   }
 
   private isReadQuery(query: string): boolean {

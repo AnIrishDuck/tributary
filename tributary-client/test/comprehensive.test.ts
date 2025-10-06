@@ -52,10 +52,11 @@ describe('TributaryClient Components', () => {
     const bodyHash = await computeHash(data);
     const priorHash = '';
     
-    // Compute simple hash (priorHash + bodyHash concatenated)
-    const hash = `${priorHash}${bodyHash}`;
+    // Compute hash as SHA256(priorHash + bodyHash) - same as client implementation
+    const concatenated = `${priorHash}${bodyHash}`;
+    const hash = await computeHash(new TextEncoder().encode(concatenated));
     
-    // Create the data to be signed (just the concatenated hash)
+    // Create the data to be signed (just the hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
     
     // Sign the data
@@ -92,10 +93,11 @@ describe('TributaryClient Components', () => {
     const bodyHash = await computeHash(data);
     const priorHash = '';
     
-    // Compute simple hash (priorHash + bodyHash concatenated)
-    const hash = `${priorHash}${bodyHash}`;
+    // Compute hash as SHA256(priorHash + bodyHash) - same as client implementation
+    const concatenated = `${priorHash}${bodyHash}`;
+    const hash = await computeHash(new TextEncoder().encode(concatenated));
     
-    // Create the data to be signed (just the concatenated hash)
+    // Create the data to be signed (just the hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
     
     // Sign the data

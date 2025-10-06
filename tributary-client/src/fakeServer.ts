@@ -1,6 +1,7 @@
 // Fake implementation of Server interface for testing
 // This implementation MUST implement the same hash and signature validations as tributary-server
 import { Server } from './server';
+import { computeHash } from './hashUtils';
 
 // Import tweetnacl-util functions
 const util = require('tweetnacl-util');
@@ -50,10 +51,11 @@ export class FakeServer implements Server {
     }
     
     // Compute body hash
-    const bodyHash = await this.computeHash(data);
+    const bodyHash = await computeHash(data);
     
-    // Compute simple hash (priorHash + bodyHash concatenated)
-    const expectedHash = `${priorHash}${bodyHash}`;
+    // Compute chain hash as SHA256(priorHash + bodyHash) - this ensures fixed-length hashes
+    const concatenated = `${priorHash}${bodyHash}`;
+    const expectedHash = await computeHash(new TextEncoder().encode(concatenated));
     
     if (expectedHash !== hash) {
       throw new Error('Invalid hash');
@@ -135,29 +137,13 @@ export class FakeServer implements Server {
       const pubkeyBytes = decodeBase64(pubkey);
       const signatureBytes = decodeBase64(signature);
       
-      // Create the data that was signed (just the concatenated hash)
+      // Create the data that was signed (the hash)
       const dataToSignBytes = new TextEncoder().encode(hash);
       
       // Verify the signature using nacl
       return nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
     } catch (error) {
       return false;
-    }
-  }
-
-  private async computeHash(data: Uint8Array): Promise<string> {
-    // Try to use Node.js crypto if available
-    try {
-      const crypto = require('crypto');
-      const hash = crypto.createHash('sha256');
-      hash.update(Buffer.from(data));
-      const result = hash.digest('hex');
-      return result;
-    } catch (nodeCryptoError) {
-      // Fallback to Web Crypto API
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
   }
   

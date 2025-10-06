@@ -52,10 +52,11 @@ describe('Hash Process Validation', () => {
         expect(blob.priorHash).toBe(blobs[i-1].hash);
       }
       
-      // 2. Verify hash structure (priorHash + bodyHash)
+      // 2. Verify hash structure (SHA256(priorHash + bodyHash))
       // Compute body hash manually
       const bodyHash = await computeHash(blob.data);
-      const expectedHash = `${blob.priorHash}${bodyHash}`;
+      const concatenated = `${blob.priorHash}${bodyHash}`;
+      const expectedHash = await computeHash(new TextEncoder().encode(concatenated));
       expect(blob.hash).toBe(expectedHash);
       
       // 3. Verify signature validation
@@ -78,10 +79,11 @@ describe('Hash Process Validation', () => {
     // Step 2: Compute body hash
     const bodyHash = await computeHash(data);
     
-    // Step 3: Compute the concatenated hash
-    const hash = `${priorHash}${bodyHash}`;
+    // Step 3: Compute the hash correctly (SHA256 of concatenated string)
+    const concatenated = `${priorHash}${bodyHash}`;
+    const hash = await computeHash(new TextEncoder().encode(concatenated));
     
-    // Step 4: Create data to sign (just the concatenated hash)
+    // Step 4: Create data to sign (just the hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
     
     // Step 5: Sign the data
@@ -122,7 +124,8 @@ describe('Hash Process Validation', () => {
     const data1 = new TextEncoder().encode('First blob');
     const priorHash1 = '';
     const bodyHash1 = await computeHash(data1);
-    const hash1 = `${priorHash1}${bodyHash1}`;
+    const concatenated1 = `${priorHash1}${bodyHash1}`;
+    const hash1 = await computeHash(new TextEncoder().encode(concatenated1));
     const dataToSign1 = new TextEncoder().encode(hash1);
     const signature1 = encodeBase64(nacl.sign.detached(dataToSign1, testKeyPair.secretKey));
     
@@ -132,7 +135,8 @@ describe('Hash Process Validation', () => {
     const data2 = new TextEncoder().encode('Second blob');
     const priorHash2 = hash1; // Chain from first blob
     const bodyHash2 = await computeHash(data2);
-    const hash2 = `${priorHash2}${bodyHash2}`;
+    const concatenated2 = `${priorHash2}${bodyHash2}`;
+    const hash2 = await computeHash(new TextEncoder().encode(concatenated2));
     const dataToSign2 = new TextEncoder().encode(hash2);
     const signature2 = encodeBase64(nacl.sign.detached(dataToSign2, testKeyPair.secretKey));
     
