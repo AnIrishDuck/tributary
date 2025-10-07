@@ -37,14 +37,14 @@ describe('Sync Functionality', () => {
     const blobMetadataBefore = await fakeServer.getAllBlobMetadata(client.getPublicKeyBase64());
     expect(blobMetadataBefore.length).toBe(3);
     
-    // Store the initial lastSyncIndex - should be 0 before any sync happens
+    // After executing operations locally, the lastSyncIndex should reflect the operations executed
     const initialLastSyncIndex = (client as any).lastSyncIndex;
-    expect(initialLastSyncIndex).toBe(0);
+    expect(initialLastSyncIndex).toBe(3); // 3 operations executed locally
     
-    // Sync the client - should process all 3 blobs
+    // Sync the client - should process 0 blobs since they were already applied locally
     await client.sync();
     
-    // Check that last sync index was updated to the highest sequence number
+    // Check that last sync index remains the same (no new blobs processed)
     const clientAny = client as any;
     expect(clientAny.lastSyncIndex).toBe(3);
     
@@ -55,13 +55,12 @@ describe('Sync Functionality', () => {
     const blobMetadataAfter = await fakeServer.getAllBlobMetadata(client.getPublicKeyBase64());
     expect(blobMetadataAfter.length).toBe(4);
     
-    // Now if we sync again, it should only process the new blob (sequence number 4)
-    // We can check this by looking at the lastSyncIndex before and after
+    // Now if we sync again, it should still process 0 new blobs (since the fourth operation was also applied locally)
     const syncIndexBeforeSecondSync = clientAny.lastSyncIndex;
     await client.sync();
     const syncIndexAfterSecondSync = clientAny.lastSyncIndex;
     
-    // Should have processed one new blob (the one with sequence number 4)
+    // Should remain at 4 (no new blobs processed during sync)
     expect(syncIndexAfterSecondSync).toBe(4);
   });
 

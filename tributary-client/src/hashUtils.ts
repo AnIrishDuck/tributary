@@ -6,7 +6,7 @@
 export async function computeNodeHash(data: Uint8Array): Promise<string> {
   const crypto = require('crypto');
   const hash = crypto.createHash('sha256');
-  hash.update(Buffer.from(data));
+  hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   return hash.digest('hex');
 }
 
@@ -17,7 +17,9 @@ export async function computeNodeHash(data: Uint8Array): Promise<string> {
  */
 export async function computeWebHash(data: Uint8Array): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+    // Convert Uint8Array to ArrayBuffer by creating a new Uint8Array
+    const buffer = new Uint8Array(data).buffer;
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   } else {

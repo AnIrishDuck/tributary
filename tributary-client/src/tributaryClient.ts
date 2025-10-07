@@ -10,6 +10,7 @@ import nacl from 'tweetnacl';
 
 import { Server } from './server';
 import { logger, warn, error, info, debug } from './logger';
+import { computeHash } from './hashUtils';
 
 // Type definitions for our transaction log
 interface TransactionLogEntry {
@@ -174,6 +175,8 @@ export class TributaryClient {
       this.syncStateInitialized = true;
     }
     
+    info('TRANSACTION: Starting transaction method');
+    
     // For transactions, we run commands immediately so users can see results and make decisions
     // We record all commands, then post to server while still inside the PGlite transaction
     // If server post fails, we throw an error to cause PGlite to rollback the entire transaction
@@ -181,28 +184,48 @@ export class TributaryClient {
     // Create array to store commands for server persistence
     const recordedCommands: Array<{ query: string, params?: any[] }> = [];
     
+    info('TRANSACTION: About to call pglite.transaction');
+    
     // Execute the transaction with immediate command execution and recording
-    return await this.pglite.transaction(async (pgliteTx: any) => {
+    const result = await this.pglite.transaction(async (tx) => {
+      info('TRANSACTION: Inside pglite.transaction callback with transaction object');
+      
       // Create a transaction object that executes immediately AND records
       const recordingTx = {
         query: async (query: string, params?: any[]) => {
-          // Execute immediately using real PGlite transaction (user sees real results)
-          const queryResult = await pgliteTx.query(query, params);
-          // Record the command for server persistence
-          recordedCommands.push({ query, params });
-          return queryResult;
+          info('TRANSACTION: recordingTx.query called with:', query);
+          try {
+            // Execute immediately using the PGlite transaction object (user sees real results)
+            const queryResult = await tx.query(query, params as any);
+            // Record the command for server persistence
+            recordedCommands.push({ query, params });
+            info('TRANSACTION: recordingTx.query completed');
+            return queryResult;
+          } catch (error: any) {
+            error('TRANSACTION: recordingTx.query failed:', error);
+            throw error;
+          }
         },
         exec: async (query: string, params?: any[]) => {
-          // Execute immediately using real PGlite transaction (user sees real results)
-          await pgliteTx.exec(query, params);
-          // Record the command for server persistence
-          recordedCommands.push({ query, params });
+          info('TRANSACTION: recordingTx.exec called with:', query);
+          try {
+            // Execute immediately using the PGlite transaction object (user sees real results)
+            await tx.exec(query, params as any);
+            // Record the command for server persistence
+            recordedCommands.push({ query, params });
+            info('TRANSACTION: recordingTx.exec completed');
+          } catch (error: any) {
+            error('TRANSACTION: recordingTx.exec failed:', error);
+            throw error;
+          }
         }
       };
       
       // Execute the user's callback with our recording transaction
       // User can query data, see results, and make decisions based on those results
-      const result = await callback(recordingTx);
+      info('TRANSACTION: About to call user callback');
+      const callbackResult = await callback(recordingTx);
+      info('TRANSACTION: Callback completed successfully with result:', callbackResult);
       
       // IMPORTANT: We're still INSIDE the PGlite transaction here!
       // The transaction has not been committed yet, but all changes are staged
@@ -212,24 +235,33 @@ export class TributaryClient {
         id: this.generateTransactionId(),
         timestamp: Date.now(),
         query: 'TRANSACTION',
-        params: recordedCommands
+        params: recordedCommands,
+        result: callbackResult
       };
       
       try {
+        info('TRANSACTION: Attempting server persistence with', recordedCommands.length, 'commands');
+        
         // Attempt to persist to server
         await this.ensureServerPersistence(transactionEntry);
+        info('TRANSACTION: Server persistence successful');
         
         // If server persistence succeeds, we just return normally
         // PGlite will automatically commit the transaction
-        transactionEntry.result = result;
-        return result;
+        info('TRANSACTION: About to return from transaction callback');
+        return callbackResult;
       } catch (serverError) {
+        error('TRANSACTION: Server persistence failed:', serverError as Error);
+        
         // If server persistence fails, we throw an error
         // This causes PGlite to automatically rollback the entire transaction
         // The local state is reset as if the transaction never happened
         throw new Error(`Transaction failed to persist to server: ${(serverError as Error).message}`);
       }
     });
+    
+    info('TRANSACTION: pglite.transaction completed successfully with result:', result);
+    return result;
   }
 
   /**
@@ -252,14 +284,20 @@ export class TributaryClient {
   /**
    * Save the last sync index to the database
    */
-  private async saveLastSyncIndex(): Promise<void> {
+  private async saveLastSyncIndex(tx?: any): Promise<void> {
     try {
       // Use string interpolation for now to avoid parameter binding issues
-      await this.pglite.exec(
-        `UPDATE ${this.syncTableName} 
+      const query = `UPDATE ${this.syncTableName} 
          SET last_sync_index = ${this.lastSyncIndex}
-         WHERE id = 1`
-      );
+         WHERE id = 1`;
+      
+      if (tx) {
+        // Use the provided transaction object
+        await tx.exec(query);
+      } else {
+        // Use standalone exec
+        await this.pglite.exec(query);
+      }
     } catch (error: unknown) {
       warn('Could not save last sync index to database:', error as Error);
     }
@@ -315,19 +353,12 @@ export class TributaryClient {
               await this.pglite.transaction(async (tx) => {
                 for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
                   if (command.query) {
-                    // Skip DDL operations (CREATE, ALTER, DROP) as they likely already exist
-                    const upperQuery = command.query.trim().toUpperCase();
-                    if (upperQuery.startsWith('CREATE') || 
-                        upperQuery.startsWith('ALTER') || 
-                        upperQuery.startsWith('DROP')) {
-                      continue;
-                    }
-                    
                     try {
                       await tx.exec(command.query);
                     } catch (cmdError) {
-                      // Log but don't fail on individual command errors
-                      warn(`Command failed during sync: ${command.query}`, cmdError);
+                      // Throw errors during sync rather than just warning
+                      // Synced SQL expressions should never fail (otherwise they would've failed locally first)
+                      throw new Error(`Command failed during sync: ${command.query} - ${(cmdError as Error).message}`);
                     }
                   }
                 }
@@ -342,21 +373,13 @@ export class TributaryClient {
               // Skip read queries as they don't modify state
               continue;
             } else {
-              // Skip DDL operations during sync
-              const upperQuery = transactionEntry.query.trim().toUpperCase();
-              if (upperQuery.startsWith('CREATE') || 
-                  upperQuery.startsWith('ALTER') || 
-                  upperQuery.startsWith('DROP')) {
-                // Still update sync index even though we skip execution
-              }
               // Execute all other operations including INSERT
-              else {
-                try {
-                  await this.pglite.exec(transactionEntry.query);
-                } catch (execError) {
-                  // Log but don't fail on exec errors
-                  warn(`Exec failed during sync: ${transactionEntry.query}`, execError);
-                }
+              try {
+                await this.pglite.exec(transactionEntry.query);
+              } catch (execError) {
+                // Throw errors during sync rather than just warning
+                // Synced SQL expressions should never fail (otherwise they would've failed locally first)
+                throw new Error(`Exec failed during sync: ${transactionEntry.query} - ${(execError as Error).message}`);
               }
             }
           }
@@ -371,7 +394,7 @@ export class TributaryClient {
         }
       } catch (err: unknown) {
         error(`Failed to sync blob ${blobMetadata.id}:`, err as Error);
-        // Continue with other blobs even if one fails
+        throw new Error(`Failed to sync blob: ${blobMetadata.id} - ${(err as Error).message}`);
       }
     }
     
@@ -406,10 +429,6 @@ export class TributaryClient {
     const dataBytes = new TextEncoder().encode(transactionData);
     debug('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
     
-    // DEBUG: Print the exact bytes in the body
-    debug('ensureServerPersistence: Raw transaction data bytes:', Array.from(dataBytes));
-    debug('ensureServerPersistence: Raw transaction data as string:', transactionData);
-    
     // Encrypt the data before storing
     const encryptedData = this.encryptData(dataBytes);
     debug('ensureServerPersistence: Encrypted data length:', encryptedData.length);
@@ -419,7 +438,7 @@ export class TributaryClient {
     debug('ensureServerPersistence: First 16 bytes of encrypted data:', Array.from(previewBytes));
     
     // Compute body hash (SHA256 of the encrypted data)
-    const bodyHash = await this.computeHash(encryptedData);
+    const bodyHash = await computeHash(encryptedData);
     debug('ensureServerPersistence: Computed bodyHash:', bodyHash);
     
     // Compute chain hash using the prior hash and body hash
@@ -471,6 +490,11 @@ export class TributaryClient {
       
       // Update our local latest hash for consistency
       this.latestHash = hash;
+      
+      // Update the last sync index to indicate this operation has been applied locally
+      // This prevents the sync process from re-applying operations that originated locally
+      this.lastSyncIndex = Math.max(this.lastSyncIndex, this.sequenceNumber);
+      await this.saveLastSyncIndex();
     } catch (err: unknown) {
       error('ensureServerPersistence: Error storing blob:', err as Error);
       // Re-throw with a more specific error message
@@ -546,41 +570,6 @@ export class TributaryClient {
   }
 
   /**
-   * Compute SHA256 hash of data
-   * @param data Data to hash
-   * @returns Hex-encoded hash
-   */
-  private async computeHash(data: Uint8Array): Promise<string> {
-    // Try to use Node.js crypto if available
-    try {
-      const crypto = require('crypto');
-      const hash = crypto.createHash('sha256');
-      hash.update(Buffer.from(data));
-      const result = hash.digest('hex');
-      debug(`computeHash: Successfully computed hash for ${data.length} bytes using Node.js crypto`);
-      return result;
-    } catch (nodeCryptoError) {
-      // Fallback to Web Crypto API
-      if (typeof crypto !== 'undefined' && crypto.subtle) {
-        try {
-          // Browser or Node.js with crypto support
-          const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const result = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-          debug(`computeHash: Successfully computed real hash for ${data.length} bytes using Web Crypto`);
-          return result;
-        } catch (err: unknown) {
-          error(`computeHash: Web Crypto API failed:`, err as Error);
-          throw new Error(`Failed to compute hash with both Node.js and Web Crypto: ${err}`);
-        }
-      } else {
-        error(`computeHash: Neither Node.js nor Web Crypto API available. typeof crypto: ${typeof crypto}`);
-        throw new Error('Neither Node.js nor Web Crypto API available - cannot compute hash. This is a critical error that breaks signature verification.');
-      }
-    }
-  }
-
-  /**
    * Compute chain hash from prior chain hash and body hash
    * This ensures that hashes don't grow indefinitely by using SHA256(priorHash + bodyHash)
    * @param priorHash The previous chain hash (or empty string for first entry)
@@ -590,7 +579,7 @@ export class TributaryClient {
   private async computeChainHash(priorHash: string, bodyHash: string): Promise<string> {
     // Concatenate prior_hash + body_hash, then compute SHA256 of the result
     const concatenated = `${priorHash}${bodyHash}`;
-    return await this.computeHash(new TextEncoder().encode(concatenated));
+    return await computeHash(new TextEncoder().encode(concatenated));
   }
 
   private isReadQuery(query: string): boolean {
