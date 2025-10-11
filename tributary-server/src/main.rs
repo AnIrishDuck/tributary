@@ -33,6 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/:encoded_pubkey/:id", get(api::retrieve_blob))
         .route("/:encoded_pubkey/info", get(api::get_collection_info))
         .route("/:encoded_pubkey/latest", get(api::get_latest_blob))
+        .route("/:encoded_pubkey/static/*path", get(api::serve_static_file))
         .with_state(db)
         .layer(TraceLayer::new_for_http());
 

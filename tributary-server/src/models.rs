@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Blob {
@@ -24,6 +25,7 @@ pub struct BlobMetadata {
     pub sequence_number: i32,
     #[sqlx(default)]
     pub created_at: chrono::NaiveDateTime,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,4 +40,16 @@ pub struct SignatureVerificationRequest {
     pub pubkey: String,    // Base64 encoded public key
     pub signature: String, // Base64 encoded signature
     pub data: Vec<u8>,     // Data that was signed
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StaticSiteDirectory {
+    pub directory: HashMap<String, StaticSiteFile>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StaticSiteFile {
+    pub ix: usize,
+    #[serde(rename = "content-type")]
+    pub content_type: String,
 }

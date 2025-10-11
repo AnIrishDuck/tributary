@@ -1,13 +1,14 @@
-use crate::crypto::{verify_signature, compute_hash, compute_chain_hash};
+use crate::crypto::{compute_chain_hash, compute_hash, verify_signature};
 use crate::db::Database;
 use crate::models::{Blob, SignatureVerificationRequest};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    response::Json,
+    response::{Json, Response},
 };
 use chrono::Utc;
-use serde_json::json;
+use serde_json::{json, Value};
+use std::collections::HashMap;
 
 // Helper function to compute a deterministic ID for a public key
 fn compute_pubkey_id(pubkey: &str) -> String {
@@ -24,12 +25,15 @@ pub async fn store_blob(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    println!("DEBUG: Received blob storage request for pubkey: {}", encoded_pubkey);
+    println!(
+        "DEBUG: Received blob storage request for pubkey: {}",
+        encoded_pubkey
+    );
     println!("DEBUG: Body length: {} bytes", body.len());
     // DEBUG: Print first 16 bytes of the body for comparison
     let preview_bytes: Vec<u8> = body.slice(0..std::cmp::min(16, body.len())).to_vec();
     println!("DEBUG: First 16 bytes of body: {:?}", preview_bytes);
-    
+
     // Extract headers
     let provided_hash = match headers.get("X-Tributary-Hash") {
         Some(hash) => match hash.to_str() {
@@ -80,6 +84,7 @@ pub async fn store_blob(
                 signature: String::new(),
                 sequence_number: 0,
                 created_at: Utc::now().naive_utc(),
+                data: vec![],
             }
         }
         Err(e) => {
@@ -271,7 +276,8 @@ pub async fn get_latest_blob(
                 "prior_hash": blob.prior_hash,
                 "signature": blob.signature,
                 "sequence_number": blob.sequence_number,
-                "created_at": blob.created_at.to_string()
+                "created_at": blob.created_at.to_string(),
+                "data": blob.data
             })),
         ),
         Ok(None) => (
@@ -286,4 +292,100 @@ pub async fn get_latest_blob(
             )
         }
     }
+}
+
+// GET /:encoded_pubkey/static/:path
+#[axum::debug_handler]
+pub async fn serve_static_file(
+    State(db): State<Database>,
+    Path((encoded_pubkey, path)): Path<(String, String)>,
+) -> Response {
+    // First, get the latest blob to check if it contains the static site directory
+    let latest_blob = match db.get_latest_blob(&encoded_pubkey).await {
+        Ok(Some(blob)) => blob,
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("Collection not found"))
+                .unwrap();
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::from("Failed to retrieve collection info"))
+                .unwrap();
+        }
+    };
+
+    // Parse the latest blob data as JSON to see if it's a static site directory
+    let json_value: Value = match serde_json::from_slice(&latest_blob.data) {
+        Ok(value) => value,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("Not a static site"))
+                .unwrap();
+        }
+    };
+
+    // Check if it has the directory structure
+    let directory_obj = match json_value.get("directory") {
+        Some(dir) => dir,
+        None => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("Not a static site"))
+                .unwrap();
+        }
+    };
+
+    // Parse the directory structure
+    let static_site_dir: HashMap<String, crate::models::StaticSiteFile> =
+        match serde_json::from_value(directory_obj.clone()) {
+            Ok(dir) => dir,
+            Err(_) => {
+                return Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(axum::body::Body::from("Invalid directory structure"))
+                    .unwrap();
+            }
+        };
+
+    // Check if the requested path exists in the directory
+    let static_file_info = match static_site_dir.get(&path) {
+        Some(info) => info,
+        None => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("File not found"))
+                .unwrap();
+        }
+    };
+
+    // Get the blob corresponding to the file index
+    let blob_id = format!("{}:{}", encoded_pubkey, static_file_info.ix + 1); // 1-indexed sequence numbers
+    let blob = match db.retrieve_blob(&encoded_pubkey, &blob_id).await {
+        Ok(Some(blob)) => blob,
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("File blob not found"))
+                .unwrap();
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::from("Failed to retrieve file"))
+                .unwrap();
+        }
+    };
+
+    // Return the blob data with the specified content type
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", &static_file_info.content_type)
+        .body(axum::body::Body::from(blob.data))
+        .unwrap()
 }

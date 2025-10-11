@@ -109,7 +109,7 @@ impl Database {
         id: &str,
     ) -> Result<Option<BlobMetadata>, sqlx::Error> {
         let result = sqlx::query_as::<_, BlobMetadata>(
-            "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at FROM blobs WHERE pubkey = $1 AND id = $2"
+            "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at, data FROM blobs WHERE pubkey = $1 AND id = $2"
         )
         .bind(pubkey)
         .bind(id)
@@ -121,7 +121,7 @@ impl Database {
 
     pub async fn get_latest_blob(&self, pubkey: &str) -> Result<Option<BlobMetadata>, sqlx::Error> {
         let result = sqlx::query_as::<_, BlobMetadata>(
-            "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at 
+            "SELECT id, pubkey, hash, prior_hash, signature, sequence_number, created_at, data
              FROM blobs 
              WHERE pubkey = $1 
              ORDER BY sequence_number DESC 

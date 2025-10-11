@@ -605,6 +605,10 @@ async fn create_test_app() -> axum::Router {
             "/:encoded_pubkey/latest",
             axum::routing::get(api::get_latest_blob),
         )
+        .route(
+            "/:encoded_pubkey/static/*path",
+            axum::routing::get(api::serve_static_file),
+        )
         .with_state(db)
 }
 
