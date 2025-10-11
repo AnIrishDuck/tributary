@@ -2,13 +2,13 @@ tributary is a system for creating collections of end-to-end encrypted data.
 
 A tributary collection has two key components:
 
-- the _docent_: code that organizes, maintains, etc the database and presents
+- the _app_: code that organizes, maintains, etc the database and presents
   it in a user friendly format
 - the _stream_: encrypted database (pglite) replication log that can be
   replayed to recreate the database
 
-For example, for notes we are going to create a "leaflet" docent that maintains
-documents. Other docents may be more appropriate for e.g. photo or location /
+For example, for notes we are going to create a "scribe" app that maintains
+documents. Other apps may be more appropriate for e.g. photo or location /
 presence collections.
 
 ## Layout
@@ -21,9 +21,8 @@ This project is organized into several components:
 - **tributary-client** - a typescript library that wraps PGLite with persistence guarantees
 - **tributary-catalog** - a react application for listing and managing all user
   collections.
-- **docents** - where we maintain official docents
-  - **pamphlet** - a direct port of leaflet so that it can work as a tributary
-    collection
+- **apps** - where we maintain official apps
+  - **scribe** - a markdown document editor, indexer, and linker
 
 ## Tech Stack
 
