@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey } from './key';
 import { executeSQL } from './psql';
+import { uploadStaticSite, listStaticSite, catStaticSiteFile } from './static';
 import { logger, info, error as errorLog, warn } from './logger';
 
 // Comprehensive test function
@@ -243,6 +244,87 @@ program
       info('All comprehensive tests completed successfully!');
     } catch (error) {
       errorLog('Comprehensive test failed:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+// Create static site management commands
+const staticCmd = program
+  .command('static')
+  .description('Static site management commands');
+
+staticCmd
+  .command('up')
+  .description('Upload a static site')
+  .argument('<staticRoot>', 'Path to the static site root directory')
+  .option('-w, --writekey <key>', 'Key to use for write operations')
+  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
+  .option('-t, --test', 'Use test mode with FakeServer')
+  .action(async (staticRoot, options) => {
+    try {
+      if (!options.writekey) {
+        errorLog('Error: Write key is required. Use --writekey to specify a key.');
+        process.exit(1);
+      }
+      
+      await uploadStaticSite({
+        writeKey: options.writekey,
+        staticRoot,
+        collectionId: options.collection,
+        useTestServer: options.test
+      });
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+staticCmd
+  .command('ls')
+  .description('List static site files')
+  .option('-w, --writekey <key>', 'Key to use for write operations')
+  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
+  .option('-t, --test', 'Use test mode with FakeServer')
+  .action(async (options) => {
+    try {
+      if (!options.writekey) {
+        errorLog('Error: Write key is required. Use --writekey to specify a key.');
+        process.exit(1);
+      }
+      
+      await listStaticSite({
+        writeKey: options.writekey,
+        collectionId: options.collection,
+        useTestServer: options.test
+      });
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+staticCmd
+  .command('cat')
+  .description('Retrieve a static site file')
+  .argument('<filePath>', 'Path to the file to retrieve')
+  .option('-w, --writekey <key>', 'Key to use for write operations')
+  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
+  .option('-t, --test', 'Use test mode with FakeServer')
+  .action(async (filePath, options) => {
+    try {
+      if (!options.writekey) {
+        errorLog('Error: Write key is required. Use --writekey to specify a key.');
+        process.exit(1);
+      }
+      
+      await catStaticSiteFile({
+        writeKey: options.writekey,
+        filePath,
+        collectionId: options.collection,
+        useTestServer: options.test
+      });
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
       process.exit(1);
     }
   });

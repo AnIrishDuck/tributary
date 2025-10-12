@@ -596,4 +596,224 @@ export class TributaryClient {
   private generateTransactionId(): string {
     return `txn-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   }
+
+  /**
+   * Upload a static site to the server
+   * @param files A mapping of local file paths to { path: static site path, contentType: MIME type }
+   * @param getFileContent A function that returns the file content as Uint8Array for a given local path
+   * @returns Promise that resolves when all files are uploaded
+   */
+  async uploadStaticSite(
+    files: Record<string, { path: string; contentType: string }>,
+    getFileContent: (localPath: string) => Promise<Uint8Array> | Uint8Array
+  ): Promise<void> {
+    info('uploadStaticSite: Starting static site upload with', Object.keys(files).length, 'files');
+    
+    // Get the latest blob metadata from the server for proper chaining
+    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    debug('uploadStaticSite: Latest blob metadata from server:', latestBlobMetadata);
+    
+    // Use the latest hash from the server for chaining, or empty string if no blobs exist
+    let priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
+    debug('uploadStaticSite: Starting with priorHash:', priorHash);
+    
+    // Use the next sequence number based on the server's latest blob
+    let sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber : 0;
+    debug('uploadStaticSite: Starting with sequenceNumber:', sequenceNumber);
+    
+    // Create directory structure for the static site
+    const directoryStructure: Record<string, { ix: number; 'content-type': string }> = {};
+    
+    // Upload each file one by one
+    const fileEntries = Object.entries(files);
+    for (let i = 0; i < fileEntries.length; i++) {
+      const [localPath, fileInfo] = fileEntries[i];
+      const staticPath = fileInfo.path;
+      const contentType = fileInfo.contentType;
+      
+      info(`uploadStaticSite: Uploading file ${i + 1}/${fileEntries.length}: ${localPath} -> ${staticPath}`);
+      
+      try {
+        // Get the file content using the provided function
+        const fileContent = await Promise.resolve(getFileContent(localPath));
+        
+        // Encrypt the file content
+        const encryptedContent = this.encryptData(fileContent);
+        debug('uploadStaticSite: Encrypted content length for', localPath, ':', encryptedContent.length);
+        
+        // Compute body hash (SHA256 of the encrypted data)
+        const bodyHash = await computeHash(encryptedContent);
+        debug('uploadStaticSite: Computed bodyHash for', localPath, ':', bodyHash);
+        
+        // Compute chain hash using the prior hash and body hash
+        const hash = await this.computeChainHash(priorHash, bodyHash);
+        debug('uploadStaticSite: Computed hash for', localPath, ':', hash);
+        
+        // Create the data to be signed (just the hash)
+        const dataToSignBytes = new TextEncoder().encode(hash);
+        
+        // Sign the data
+        const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
+        const signature = encodeBase64(signatureBytes);
+        
+        // Increment sequence number for this file
+        sequenceNumber++;
+        
+        // Upload the file content to the server
+        const success = await this.server.storeBlob(
+          this.getPublicKeyBase64(),
+          encryptedContent,
+          hash,
+          priorHash,
+          signature,
+          sequenceNumber
+        );
+        
+        if (!success) {
+          throw new Error(`Failed to upload file: ${localPath}`);
+        }
+        
+        // Add entry to directory structure
+        directoryStructure[staticPath] = {
+          ix: sequenceNumber - 1, // 0-indexed for the directory structure
+          'content-type': contentType
+        };
+        
+        // Update priorHash for next file
+        priorHash = hash;
+        
+        info(`uploadStaticSite: Successfully uploaded file ${localPath} with sequence ${sequenceNumber} and hash ${hash}`);
+      } catch (err: unknown) {
+        error('uploadStaticSite: Error uploading file', localPath, ':', err as Error);
+        throw new Error(`Failed to upload file ${localPath}: ${(err as Error).message}`);
+      }
+    }
+    
+    // Create the directory structure blob
+    const directoryBlob = {
+      directory: directoryStructure
+    };
+    
+    const directoryData = new TextEncoder().encode(JSON.stringify(directoryBlob));
+    const encryptedDirectoryData = this.encryptData(directoryData);
+    
+    // Compute body hash for directory
+    const directoryBodyHash = await computeHash(encryptedDirectoryData);
+    
+    // Compute chain hash for directory
+    const directoryHash = await this.computeChainHash(priorHash, directoryBodyHash);
+    
+    // Sign the directory hash
+    const directoryDataToSignBytes = new TextEncoder().encode(directoryHash);
+    const directorySignatureBytes = nacl.sign.detached(directoryDataToSignBytes, this.privateKey);
+    const directorySignature = encodeBase64(directorySignatureBytes);
+    
+    // Increment sequence number for directory
+    sequenceNumber++;
+    
+    // Upload the directory structure as the final blob
+    info('uploadStaticSite: Uploading directory structure as final blob with sequence', sequenceNumber);
+    const directorySuccess = await this.server.storeBlob(
+      this.getPublicKeyBase64(),
+      encryptedDirectoryData,
+      directoryHash,
+      priorHash,
+      directorySignature,
+      sequenceNumber
+    );
+    
+    if (!directorySuccess) {
+      throw new Error('Failed to upload directory structure');
+    }
+    
+    info('uploadStaticSite: Successfully uploaded directory structure with sequence', sequenceNumber);
+    info('uploadStaticSite: Static site upload completed successfully');
+  }
+
+  /**
+   * List static site files
+   * @returns Promise that resolves to the directory structure
+   */
+  async listStaticSite(): Promise<Record<string, { ix: number; 'content-type': string }>> {
+    info('listStaticSite: Starting static site listing');
+    
+    // Get the latest blob metadata from the server
+    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    
+    if (!latestBlobMetadata) {
+      info('listStaticSite: No blobs found, returning empty directory');
+      return {};
+    }
+    
+    info('listStaticSite: Found latest blob with sequence', latestBlobMetadata.sequenceNumber);
+    
+    // Retrieve the directory structure blob (should be the latest)
+    const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), latestBlobMetadata.id);
+    
+    if (!blob) {
+      throw new Error('Failed to retrieve directory structure blob');
+    }
+    
+    // Decrypt the blob data
+    const decryptedData = this.decryptData(blob.data);
+    
+    // Deserialize the directory data
+    const directoryData = new TextDecoder().decode(decryptedData);
+    const directoryEntry = JSON.parse(directoryData);
+    
+    info('listStaticSite: Retrieved directory structure with', Object.keys(directoryEntry.directory).length, 'files');
+    
+    return directoryEntry.directory;
+  }
+
+  /**
+   * Retrieve a static site file
+   * @param path The path of the file to retrieve
+   * @returns Promise that resolves to the file content as Uint8Array
+   */
+  async getStaticSiteFile(path: string): Promise<{ content: Uint8Array; contentType: string } | null> {
+    info('getStaticSiteFile: Retrieving file', path);
+    
+    // First get the directory structure to find the file index
+    const directory = await this.listStaticSite();
+    
+    const fileEntry = directory[path];
+    if (!fileEntry) {
+      info('getStaticSiteFile: File not found in directory structure:', path);
+      return null;
+    }
+    
+    info('getStaticSiteFile: Found file entry with index', fileEntry.ix);
+    
+    // Get all blob metadata from server, ordered by sequence number
+    const blobMetadataList = await this.server.getAllBlobMetadata(this.getPublicKeyBase64());
+    
+    // Find the blob that corresponds to the file index
+    // The file index is 0-based, but sequence numbers are 1-based, so we need to add 1
+    const targetSequenceNumber = fileEntry.ix + 1;
+    const targetBlobMetadata = blobMetadataList.find(blob => blob.sequenceNumber === targetSequenceNumber);
+    
+    if (!targetBlobMetadata) {
+      throw new Error(`File blob not found for sequence number: ${targetSequenceNumber}`);
+    }
+    
+    info('getStaticSiteFile: Found blob with sequence number', targetBlobMetadata.sequenceNumber);
+    
+    // Retrieve the actual blob data
+    const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), targetBlobMetadata.id);
+    
+    if (!blob) {
+      throw new Error(`Failed to retrieve file blob: ${targetBlobMetadata.id}`);
+    }
+    
+    // Decrypt the blob data
+    const decryptedData = this.decryptData(blob.data);
+    
+    info('getStaticSiteFile: Successfully retrieved and decrypted file', path);
+    
+    return {
+      content: decryptedData,
+      contentType: fileEntry['content-type']
+    };
+  }
 }
