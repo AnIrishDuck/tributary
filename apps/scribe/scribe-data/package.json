@@ -1,0 +1,24 @@
+{
+  "name": "scribe-data",
+  "version": "1.0.0",
+  "description": "Data definitions and operations for the scribe app",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run tests/",
+    "test:watch": "vitest tests/"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "@types/uuid": "^10.0.0",
+    "kysely": "^0.27.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "kysely-tributary": "file:../../../kysely-tributary",
+    "tributary-client": "file:../../../tributary-client",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
