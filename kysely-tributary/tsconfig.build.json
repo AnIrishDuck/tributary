@@ -1,25 +1,26 @@
 {
   "compilerOptions": {
     "baseUrl": "./",
-    "paths": {
-      "#*": ["./src/*"]
-    },
     "lib": ["ES2020"],
     "target": "ES2020",
-    "module": "Preserve",
-    "moduleDetection": "force",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "resolveJsonModule": true,
-    "esModuleInterop": false,
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "strictNullChecks": true,
     "sourceMap": true,
-    "skipDefaultLibCheck": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
     "declaration": true,
     "outDir": "./dist",
-    "useDefineForClassFields": true
+    "rootDir": "./src"
   },
-  "include": ["src"]
+  "include": [
+    "src/kysely-tributary.ts",
+    "src/tributary-driver.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

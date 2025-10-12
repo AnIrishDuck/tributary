@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest'
 import { GroceriesDatabase } from './groceries-db'
 
-describe.skip('file storage', { todo: true }, () => {
+describe('file storage', { todo: true }, () => {
   const dataDir = './pgdata'
   const groceries = new GroceriesDatabase({ dataDir })
 

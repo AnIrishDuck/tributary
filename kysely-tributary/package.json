@@ -1,15 +1,16 @@
 {
-  "name": "kysely-pglite",
+  "name": "kysely-tributary",
   "version": "0.6.1",
-  "description": "Kysely dialect for @electric-sql/pglite",
+  "description": "Kysely dialect for tributary-client",
   "repository": "https://github.com/dnlsandiego/kysely-pglite",
   "keywords": [
-    "@electric-sql/pglite",
+    "tributary",
     "kysely",
     "postgresql",
     "wasm",
     "database",
-    "sql"
+    "sql",
+    "e2e-encrypted"
   ],
   "license": "MIT",
   "type": "module",
@@ -22,7 +23,7 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run build",
     "format": "prettier ./src --write",
-    "test": "vitest"
+    "test": "vitest run"
   },
   "files": [
     "dist",
@@ -41,15 +42,19 @@
     }
   },
   "peerDependencies": {
-    "@electric-sql/pglite": "*",
-    "kysely": "*"
+    "kysely": "*",
+    "tributary-client": "file:../tributary-client"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.10",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.5.0",
+    "kysely": "^0.27.6",
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
     "tsx": "^4.19.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
     "type-fest": "^4.25.0",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
@@ -67,19 +72,19 @@
     "radash": "^12.1.0"
   },
   "bin": {
-    "kysely-pglite": "./bin/run.js",
+    "kysely-tributary": "./bin/run.js",
     "kpg": "./bin/run.js"
   },
   "oclif": {
     "binAliases": [
-      "kysely-pglite",
+      "kysely-tributary",
       "kpg"
     ],
     "commands": {
       "strategy": "single",
       "target": "./dist/cli.js"
     },
-    "dirname": "kysely-pglite",
+    "dirname": "kysely-tributary",
     "topicSeparator": " "
   },
   "pnpm": {
