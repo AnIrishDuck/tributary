@@ -41,12 +41,22 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('version_uuid', 'text', (col) => col.notNull())
     .addColumn('indexed_at', 'text', (col) => col.notNull())
     .execute()
+
+  // Create the block_tag table for storing block tags (non-synchronized)
+  await db.schema
+    .createTable('block_tag')
+    .addColumn('block_uuid', 'text', (col) => col.notNull())
+    .addColumn('tag', 'text', (col) => col.notNull())
+    .addColumn('indexed_at', 'text', (col) => col.notNull())
+    .addPrimaryKeyConstraint('block_tag_primary_key', ['block_uuid', 'tag'])
+    .execute()
 }
 
 /**
  * Migration to drop the block table
  */
 export async function down(db: Kysely<any>): Promise<void> {
+  await db.schema.dropTable('block_tag').execute()
   await db.schema.dropTable('authoritative_version').execute()
   await db.schema.dropTable('block_slug').execute()
   await db.schema.dropTable('indexed_block').execute()

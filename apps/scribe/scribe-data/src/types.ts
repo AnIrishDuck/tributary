@@ -71,56 +71,6 @@ export interface Block {
 }
 
 /**
- * A record of an indexed block (non-synchronized)
- */
-export interface IndexedBlock {
-  /**
-   * Unique identifier for the block (UUID format)
-   */
-  block_uuid: BlockUuid
-
-  /**
-   * Version UUID of the authoritative version
-   */
-  version_uuid: VersionUuid
-
-  /**
-   * Flag indicating if this block has been indexed
-   */
-  indexed: boolean
-
-  /**
-   * Timestamp of last index update (ISO string format)
-   */
-  last_indexed_at: string
-}
-
-/**
- * A block slug record (non-synchronized)
- */
-export interface BlockSlug {
-  /**
-   * Unique identifier for the block (UUID format)
-   */
-  block_uuid: BlockUuid
-
-  /**
-   * The URL-friendly slug derived from the block title
-   */
-  slug: string
-
-  /**
-   * The original title of the block
-   */
-  title: string
-
-  /**
-   * Timestamp when this slug was indexed (ISO string format)
-   */
-  indexed_at: string
-}
-
-/**
  * Database representation of a block (with proper types for database storage)
  */
 export interface BlockRow {
@@ -150,6 +100,15 @@ export interface BlockSlugRow {
   block_uuid: string
   slug: string
   title: string
+  indexed_at: string // ISO string for database storage
+}
+
+/**
+ * Database representation of a block tag (with proper types for database storage)
+ */
+export interface BlockTagRow {
+  block_uuid: string
+  tag: string
   indexed_at: string // ISO string for database storage
 }
 
@@ -264,6 +223,26 @@ export interface BlockSlugRecordTable {
 }
 
 /**
+ * Database representation of block tags for Kysely
+ */
+export interface BlockTagRecordTable {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: Generated<string>
+
+  /**
+   * The tag extracted from the block
+   */
+  tag: string
+
+  /**
+   * Timestamp when this tag was indexed
+   */
+  indexed_at: string
+}
+
+/**
  * Database representation of authoritative versions (non-synchronized)
  * Maps block UUIDs to their authoritative (latest) version UUIDs
  */
@@ -308,6 +287,11 @@ export interface Database {
   block_slug: BlockSlugRecordTable
 
   /**
+   * Table containing block tags (non-synchronized)
+   */
+  block_tag: BlockTagRecordTable
+
+  /**
    * Table containing authoritative version mappings (non-synchronized)
    */
   authoritative_version: AuthoritativeVersionRecordTable
@@ -324,3 +308,43 @@ export interface Database {
 export type BlockRecord = Selectable<BlockRecordTable>
 export type NewBlockRecord = Insertable<BlockRecordTable>
 export type BlockRecordUpdate = Updateable<BlockRecordTable>
+
+/**
+ * Type for a block with its authoritative version information
+ */
+export interface BlockWithVersion extends Block {
+  /**
+   * The authoritative version UUID for this block
+   */
+  authoritative_version_uuid: VersionUuid
+}
+
+/**
+ * Type for a block with its slug
+ */
+export interface BlockWithSlug extends Block {
+  /**
+   * The URL-friendly slug for this block
+   */
+  slug: string
+  
+  /**
+   * The title of the block
+   */
+  title: string
+}
+
+/**
+ * Type for a block with its tags
+ */
+export interface BlockWithTags extends Block {
+  /**
+   * Array of tags for this block
+   */
+  tags: string[]
+}
+
+/**
+ * Type for a complete indexed block with all metadata
+ */
+export interface IndexedBlock extends BlockWithVersion, BlockWithSlug, BlockWithTags {}

@@ -116,6 +116,26 @@ export interface AuthoritativeVersionTable {
 }
 
 /**
+ * Database representation of block tags (non-synchronized)
+ */
+export interface BlockTagTable {
+  /**
+   * Unique identifier for the block
+   */
+  block_uuid: string
+
+  /**
+   * The tag extracted from the block
+   */
+  tag: string
+
+  /**
+   * Timestamp when this tag was indexed (ISO string format)
+   */
+  indexed_at: string
+}
+
+/**
  * The main database schema for the scribe app
  */
 export interface ScribeSchema {
@@ -138,6 +158,11 @@ export interface ScribeSchema {
    * Table containing authoritative version mappings (non-synchronized)
    */
   authoritative_version: AuthoritativeVersionTable
+
+  /**
+   * Table containing block tags (non-synchronized)
+   */
+  block_tag: BlockTagTable
 }
 
 /**

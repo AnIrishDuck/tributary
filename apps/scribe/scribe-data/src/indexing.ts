@@ -169,13 +169,14 @@ export interface IndexSlugsResult {
 }
 
 /**
- * Index slugs for unindexed blocks
+ * Index slugs and tags for unindexed blocks
  * 
  * This function:
  * 1. Finds unindexed blocks by comparing the block table with the indexed_block table
  * 2. Determines which blocks are authoritative (latest version)
  * 3. Extracts titles from authoritative blocks and converts them to slugs
- * 4. Updates the block_slug index table
+ * 4. Extracts tags from authoritative blocks
+ * 5. Updates the block_slug and block_tag index tables
  * 
  * @param db The Kysely database instance
  * @param options Indexing options
@@ -235,6 +236,9 @@ export async function indexSlugs(
     // Extract title from the block body
     const title = extractTitleFromMarkdown(block.body)
     const baseSlug = title ? titleToSlug(title) : null
+    
+    // Extract tags from the block body
+    const tags = extractTagsFromMarkdown(block.body)
     
     // Start a transaction to ensure consistency
     await db.transaction().execute(async (tx) => {
@@ -310,7 +314,7 @@ export async function indexSlugs(
                 .updateTable('block_slug')
                 .set({
                   slug: updatedExistingSlug,
-                  title: existingTitle,
+                  title: existingTitle || "Untitled",
                   indexed_at: new Date().toISOString()
                 })
                 .where('block_uuid', '=', existingBlock.block_uuid)
@@ -367,6 +371,25 @@ export async function indexSlugs(
         await tx
           .deleteFrom('block_slug')
           .where('block_uuid', '=', block.block_uuid)
+          .execute()
+      }
+      
+      // Handle tag updates
+      // First, delete all existing tags for this block
+      await tx
+        .deleteFrom('block_tag')
+        .where('block_uuid', '=', block.block_uuid)
+        .execute()
+      
+      // Then insert new tags for this block
+      for (const tag of tags) {
+        await tx
+          .insertInto('block_tag')
+          .values({
+            block_uuid: block.block_uuid,
+            tag: tag,
+            indexed_at: new Date().toISOString()
+          })
           .execute()
       }
     })
@@ -451,5 +474,52 @@ export async function getAllAuthoritativeVersions(db: Kysely<Database>) {
   return await db
     .selectFrom('authoritative_version')
     .selectAll()
+    .execute()
+}
+
+/**
+ * Get all tags for a block
+ * @param db The Kysely database instance
+ * @param blockUuid The block UUID
+ * @returns Array of tags for the block
+ */
+export async function getTagsForBlock(
+  db: Kysely<Database>,
+  blockUuid: string
+) {
+  return await db
+    .selectFrom('block_tag')
+    .select('tag')
+    .where('block_uuid', '=', blockUuid)
+    .execute()
+}
+
+/**
+ * Get all blocks that have a specific tag
+ * @param db The Kysely database instance
+ * @param tag The tag to search for
+ * @returns Array of block UUIDs that have this tag
+ */
+export async function getBlocksByTag(
+  db: Kysely<Database>,
+  tag: string
+) {
+  return await db
+    .selectFrom('block_tag')
+    .select('block_uuid')
+    .where('tag', '=', tag)
+    .execute()
+}
+
+/**
+ * Get all unique tags
+ * @param db The Kysely database instance
+ * @returns Array of all unique tags
+ */
+export async function getAllTags(db: Kysely<Database>) {
+  return await db
+    .selectFrom('block_tag')
+    .select('tag')
+    .distinct()
     .execute()
 }
