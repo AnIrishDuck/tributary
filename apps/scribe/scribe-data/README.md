@@ -130,3 +130,64 @@ Run tests in watch mode:
 ```bash
 npm run test:watch
 ```
+
+## Enhanced Types
+
+The package includes enhanced TypeScript types for the database schema following the Kysely best practices. These types provide better type safety when working with the database using Kysely and can be found in `src/types.ts`.
+
+These enhanced types provide:
+
+```typescript
+import { Kysely } from 'kysely'
+import { Database, BlockRecord, NewBlockRecord } from 'scribe-data'
+import { KyselyTributary } from 'kysely-tributary'
+import { TributaryClient } from 'tributary-client'
+import { v4 as uuidv4 } from 'uuid'
+
+// Create a Tributary client
+const client = new TributaryClient({
+  server: /* your server */,
+  privateKey: /* your private key */,
+  collectionId: 'your-collection-id'
+})
+
+// Create Kysely instance with Tributary dialect using the enhanced types
+const { dialect } = new KyselyTributary(client)
+const db = new Kysely<Database>({ dialect })
+
+// Now you get full type safety when working with the database
+const newBlock: NewBlockRecord = {
+  block_uuid: uuidv4(),
+  block_type: 'scribe/markdown',
+  version_uuid: uuidv4(),
+  prior_version_uuid: null,
+  insert_datetime: new Date().toISOString(), // Can be string for insert
+  inserter: 'user-1',
+  body: '# Hello World\n\nThis is a test document.'
+}
+
+// Insert with full type checking
+const insertedBlock = await db.insertInto('block')
+  .values(newBlock)
+  .returningAll()
+  .executeTakeFirstOrThrow()
+
+// Query with full type checking - result is typed as BlockRecord
+const blocks: BlockRecord[] = await db.selectFrom('block')
+  .selectAll()
+  .execute()
+
+// Update with full type checking
+await db.updateTable('block')
+  .set({ body: '# Updated Title' })
+  .where('block_uuid', '=', blockUuid)
+  .execute()
+```
+
+The enhanced types provide:
+- Full IntelliSense support for table and column names
+- Type-safe inserts, selects, updates, and deletes
+- Automatic handling of optional/required fields based on database constraints
+- Separate types for selectable, insertable, and updateable records
+
+You can still use the original types (`Block`, `BlockUuid`, etc.) for application logic while using the Kysely-enhanced types (`BlockRecord`, etc.) for database operations.
