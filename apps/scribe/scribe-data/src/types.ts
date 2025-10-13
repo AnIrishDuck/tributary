@@ -71,6 +71,56 @@ export interface Block {
 }
 
 /**
+ * A record of an indexed block (non-synchronized)
+ */
+export interface IndexedBlock {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: BlockUuid
+
+  /**
+   * Version UUID of the authoritative version
+   */
+  version_uuid: VersionUuid
+
+  /**
+   * Flag indicating if this block has been indexed
+   */
+  indexed: boolean
+
+  /**
+   * Timestamp of last index update (ISO string format)
+   */
+  last_indexed_at: string
+}
+
+/**
+ * A block slug record (non-synchronized)
+ */
+export interface BlockSlug {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: BlockUuid
+
+  /**
+   * The URL-friendly slug derived from the block title
+   */
+  slug: string
+
+  /**
+   * The original title of the block
+   */
+  title: string
+
+  /**
+   * Timestamp when this slug was indexed (ISO string format)
+   */
+  indexed_at: string
+}
+
+/**
  * Database representation of a block (with proper types for database storage)
  */
 export interface BlockRow {
@@ -81,6 +131,26 @@ export interface BlockRow {
   insert_datetime: string // ISO string for database storage
   inserter: string
   body: string
+}
+
+/**
+ * Database representation of an indexed block (with proper types for database storage)
+ */
+export interface IndexedBlockRow {
+  block_uuid: string
+  version_uuid: string
+  indexed: boolean
+  last_indexed_at: string // ISO string for database storage
+}
+
+/**
+ * Database representation of a block slug (with proper types for database storage)
+ */
+export interface BlockSlugRow {
+  block_uuid: string
+  slug: string
+  title: string
+  indexed_at: string // ISO string for database storage
 }
 
 /**
@@ -144,6 +214,77 @@ export interface BlockRecordTable {
 }
 
 /**
+ * Database representation of an indexed block for Kysely
+ */
+export interface IndexedBlockRecordTable {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: Generated<string>
+
+  /**
+   * Version UUID of the authoritative version
+   */
+  version_uuid: string
+
+  /**
+   * Flag indicating if this block has been indexed
+   */
+  indexed: boolean
+
+  /**
+   * Timestamp of last index update
+   */
+  last_indexed_at: string
+}
+
+/**
+ * Database representation of a block slug for Kysely
+ */
+export interface BlockSlugRecordTable {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: Generated<string>
+
+  /**
+   * The URL-friendly slug derived from the block title
+   */
+  slug: string
+
+  /**
+   * The original title of the block
+   */
+  title: string
+
+  /**
+   * Timestamp when this slug was indexed
+   */
+  indexed_at: string
+}
+
+/**
+ * Database representation of authoritative versions (non-synchronized)
+ * Maps block UUIDs to their authoritative (latest) version UUIDs
+ */
+export interface AuthoritativeVersionRecordTable {
+  /**
+   * Unique identifier for the block (UUID format)
+   */
+  block_uuid: Generated<string>
+
+  /**
+   * Version UUID of the authoritative version
+   */
+  version_uuid: string
+
+  /**
+   * Timestamp when this mapping was last updated
+   */
+  indexed_at: string
+}
+
+/**
  * The main database schema for the scribe app
  * 
  * For Kysely's type-safety and autocompletion to work, it needs to know your 
@@ -155,6 +296,21 @@ export interface Database {
    * Table containing all block versions
    */
   block: BlockRecordTable
+
+  /**
+   * Table containing indexing status for blocks (non-synchronized)
+   */
+  indexed_block: IndexedBlockRecordTable
+
+  /**
+   * Table containing block slugs (non-synchronized)
+   */
+  block_slug: BlockSlugRecordTable
+
+  /**
+   * Table containing authoritative version mappings (non-synchronized)
+   */
+  authoritative_version: AuthoritativeVersionRecordTable
 }
 
 /**

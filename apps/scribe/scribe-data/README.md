@@ -1,193 +1,110 @@
-# scribe-data
+# Scribe Data Indexing
 
-Data definitions and operations for the scribe app.
+This module handles indexing of Scribe documents for efficient querying and retrieval.
 
-## Overview
+## Indexing Overview
 
-This package defines the core data model for the scribe app, including:
-- TypeScript types for blocks and versions
-- Database schema definitions using Kysely
-- Database migrations for setting up the required tables
+The indexing system processes blocks to extract metadata and create searchable indexes. The indexes are stored in non-synchronized tables to avoid affecting the core Tributary sync process.
 
-## Core Concepts
+### Index Tables
 
-### Blocks
+1. **indexed_block** - Tracks which blocks have been processed by the indexing system
+2. **block_slug** - Stores extracted document titles and their URL-friendly slugs for linking and navigation
+3. **authoritative_version** - Maps block UUIDs to their authoritative (latest) version UUIDs
+4. **block_tag** - Stores extracted tags for categorization and filtering (to be implemented)
 
-A block is the fundamental unit of content in the scribe app. Each block has:
+### Indexing Process
 
-- `block_uuid`: A unique identifier for the block (UUID format)
-- `block_type`: The type of block (currently only `scribe/markdown` is supported)
-- `version_uuid`: A unique identifier for this version (UUID format)
-- `prior_version_uuid`: Reference to the previous version (null for first version, UUID format)
-- `insert_datetime`: Timestamp when this version was created
-- `inserter`: Identifier for the user/device that created this version
-- `body`: The content of the block
+The indexing process is designed to be:
 
-### Versioning
+1. **Incremental** - Only processes blocks that haven't been indexed or have new versions
+2. **Efficient** - Uses database window functions to identify authoritative (latest) versions
+3. **Consistent** - Uses transactions to ensure data consistency
+4. **Progressive** - Supports limits to prevent overwhelming the system
 
-Blocks are append-only. Each edit creates a new version with a new `version_uuid` and references the previous version via `prior_version_uuid`. This creates a history of all changes to a document.
+## Functions
 
-### Conflict Resolution
+### `indexSlugs(db, options)`
 
-The scribe app uses Last Write Wins (LWW) for conflict resolution. When conflicts occur, the version with the latest timestamp is considered authoritative.
+Indexes document titles from unprocessed blocks and converts them to URL-friendly slugs.
 
-## Schema
+**Parameters:**
+- `db`: Kysely database instance
+- `options`: Indexing options
+  - `limit`: Maximum number of blocks to process (default: 100)
 
-The package defines a `block` table with the following columns:
+**Returns:**
+- `indexedCount`: Number of slugs that were indexed
+- `hasMore`: Whether there are more blocks to process
 
-- `block_uuid` (uuid, not null)
-- `block_type` (text, not null)
-- `version_uuid` (uuid, not null, primary key)
-- `prior_version_uuid` (uuid, nullable)
-- `insert_datetime` (timestamptz, not null)
-- `inserter` (text, not null)
-- `body` (text, not null)
+The function:
+1. Identifies unindexed blocks that are authoritative (latest versions)
+2. Extracts titles from these blocks using `extractTitleFromMarkdown`
+3. Converts titles to URL-friendly slugs using `titleToSlug`
+4. Updates the `indexed_block` and `block_slug` tables
+5. Returns statistics about the indexing operation
 
-There is a unique constraint on the combination of `block_uuid` and `version_uuid`.
+### `extractTitleFromMarkdown(body)`
 
-## Usage
+Extracts the first H1 heading from a markdown document as the title.
 
-### TypeScript Types
+**Parameters:**
+- `body`: Markdown document content
 
-```typescript
-import { Block, BlockUuid, VersionUuid } from 'scribe-data'
-import { v4 as uuidv4 } from 'uuid'
+**Returns:**
+- The extracted title, or null if no H1 heading is found
 
-const block: Block = {
-  block_uuid: uuidv4() as BlockUuid,
-  block_type: 'scribe/markdown',
-  version_uuid: uuidv4() as VersionUuid,
-  prior_version_uuid: null,
-  insert_datetime: new Date(),
-  inserter: 'user-1',
-  body: '# My Document\n\nThis is the content.'
-}
-```
+### `titleToSlug(title)`
 
-### Database Schema
+Converts a document title to a URL-friendly slug.
 
-```typescript
-import { ScribeSchema } from 'scribe-data'
-import { KyselyTributary } from 'kysely-tributary'
-import { TributaryClient } from 'tributary-client'
-import { v4 as uuidv4 } from 'uuid'
+**Parameters:**
+- `title`: Document title
 
-// Create a Tributary client
-const client = new TributaryClient({
-  server: /* your server */,
-  privateKey: /* your private key */,
-  collectionId: 'your-collection-id'
-})
+**Returns:**
+- URL-friendly slug version of the title
 
-// Create Kysely instance with Tributary dialect
-const { dialect } = new KyselyTributary(client)
-const db = new Kysely<ScribeSchema>({ dialect })
+### `extractTagsFromMarkdown(body)`
 
-// Insert a block with proper UUIDs
-await db.insertInto('block')
-  .values({
-    block_uuid: uuidv4(),
-    block_type: 'scribe/markdown',
-    version_uuid: uuidv4(),
-    prior_version_uuid: null,
-    insert_datetime: new Date(),
-    inserter: 'user-1',
-    body: '# Hello World\n\nThis is a test document.'
-  })
-  .execute()
-```
+Extracts tags from a markdown document. Tags are markdown links where both the 
+link text and target start with # and are identical (e.g., `[#mytag](#mytag)`).
 
-### Migrations
+**Parameters:**
+- `body`: Markdown document content
 
-```typescript
-import { up, down } from 'scribe-data/migrations'
+**Returns:**
+- Array of unique tags found in the document
 
-// Apply the migration
-await up(db)
+## Design Principles
 
-// Rollback the migration
-await down(db)
-```
+### Non-Synchronized Indexes
 
-## Testing
+Index tables (`indexed_block`, `block_slug`, `authoritative_version`, `block_tag`) are not synchronized 
+via Tributary. This ensures that:
+- Index rebuilding doesn't affect sync performance
+- Local index corruption doesn't affect other users
+- Users can rebuild indexes without affecting the shared collection
 
-The package includes comprehensive tests that use Tributary's FakeServer for proper end-to-end testing:
+### Authoritative Versions
 
-1. Verify the database schema is correctly created with UUID columns
-2. Test inserting and retrieving blocks with proper UUIDs
-3. Validate the unique constraint on (`block_uuid`, `version_uuid`)
-4. Test handling multiple versions of the same block
-5. Verify querying capabilities for different blocks and versions
+The system only indexes the latest version of each block (authoritative version) 
+to ensure that:
+- Links always point to current content
+- Slugs reflect the most recent document state
+- Tags are current with the latest content
 
-Tests are located in the `tests/` directory and can be run with:
+### Progressive Indexing
 
-```bash
-npm test
-```
+Indexing operations can be limited to prevent blocking the UI or overwhelming 
+the database. This allows for:
+- Background indexing that doesn't block user interactions
+- Efficient processing of large collections
+- Better resource utilization
 
-Run tests in watch mode:
+## Future Enhancements
 
-```bash
-npm run test:watch
-```
-
-## Enhanced Types
-
-The package includes enhanced TypeScript types for the database schema following the Kysely best practices. These types provide better type safety when working with the database using Kysely and can be found in `src/types.ts`.
-
-These enhanced types provide:
-
-```typescript
-import { Kysely } from 'kysely'
-import { Database, BlockRecord, NewBlockRecord } from 'scribe-data'
-import { KyselyTributary } from 'kysely-tributary'
-import { TributaryClient } from 'tributary-client'
-import { v4 as uuidv4 } from 'uuid'
-
-// Create a Tributary client
-const client = new TributaryClient({
-  server: /* your server */,
-  privateKey: /* your private key */,
-  collectionId: 'your-collection-id'
-})
-
-// Create Kysely instance with Tributary dialect using the enhanced types
-const { dialect } = new KyselyTributary(client)
-const db = new Kysely<Database>({ dialect })
-
-// Now you get full type safety when working with the database
-const newBlock: NewBlockRecord = {
-  block_uuid: uuidv4(),
-  block_type: 'scribe/markdown',
-  version_uuid: uuidv4(),
-  prior_version_uuid: null,
-  insert_datetime: new Date().toISOString(), // Can be string for insert
-  inserter: 'user-1',
-  body: '# Hello World\n\nThis is a test document.'
-}
-
-// Insert with full type checking
-const insertedBlock = await db.insertInto('block')
-  .values(newBlock)
-  .returningAll()
-  .executeTakeFirstOrThrow()
-
-// Query with full type checking - result is typed as BlockRecord
-const blocks: BlockRecord[] = await db.selectFrom('block')
-  .selectAll()
-  .execute()
-
-// Update with full type checking
-await db.updateTable('block')
-  .set({ body: '# Updated Title' })
-  .where('block_uuid', '=', blockUuid)
-  .execute()
-```
-
-The enhanced types provide:
-- Full IntelliSense support for table and column names
-- Type-safe inserts, selects, updates, and deletes
-- Automatic handling of optional/required fields based on database constraints
-- Separate types for selectable, insertable, and updateable records
-
-You can still use the original types (`Block`, `BlockUuid`, etc.) for application logic while using the Kysely-enhanced types (`BlockRecord`, etc.) for database operations.
+Planned features:
+- Full text search indexing
+- Tag indexing and tag-based navigation
+- Backlink indexing for document linking
+- Conflict detection and resolution
