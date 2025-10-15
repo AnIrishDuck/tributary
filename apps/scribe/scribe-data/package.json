@@ -2,6 +2,7 @@
   "name": "scribe-data",
   "version": "1.0.0",
   "description": "Data definitions and operations for the scribe app",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

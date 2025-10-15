@@ -332,4 +332,213 @@ describe('scribe-data indexing', () => {
     expect(slug1?.slug).toMatch(/^[a-f0-9]{4}-.+/)
     expect(slug2?.slug).toMatch(/^[a-f0-9]{4}-.+/)
   })
+
+  test('should index tags for new blocks', async () => {
+    const now = new Date()
+    const blockUuid = uuidv4()
+    const versionUuid = uuidv4()
+    
+    // Insert a block with tags
+    const block: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: versionUuid,
+      prior_version_uuid: null,
+      insert_datetime: now.toISOString(),
+      inserter: 'test-user',
+      body: '# My Document with Tags\n\nThis document has [#important](#important) and [#work](#work) tags.'
+    }
+    
+    await db.insertInto('block').values(block).execute()
+    
+    // Run indexing
+    await indexSlugs(db)
+    
+    // Check that tags were indexed
+    const tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .orderBy('tag')
+      .execute()
+    
+    expect(tags).toHaveLength(2)
+    expect(tags[0].tag).toBe('important')
+    expect(tags[1].tag).toBe('work')
+  })
+
+  test('should add tags to an authoritative version of a block', async () => {
+    const now = new Date()
+    const blockUuid = uuidv4()
+    const version1Uuid = uuidv4()
+    const version2Uuid = uuidv4()
+    
+    // Insert first version without tags
+    const blockV1: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version1Uuid,
+      prior_version_uuid: null,
+      insert_datetime: now.toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document has no tags initially.'
+    }
+    
+    await db.insertInto('block').values(blockV1).execute()
+    
+    // Run indexing on first version
+    await indexSlugs(db)
+    
+    // Check that no tags exist
+    let tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .execute()
+    
+    expect(tags).toHaveLength(0)
+    
+    // Insert second version with tags
+    const blockV2: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version2Uuid,
+      prior_version_uuid: version1Uuid,
+      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#anothertag](#anothertag) tags.'
+    }
+    
+    await db.insertInto('block').values(blockV2).execute()
+    
+    // Run indexing again
+    await indexSlugs(db)
+    
+    // Check that tags were added
+    tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .orderBy('tag')
+      .execute()
+    
+    expect(tags).toHaveLength(2)
+    expect(tags[0].tag).toBe('anothertag')
+    expect(tags[1].tag).toBe('newtag')
+  })
+
+  test('should remove tags from an authoritative version of a block', async () => {
+    const now = new Date()
+    const blockUuid = uuidv4()
+    const version1Uuid = uuidv4()
+    const version2Uuid = uuidv4()
+    
+    // Insert first version with tags
+    const blockV1: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version1Uuid,
+      prior_version_uuid: null,
+      insert_datetime: now.toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document has [#tag1](#tag1) and [#tag2](#tag2) tags.'
+    }
+    
+    await db.insertInto('block').values(blockV1).execute()
+    
+    // Run indexing on first version
+    await indexSlugs(db)
+    
+    // Check that tags exist
+    let tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .orderBy('tag')
+      .execute()
+    
+    expect(tags).toHaveLength(2)
+    expect(tags[0].tag).toBe('tag1')
+    expect(tags[1].tag).toBe('tag2')
+    
+    // Insert second version with fewer tags
+    const blockV2: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version2Uuid,
+      prior_version_uuid: version1Uuid,
+      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document now only has [#tag1](#tag1) tag.'
+    }
+    
+    await db.insertInto('block').values(blockV2).execute()
+    
+    // Run indexing again
+    await indexSlugs(db)
+    
+    // Check that only remaining tag exists
+    tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .execute()
+    
+    expect(tags).toHaveLength(1)
+    expect(tags[0].tag).toBe('tag1')
+  })
+
+  test('should change tags in an authoritative version of a block', async () => {
+    const now = new Date()
+    const blockUuid = uuidv4()
+    const version1Uuid = uuidv4()
+    const version2Uuid = uuidv4()
+    
+    // Insert first version with some tags
+    const blockV1: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version1Uuid,
+      prior_version_uuid: null,
+      insert_datetime: now.toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document has [#oldtag](#oldtag) tag.'
+    }
+    
+    await db.insertInto('block').values(blockV1).execute()
+    
+    // Run indexing on first version
+    await indexSlugs(db)
+    
+    // Check that old tag exists
+    let tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .execute()
+    
+    expect(tags).toHaveLength(1)
+    expect(tags[0].tag).toBe('oldtag')
+    
+    // Insert second version with different tags
+    const blockV2: NewBlockRecord = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      version_uuid: version2Uuid,
+      prior_version_uuid: version1Uuid,
+      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
+      inserter: 'test-user',
+      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#different](#different) tags.'
+    }
+    
+    await db.insertInto('block').values(blockV2).execute()
+    
+    // Run indexing again
+    await indexSlugs(db)
+    
+    // Check that new tags exist and old ones are removed
+    tags = await db.selectFrom('block_tag')
+      .selectAll()
+      .where('block_uuid', '=', blockUuid)
+      .orderBy('tag')
+      .execute()
+    
+    expect(tags).toHaveLength(2)
+    expect(tags[0].tag).toBe('different')
+    expect(tags[1].tag).toBe('newtag')
+  })
 })

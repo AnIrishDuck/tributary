@@ -337,60 +337,71 @@ export class TributaryClient {
         const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), blobMetadata.id);
         
         if (blob) {
-          // Decrypt the blob data
-          const decryptedData = this.decryptData(blob.data);
-          
-          // Deserialize the transaction data
-          const transactionData = new TextDecoder().decode(decryptedData);
-          const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
-          
-          info(`SYNC APPLYING: Processing blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
-          
-          // Apply to local database only if it's a write operation
-          if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
-            // Handle transaction - wrap in a try-catch to handle existing table cases
-            try {
-              await this.pglite.transaction(async (tx) => {
-                for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
-                  if (command.query) {
-                    try {
-                      await tx.exec(command.query);
-                    } catch (cmdError) {
-                      // Throw errors during sync rather than just warning
-                      // Synced SQL expressions should never fail (otherwise they would've failed locally first)
-                      throw new Error(`Command failed during sync: ${command.query} - ${(cmdError as Error).message}`);
+          try {
+            // Decrypt the blob data
+            const decryptedData = this.decryptData(blob.data);
+            
+            // Deserialize the transaction data
+            const transactionData = new TextDecoder().decode(decryptedData);
+            const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
+            
+            info(`SYNC APPLYING: Processing blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
+            
+            // Apply to local database only if it's a write operation
+            if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
+              // Handle transaction - wrap in a try-catch to handle existing table cases
+              try {
+                await this.pglite.transaction(async (tx) => {
+                  for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
+                    if (command.query) {
+                      try {
+                        await tx.exec(command.query);
+                      } catch (cmdError) {
+                        // Throw errors during sync rather than just warning
+                        // Synced SQL expressions should never fail (otherwise they would've failed locally first)
+                        throw new Error(`Command failed during sync: ${command.query} - ${(cmdError as Error).message}`);
+                      }
                     }
                   }
-                }
-              });
-            } catch (txError) {
-              // Log but don't fail on transaction errors
-              warn(`Transaction failed during sync`, txError);
-            }
-          } else {
-            // Handle regular query/exec
-            if (this.isReadQuery(transactionEntry.query)) {
-              // Skip read queries as they don't modify state
-              continue;
+                });
+              } catch (txError) {
+                // Log but don't fail on transaction errors
+                warn(`Transaction failed during sync`, txError);
+              }
             } else {
-              // Execute all other operations including INSERT
-              try {
-                await this.pglite.exec(transactionEntry.query);
-              } catch (execError) {
-                // Throw errors during sync rather than just warning
-                // Synced SQL expressions should never fail (otherwise they would've failed locally first)
-                throw new Error(`Exec failed during sync: ${transactionEntry.query} - ${(execError as Error).message}`);
+              // Handle regular query/exec
+              if (this.isReadQuery(transactionEntry.query)) {
+                // Skip read queries as they don't modify state
+                continue;
+              } else {
+                // Execute all other operations including INSERT
+                try {
+                  await this.pglite.exec(transactionEntry.query);
+                } catch (execError) {
+                  // Throw errors during sync rather than just warning
+                  // Synced SQL expressions should never fail (otherwise they would've failed locally first)
+                  throw new Error(`Exec failed during sync: ${transactionEntry.query} - ${(execError as Error).message}`);
+                }
               }
             }
+            
+            // Update last sync index for ALL processed blobs, not just executed ones
+            this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
+            
+            // Save the last sync index after each blob to track progress
+            await this.saveLastSyncIndex();
+            
+            info(`SYNC PROCESSED: Successfully processed blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
+          } catch (parseError: any) {
+            // If we can't parse the blob data, log the error and skip this blob
+            // This could happen if the blob contains corrupted data or is not a valid transaction
+            error(`Failed to parse blob ${blobMetadata.id}:`, parseError as Error);
+            warn(`Skipping blob ${blobMetadata.id} due to parsing error`);
+            
+            // Still update the last sync index to avoid reprocessing this problematic blob
+            this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
+            await this.saveLastSyncIndex();
           }
-          
-          // Update last sync index for ALL processed blobs, not just executed ones
-          this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
-          
-          // Save the last sync index after each blob to track progress
-          await this.saveLastSyncIndex();
-          
-          info(`SYNC PROCESSED: Successfully processed blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber}`);
         }
       } catch (err: unknown) {
         error(`Failed to sync blob ${blobMetadata.id}:`, err as Error);

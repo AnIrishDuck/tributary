@@ -1,0 +1,27 @@
+{
+  "name": "@tributary/scribe-cli",
+  "version": "1.0.0",
+  "description": "CLI for Tributary Scribe app - a markdown document editor, indexer, and linker (Work in Progress)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "scribe": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@tributary/scribe-data": "file:../scribe-data",
+    "@types/uuid": "^10.0.0",
+    "commander": "^9.4.1",
+    "kysely-tributary": "file:../../../kysely-tributary",
+    "tributary-client": "file:../../../tributary-client",
+    "tweetnacl": "^1.0.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

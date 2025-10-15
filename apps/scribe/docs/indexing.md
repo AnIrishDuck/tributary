@@ -30,8 +30,8 @@ Maps document UUIDs to their authoritative (latest) version UUIDs.
 - `version_uuid`: Version UUID of the authoritative version
 - `indexed_at`: Timestamp when this mapping was last updated
 
-### `block_tag` (Planned)
-Will store extracted tags for categorization and filtering.
+### `block_tag`
+Stores extracted tags for categorization and filtering.
 - `block_uuid`: Unique identifier for the block
 - `tag`: Extracted tag from the document
 - `indexed_at`: Timestamp when tag was indexed
@@ -54,9 +54,12 @@ For each unindexed authoritative block:
 3. If found, store both in the `block_slug` table
 4. If not found, remove any existing slug entry for that block
 
-### 3. Future Tag Extraction
+### 3. Tag Extraction
 
-The system is designed to also extract tags in the format `[#tagname](#tagname)` and store them in a `block_tag` table.
+For each unindexed authoritative block:
+1. Extract all tags in the format `[#tagname](#tagname)` from the document body
+2. Store each unique tag in the `block_tag` table
+3. If tags are removed in a new version, they are automatically removed from the index
 
 ## Progressive Indexing
 
