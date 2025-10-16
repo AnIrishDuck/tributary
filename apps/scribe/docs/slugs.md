@@ -16,7 +16,22 @@ Slugs are lowercase and URL-encoded. All blocks have a unique slug:
   - Simply slugging the titles conflicts, so we expand:
     - `8f41-8f41-uuid-block` and `a726-8f41-uuid-block` are unique
 
-## Linking
+## Slug Conflict Resolution
 
-Short markdown link targets (anything without a `/` or leading `#`) are assumed
-to be slug links.
+The slug conflict resolution algorithm works as follows:
+
+1. **Initial Check**: When a new block is indexed, we check if any existing block already has the same base slug
+2. **No Conflict**: If no conflicts exist, the base slug is used directly
+3. **Conflict Detected**: If a conflict exists, both the existing block and the new block need to have UUID prefixes
+4. **Prefix Generation**: 
+   - The existing block gets a 4-character prefix from its UUID: `abcd-document-title`
+   - The new block gets a 4-character prefix from its UUID: `1234-document-title`
+5. **Persistent Conflicts**: If 4-character prefixes still result in conflicts, we progressively add more UUID characters until uniqueness is achieved
+6. **Fallback**: In extreme cases, the full UUID is used as a prefix
+
+This approach ensures that:
+- All slugs remain unique at all times
+- Existing links to documents are preserved when possible
+- New conflicts are resolved automatically without user intervention
+
+For information about how slugs are used for linking, see [Linking System](linking.md).

@@ -51,15 +51,17 @@ The indexing process begins by identifying blocks that need to be indexed:
 For each unindexed authoritative block:
 1. Extract the first H1 heading (`# Title`) from the document body
 2. Convert the title to a URL-friendly slug
-3. If found, store both in the `block_slug` table
-4. If not found, remove any existing slug entry for that block
+3. Check for conflicts with existing slugs and resolve them using the conflict resolution algorithm
+4. Store the unique slug in the `block_slug` table
+5. If not found, remove any existing slug entry for that block
 
 ### 3. Tag Extraction
 
 For each unindexed authoritative block:
 1. Extract all tags in the format `[#tagname](#tagname)` from the document body
-2. Store each unique tag in the `block_tag` table
-3. If tags are removed in a new version, they are automatically removed from the index
+2. Validate that tags don't contain restricted characters (colon `:` or forward slash `/`)
+3. Store each unique tag in the `block_tag` table
+4. If tags are removed in a new version, they are automatically removed from the index
 
 ## Progressive Indexing
 
@@ -88,7 +90,8 @@ The system implements Last Write Wins (LWW) semantics for documents:
 
 1. Only the latest version of each block is indexed
 2. When a new version arrives, the index is updated automatically
-3. This approach handles conflicts by always reflecting the most recent state
+3. Slug conflicts are resolved using the conflict resolution algorithm described in slugs.md
+4. Existing links are preserved when possible during conflict resolution
 
 ## Implementation Details
 
@@ -118,6 +121,27 @@ All indexing operations are wrapped in database transactions to ensure consisten
 1. Mark block as indexed
 2. Update slug index
 3. Both operations succeed or fail together
+
+### Slug Conflict Resolution
+
+The indexing process handles slug conflicts as follows:
+
+1. When indexing a new block, if its base slug conflicts with an existing slug:
+   - Both the existing block and the new block are updated to have prefixed slugs
+   - The existing block gets a 4-character UUID prefix
+   - The new block gets a 4-character UUID prefix
+2. If 4-character prefixes still conflict, more UUID characters are added progressively
+3. All updates happen within a transaction to maintain consistency
+
+## Link Resolution Support
+
+The indexing system supports the link resolution process by:
+
+1. **Maintaining Accurate Slugs**: Ensuring all documents have unique, up-to-date slugs
+2. **Tracking Authoritative Versions**: Making sure links always point to the latest version of a document
+3. **Providing Lookup Mechanism**: The `block_slug` table serves as the lookup table for resolving slug references in links
+
+For detailed information about the linking system, see [Linking System](linking.md).
 
 ## Future Enhancements
 
