@@ -35,19 +35,19 @@ interface Database {
 // Create a server connection
 const server = new Server('http://localhost:3000')
 
-// Generate or load your key pair
-const keyPair = nacl.sign.keyPair()
-const privateKeyBase64 = encodeBase64(keyPair.secretKey)
-
 // Create TributaryClient
 const client = new TributaryClient({
   server,
-  privateKey: privateKeyBase64,
-  collectionId: 'my-notes-collection'
 })
 
+// Generate or load your key pair
+const keyPair = nacl.sign.keyPair()
+
+// Add a stream with the write key
+const stream = await client.addWriteKey("example", keyPair.secretKey)
+
 // Create Kysely instance with Tributary dialect
-const { dialect } = new KyselyTributary(client)
+const { dialect } = new KyselyTributary(stream)
 const db = new Kysely<Database>({ dialect })
 
 // Now you can use Kysely with full type safety
@@ -88,7 +88,7 @@ This ensures that all data is end-to-end encrypted and that no data is lost even
 The main class for creating a Kysely instance with Tributary support.
 
 ```typescript
-const tributary = new KyselyTributary(client: TributaryClient)
+const tributary = new KyselyTributary(stream: TributaryStream)
 const { dialect } = tributary
 const db = new Kysely<YourSchema>({ dialect })
 ```

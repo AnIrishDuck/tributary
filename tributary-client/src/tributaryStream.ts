@@ -25,7 +25,7 @@ export class TributaryStream {
   private lastSyncIndex: number = 0;
   private syncStateInitialized: boolean = false;
   private appId: string;
-  private streamId: string;
+  private schemaId: string;
   private schemaName: string;
 
   constructor(options: {
@@ -33,7 +33,7 @@ export class TributaryStream {
     privateKey: Uint8Array;
     pglite: PGlite;
     appId: string;
-    streamId: string;
+    schemaId: string;
   }) {
     this.server = options.server;
     this.privateKey = options.privateKey;
@@ -41,9 +41,10 @@ export class TributaryStream {
     this.publicKey = this.privateKey.slice(32);
     this.pglite = options.pglite;
     this.appId = options.appId;
-    this.streamId = options.streamId;
+    this.schemaId = options.schemaId;
     // Hex encode the stream id to avoid issues with SQL identifiers
-    this.schemaName = `${this.appId}_${this.streamId}`;
+    this.schemaName = `${this.appId}_${this.schemaId}`;
+    debug("schemaName", this.schemaName);
   }
 
   getId(): string {
@@ -99,7 +100,7 @@ export class TributaryStream {
         // We need to provide actual values for the NOT NULL columns
         await this.pglite.query(
           `INSERT INTO tributary.streams (id, schema_id, read_key, write_key, last_sync_index) VALUES ($1, $2, $3, $4, $5)`,
-          [this.getId(), this.streamId, this.publicKey, this.privateKey, null]
+          [this.getId(), this.schemaId, this.publicKey, this.privateKey, null]
         );
         info('Successfully inserted stream');
       } else {
@@ -107,16 +108,15 @@ export class TributaryStream {
         // Update write key if we have one now
         await this.pglite.query(
           `UPDATE tributary.streams SET write_key = $1, schema_id = $2 WHERE id = $3`,
-          [this.privateKey, this.streamId, this.getId()]
+          [this.privateKey, this.schemaId, this.getId()]
         );
         info('Successfully updated stream');
       }
       
       // Load the last sync index from the database
       await this.loadLastSyncIndex();
-    } catch (error: unknown) {
-      error('Could not initialize sync state:', error as Error);
-      warn('Could not initialize sync state:', error as Error);
+    } catch (e: unknown) {
+      error('Could not initialize sync state:', e as Error);
     }
   }
 
@@ -247,7 +247,7 @@ export class TributaryStream {
             info('TRANSACTION: recordingTx.query completed');
             return queryResult;
           } catch (error: any) {
-            error('TRANSACTION: recordingTx.query failed:', error);
+            error('TRANSACTION: recordingTx.query failed:', error as Error);
             throw error;
           }
         },
@@ -261,7 +261,7 @@ export class TributaryStream {
             recordedCommands.push({ query, params });
             info('TRANSACTION: recordingTx.exec completed');
           } catch (error: any) {
-            error('TRANSACTION: recordingTx.exec failed:', error);
+            error('TRANSACTION: recordingTx.exec failed:', error as Error);
             throw error;
           }
         }
@@ -401,6 +401,7 @@ export class TributaryStream {
                   for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
                     if (command.query) {
                       try {
+                        // @ts-ignore - PGLite transaction exec has different typing
                         await tx.exec(command.query, command.params);
                       } catch (cmdError) {
                         // Throw errors during sync rather than just warning

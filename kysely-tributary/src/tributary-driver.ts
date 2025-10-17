@@ -1,4 +1,4 @@
-import { TributaryClient } from 'tributary-client'
+import { TributaryStream } from 'tributary-client'
 import {
   CompiledQuery,
   DatabaseConnection,
@@ -7,14 +7,14 @@ import {
 } from 'kysely'
 
 export class TributaryDriver {
-  private client: TributaryClient
+  private stream: TributaryStream
 
-  constructor(client: TributaryClient) {
-    this.client = client
+  constructor(stream: TributaryStream) {
+    this.stream = stream
   }
 
   async acquireConnection(): Promise<DatabaseConnection> {
-    return new TributaryConnection(this.client)
+    return new TributaryConnection(this.stream)
   }
 
   async beginTransaction(
@@ -33,7 +33,7 @@ export class TributaryDriver {
   }
 
   async destroy(): Promise<void> {
-    // TributaryClient doesn't have a close method, but we could add one if needed
+    // TributaryStream doesn't have a close method, but we could add one if needed
   }
 
   async init(): Promise<void> {}
@@ -41,19 +41,19 @@ export class TributaryDriver {
 }
 
 class TributaryConnection implements DatabaseConnection {
-  private client: TributaryClient
+  private stream: TributaryStream
 
-  constructor(client: TributaryClient) {
-    this.client = client
+  constructor(stream: TributaryStream) {
+    this.stream = stream
   }
 
   async executeQuery<R>(
     compiledQuery: CompiledQuery<any>,
   ): Promise<QueryResult<R>> {
-    // Route all queries through the TributaryClient
-    // The client will automatically handle read vs write operations
+    // Route all queries through the TributaryStream
+    // The stream will automatically handle read vs write operations
     // and ensure persistence guarantees for write operations
-    const result = await this.client.query(compiledQuery.sql, [
+    const result = await this.stream.query(compiledQuery.sql, [
       ...compiledQuery.parameters,
     ]);
     // Cast to QueryResult<R> to match Kysely's expected return type
@@ -61,6 +61,6 @@ class TributaryConnection implements DatabaseConnection {
   }
 
   async *streamQuery(): AsyncGenerator<never, void, unknown> {
-    throw new Error('TributaryClient does not support streaming.')
+    throw new Error('TributaryStream does not support streaming.')
   }
 }

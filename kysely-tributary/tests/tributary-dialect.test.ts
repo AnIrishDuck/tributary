@@ -37,6 +37,7 @@ type TestDB = {
 describe('kysely-tributary dialect', () => {
   let server: FakeServer
   let client: TributaryClient
+  let stream: TributaryStream
   let db: Kysely<TestDB>
 
   beforeEach(async () => {
@@ -50,12 +51,13 @@ describe('kysely-tributary dialect', () => {
     // Create TributaryClient with the fake server
     client = new TributaryClient({
       server,
-      privateKey: privateKeyBase64,
-      collectionId: 'test-collection'
     })
     
+    // Add a stream with the write key
+    stream = await client.addWriteKey('test', keyPair.secretKey)
+    
     // Create Kysely with Tributary dialect
-    const { dialect } = new KyselyTributary(client)
+    const { dialect } = new KyselyTributary(stream)
     db = new Kysely<TestDB>({ dialect })
     
     // Create test table

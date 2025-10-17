@@ -136,6 +136,7 @@ export class TributaryClient {
 
     // Generate schema ID from the public key
     const schemaId = await this.generateSchemaId(publicKey);
+    info('Generated schema id', schemaId);
     
     // Create a new TributaryStream
     const stream = new TributaryStream({
@@ -143,7 +144,7 @@ export class TributaryClient {
       privateKey: privateKey,
       pglite: this.pglite,
       appId: appId,
-      streamId: schemaId
+      schemaId: schemaId
     });
     
     info('Created TributaryStream, about to initialize schema');
@@ -151,6 +152,7 @@ export class TributaryClient {
     // Initialize the stream
     await stream.initializeSchema();
     // Initialize sync state to ensure stream is saved to database
+    // @ts-ignore - accessing private method for initialization
     await stream.initializeSyncState();
     
     info('Schema initialized');
@@ -165,8 +167,8 @@ export class TributaryClient {
         [streamIdStr]
       );
       debug('Stream verification result:', result.rows);
-    } catch (error) {
-      error('Error verifying stream:', error);
+    } catch (e) {
+      error('Error verifying stream:', e as Error);
     }
     
     return stream;
@@ -241,7 +243,7 @@ export class TributaryClient {
           privateKey: writeKey,
           pglite: this.pglite,
           appId: 'readonly', // Use a default app ID for read-only access
-          streamId: id
+          schemaId: id
         });
         
         debug('Created stream object, initializing');
