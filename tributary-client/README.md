@@ -29,8 +29,30 @@ The client library implements a write-through cache pattern where:
 2. Operations are sent to tributary-server with cryptographic signatures
 3. Server confirms persistence before client commits locally
 4. Read operations can be served from local PGLite instance
-5. Sync state is tracked in a special `__tributary_sync_state` table in the local database
+5. Sync state is tracked in a special `tributary.streams` table in the local database
 6. Synchronization handles network disruptions gracefully
+
+### Schemas
+
+We extensively use postgres schemas and the search path to manage multiple
+streams within the same database.
+
+Schemas take the following format (each app has a unique `app_id` e.g.
+`scribe`; the `app_id` must be a valid sql identifier and cannot contain a
+`_`):
+
+- `tributary`: internal key and sync state storage
+- `[app_id]_[stream_id]`: materializes all the tables for the relevant stream
+
+### Internal Schema
+
+Tributary keeps all of its own local state under the `tributary` schema:
+
+- `streams` - key and sequence tracking
+  - `read_key` - required. read key material for the stream. 
+  - `write_key` - optional. only present if a write key has been given for the stream.
+  - `last_sync_index` - optional. last sequence number from the server that has been
+    persisted locally. if NULL, no stream entries have been processed.
 
 ## Security Model
 
@@ -58,8 +80,10 @@ import { TributaryClient, TributaryServer } from 'tributary-client';
 
 const client = new TributaryClient({
   server: new TributaryServer('https://your-tributary-server.com'),
-  privateKey: 'your-private-key-base64',
 });
+
+const data = client.addWriteKey('your-private-key-base64');
+
 ```
 
 ### Configuration Options
@@ -67,23 +91,27 @@ const client = new TributaryClient({
 | Option | Type | Description |
 |--------|------|-------------|
 | `server` | Server | Server implementation (TributaryServer or FakeServer) |
-| `privateKey` | string or Uint8Array | NaCl private key for signing |
-| `collectionId` | string | Unique identifier for the collection |
 | `db` | PGlite | Optional existing PGlite instance |
-| `syncTableName` | string | Optional custom table name for sync state (default: `__tributary_sync_state`) |
-
-### Sync State Management
-
-The client automatically creates and manages a special table (`__tributary_sync_state` by default) in the local database to track synchronization progress. This table contains:
-
-- `id`: Primary key (always 1)
-- `last_sync_index`: The highest sequence number that has been synced
-
-This approach ensures that sync state is preserved even when the client is recreated with the same database instance, preventing duplicate processing of operations.
 
 ## API
 
-The `TributaryClient` object exposes methods for database operations:
+The `TributaryClient` object exposes methods for listing and adding streams:
+
+### list()
+List all `TributaryStream` objects tracked locally
+
+### addWriteKey(key)
+Add a stream with the given private write key, return the associated `TributaryStream`
+
+### get(id)
+Get a `TributaryStream` given a url-safe base64 encoded id, `undefined` if are not tracking that stream
+
+## Stream API
+
+The `TributaryStream` object exposes methods for database operations.
+
+It sets the appropriate schema `search_path` before each operation to ensure that
+they operate on the correct set of tables:
 
 ### query(query, params?)
 Execute SQL query with persistence guarantee
@@ -102,8 +130,6 @@ When syncing, the client:
 2. Filters out operations that have already been processed (based on `last_sync_index`)
 3. Applies only new operations to the local database
 4. Updates the sync state in the local database
-
-Note: During sync, DDL operations (CREATE, ALTER, DROP) are skipped as they are assumed to already exist in the local database.
 
 ## Development
 

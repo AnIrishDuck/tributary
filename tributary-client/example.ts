@@ -18,18 +18,41 @@ async function example() {
   
   // Create a TributaryClient
   const client = new TributaryClient({
-    server: fakeServer,
-    privateKey: privateKeyBase64
+    server: fakeServer
   });
   
   console.log('TributaryClient created successfully');
+  
+  // Add a stream with a write key
+  const stream = await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+  console.log('TributaryStream created successfully');
+  
+  // List all streams
+  const streams = await client.list();
+  console.log('Streams:', streams);
+  
+  // Get a stream by ID
+  const retrievedStream = await client.get(stream.getId());
+  console.log('Retrieved stream:', retrievedStream ? 'found' : 'not found');
   
   // Create a real server connection (for production use)
   const realServer = new TributaryServer('http://localhost:8080');
   console.log('TributaryServer created for URL: http://localhost:8080');
   
-  // Example of using the client for database operations would go here
-  // For now, we'll just show the setup
+  // Example of using the stream for database operations
+  try {
+    // Create a table
+    await stream.exec('CREATE TABLE IF NOT EXISTS documents (id SERIAL PRIMARY KEY, title TEXT, content TEXT)');
+    
+    // Insert a document
+    await stream.exec('INSERT INTO documents (title, content) VALUES ($1, $2)', ['Hello World', 'This is a test document']);
+    
+    // Query documents
+    const result = await stream.query('SELECT * FROM documents');
+    console.log('Documents:', result.rows);
+  } catch (error) {
+    console.error('Error with database operations:', error);
+  }
 }
 
 // Run the example

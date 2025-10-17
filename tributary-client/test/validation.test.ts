@@ -19,15 +19,16 @@ describe('Hash Process Validation', () => {
 
   it('should validate the simplified hash process with manual verification', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
+    
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
 
     // Execute a few operations
-    await client.query("CREATE TABLE test (id INTEGER, name TEXT)");
-    await client.query("INSERT INTO test VALUES (1, 'first')");
-    await client.query("INSERT INTO test VALUES (2, 'second')");
+    await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.query("INSERT INTO test VALUES (1, 'first')");
+    await stream.query("INSERT INTO test VALUES (2, 'second')");
 
     // Get all blobs from the fake server
     const anyFakeServer = fakeServer as any;

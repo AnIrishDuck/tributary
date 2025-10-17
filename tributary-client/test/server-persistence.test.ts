@@ -6,9 +6,17 @@ import nacl from 'tweetnacl';
 
 // Helper functions to compute hashes the same way as the client and server
 async function computeHashInTest(data: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // Use node crypto if available, otherwise use web crypto
+  if (typeof require !== 'undefined') {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256');
+    hash.update(data);
+    return hash.digest('hex');
+  } else {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 }
 
 describe('Server Persistence', () => {
@@ -24,10 +32,11 @@ describe('Server Persistence', () => {
 
   it('should persist write operations to server before local execution', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
+    
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -38,10 +47,10 @@ describe('Server Persistence', () => {
     };
     
     // Create a table first
-    await client.query("CREATE TABLE users (name TEXT)");
+    await stream.query("CREATE TABLE users (name TEXT)");
     
     // Execute a write query
-    const result = await client.query("INSERT INTO users (name) VALUES ('Alice')");
+    const result = await stream.query("INSERT INTO users (name) VALUES ('Alice')");
     
     // Verify that server persistence was called before local execution
     expect(serverStoreCalls).toBe(2); // One for CREATE TABLE, one for INSERT
@@ -52,15 +61,16 @@ describe('Server Persistence', () => {
 
   it('should maintain proper chaining of transactions', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Execute multiple write operations
-    await client.query("CREATE TABLE test (id INTEGER, name TEXT)");
-    await client.query("INSERT INTO test VALUES (1, 'first')");
-    await client.query("INSERT INTO test VALUES (2, 'second')");
+    await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.query("INSERT INTO test VALUES (1, 'first')");
+    await stream.query("INSERT INTO test VALUES (2, 'second')");
     
     // Verify that all operations were persisted to server by checking the fake server directly
     // We'll access the private blobs map through a workaround
@@ -74,15 +84,16 @@ describe('Server Persistence', () => {
 
   it('should properly chain hashes for multiple entries', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Execute multiple write operations
-    await client.query("CREATE TABLE test (id INTEGER, name TEXT)");
-    await client.query("INSERT INTO test VALUES (1, 'first')");
-    await client.query("INSERT INTO test VALUES (2, 'second')");
+    await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.query("INSERT INTO test VALUES (1, 'first')");
+    await stream.query("INSERT INTO test VALUES (2, 'second')");
     
     // Get all blobs from the fake server
     const anyFakeServer = fakeServer as any;
@@ -115,13 +126,14 @@ describe('Server Persistence', () => {
 
   it('should validate signatures using the same method as the server', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Execute a write operation
-    await client.query("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
     
     // Get the blob from the fake server
     const anyFakeServer = fakeServer as any;
@@ -145,15 +157,16 @@ describe('Server Persistence', () => {
 
   it('should replicate the exact hash structure from server integration tests', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Execute multiple operations like in the server integration tests
-    await client.query("CREATE TABLE test (id INTEGER, name TEXT)");
-    await client.query("INSERT INTO test VALUES (1, 'first')");
-    await client.query("INSERT INTO test VALUES (2, 'second')");
+    await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.query("INSERT INTO test VALUES (1, 'first')");
+    await stream.query("INSERT INTO test VALUES (2, 'second')");
     
     // Get all blobs
     const anyFakeServer = fakeServer as any;
@@ -197,13 +210,14 @@ describe('Server Persistence', () => {
 
   it('should handle server persistence failures appropriately', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Create a table first
-    await client.query("CREATE TABLE users (name TEXT)");
+    await stream.query("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
     fakeServer.storeBlob = async (...args: any[]) => {
@@ -211,17 +225,18 @@ describe('Server Persistence', () => {
     };
     
     // Try to execute a write query - should fail
-    await expect(client.query("INSERT INTO users (name) VALUES ('Alice')"))
+    await expect(stream.query("INSERT INTO users (name) VALUES ('Alice')"))
       .rejects
       .toThrow('Failed to persist transaction on server');
   });
 
   it('should persist exec operations to server before local execution', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
+    
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -232,10 +247,10 @@ describe('Server Persistence', () => {
     };
     
     // Create a table using exec
-    await client.exec("CREATE TABLE users (name TEXT)");
+    await stream.exec("CREATE TABLE users (name TEXT)");
     
     // Execute a write operation using exec
-    await client.exec("INSERT INTO users (name) VALUES ('Alice')");
+    await stream.exec("INSERT INTO users (name) VALUES ('Alice')");
     
     // Verify that server persistence was called before local execution
     expect(serverStoreCalls).toBe(2); // One for CREATE TABLE, one for INSERT
@@ -243,15 +258,16 @@ describe('Server Persistence', () => {
 
   it('should properly chain hashes for exec entries', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Execute multiple write operations using exec
-    await client.exec("CREATE TABLE test (id INTEGER, name TEXT)");
-    await client.exec("INSERT INTO test VALUES (1, 'first')");
-    await client.exec("INSERT INTO test VALUES (2, 'second')");
+    await stream.exec("CREATE TABLE test (id INTEGER, name TEXT)");
+    await stream.exec("INSERT INTO test VALUES (1, 'first')");
+    await stream.exec("INSERT INTO test VALUES (2, 'second')");
     
     // Get all blobs from the fake server
     const anyFakeServer = fakeServer as any;
@@ -284,13 +300,14 @@ describe('Server Persistence', () => {
 
   it('should handle server persistence failures for exec operations appropriately', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Create a table first
-    await client.exec("CREATE TABLE users (name TEXT)");
+    await stream.exec("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
     fakeServer.storeBlob = async (...args: any[]) => {
@@ -298,17 +315,18 @@ describe('Server Persistence', () => {
     };
     
     // Try to execute a write operation using exec - should fail
-    await expect(client.exec("INSERT INTO users (name) VALUES ('Alice')"))
+    await expect(stream.exec("INSERT INTO users (name) VALUES ('Alice')"))
       .rejects
       .toThrow('Failed to persist transaction on server');
   });
 
   it.skip('should support exec operations within transactions', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
+    
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -319,7 +337,7 @@ describe('Server Persistence', () => {
     };
     
     // Execute a transaction that uses exec
-    await client.transaction(async (tx) => {
+    await stream.transaction(async (tx) => {
       await tx.exec("CREATE TABLE users (name TEXT)");
       await tx.exec("INSERT INTO users (name) VALUES ('Alice')");
       await tx.exec("INSERT INTO users (name) VALUES ('Bob')");
@@ -337,13 +355,14 @@ describe('Server Persistence', () => {
     // Decode and decrypt the data to see what's inside
     // First, we need to create a temporary client to use its decryptData method
     const tempClient = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'temp-collection'
+      server: fakeServer
     });
     
+    // Add a stream to the temporary client
+    const tempStream = await tempClient.addWriteKey(testPrivateKeyBase64, 'temp', 'collection');
+    
     // Decrypt the blob data
-    const decryptedData = (tempClient as any).decryptData(blobs[0].data);
+    const decryptedData = (tempStream as any).decryptData(blobs[0].data);
     const decodedData = new TextDecoder().decode(decryptedData);
     const transactionEntry = JSON.parse(decodedData);
     
@@ -359,13 +378,14 @@ describe('Server Persistence', () => {
 
   it('should rollback transaction when exec operation fails server persistence', async () => {
     const client = new TributaryClient({
-      server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: 'test-collection'
+      server: fakeServer
     });
     
+    // Add a stream to work with
+    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    
     // Create a table first outside the transaction
-    await client.exec("CREATE TABLE users (name TEXT)");
+    await stream.exec("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
     fakeServer.storeBlob = async (...args: any[]) => {
@@ -373,7 +393,7 @@ describe('Server Persistence', () => {
     };
     
     // Execute a transaction that uses exec - should fail and rollback
-    await expect(client.transaction(async (tx) => {
+    await expect(stream.transaction(async (tx) => {
       await tx.exec("INSERT INTO users (name) VALUES ('Alice')");
       await tx.exec("INSERT INTO users (name) VALUES ('Bob')");
       return "transaction completed";

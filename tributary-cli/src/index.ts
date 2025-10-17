@@ -3,13 +3,13 @@
 import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey } from './key';
 import { executeSQL } from './psql';
-import { uploadStaticSite, listStaticSite, catStaticSiteFile } from './static';
 import { logger, info, error as errorLog, warn } from './logger';
 
 // Comprehensive test function
 import { TributaryClient, FakeServer } from 'tributary-client';
 import { loadKeyPair } from './key';
 import { PGlite } from '@electric-sql/pglite';
+import { encodeBase64 } from 'tweetnacl-util';
 
 async function comprehensivePsqlTest() {
   info('Running comprehensive psql command test...');
@@ -30,15 +30,23 @@ async function comprehensivePsqlTest() {
     // Create a client instance
     const client = new TributaryClient({
       server: fakeServer,
-      privateKey: keyPair.secretKey,
-      collectionId: 'comprehensive-test-collection',
       db: db
     });
     info('Created TributaryClient instance');
     
+    // Derive public key to use as stream ID
+    const publicKey = keyPair.secretKey.slice(32);
+    const streamId = encodeBase64(publicKey);
+    // Sanitize stream ID for use as schema name (replace invalid characters)
+    const sanitizedStreamId = streamId.replace(/[+/]/g, '_').replace(/=/g, '');
+    
+    // Add stream to client
+    const stream = await client.addWriteKey(keyPair.secretKey, 'test', sanitizedStreamId);
+    info('Created TributaryStream instance');
+    
     // Test a series of SQL operations
     info('\n--- Testing CREATE TABLE ---');
-    await client.exec(`
+    await stream.exec(`
       CREATE TABLE IF NOT EXISTS notes (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -49,38 +57,38 @@ async function comprehensivePsqlTest() {
     info('Created notes table');
     
     info('\n--- Testing INSERT operations ---');
-    await client.exec(
+    await stream.exec(
       "INSERT INTO notes (title, content) VALUES ('First Note', 'This is the content of the first note')",
     );
     info('Inserted first note');
     
-    await client.exec(
+    await stream.exec(
       "INSERT INTO notes (title, content) VALUES ('Second Note', 'This is the content of the second note')",
     );
     info('Inserted second note');
     
     info('\n--- Testing SELECT query ---');
-    const selectResult = await client.query('SELECT * FROM notes ORDER BY id');
+    const selectResult = await stream.query('SELECT * FROM notes ORDER BY id');
     info('Selected notes:', selectResult.rows);
     
     info('\n--- Testing UPDATE operation ---');
-    await client.exec("UPDATE notes SET content = 'Updated content' WHERE title = 'First Note'");
+    await stream.exec("UPDATE notes SET content = 'Updated content' WHERE title = 'First Note'");
     info('Updated first note');
     
     info('\n--- Testing SELECT after UPDATE ---');
-    const updatedResult = await client.query('SELECT * FROM notes WHERE title = \'First Note\'');
+    const updatedResult = await stream.query('SELECT * FROM notes WHERE title = \'First Note\'');
     info('Updated note:', updatedResult.rows[0]);
     
     info('\n--- Testing DELETE operation ---');
-    await client.exec("DELETE FROM notes WHERE title = 'Second Note'");
+    await stream.exec("DELETE FROM notes WHERE title = 'Second Note'");
     info('Deleted second note');
     
     info('\n--- Testing SELECT after DELETE ---');
-    const finalResult = await client.query('SELECT * FROM notes');
+    const finalResult = await stream.query('SELECT * FROM notes');
     info('Remaining notes:', finalResult.rows);
     
     info('\n--- Testing transaction ---');
-    await client.transaction(async (tx) => {
+    await stream.transaction(async (tx) => {
       await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 1', 'Content 1')");
       await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 2', 'Content 2')");
       // Let's also query within the transaction to verify we can see our changes
@@ -90,7 +98,7 @@ async function comprehensivePsqlTest() {
     info('Transaction completed successfully');
     
     info('\n--- Final verification ---');
-    const finalVerification = await client.query('SELECT * FROM notes ORDER BY id');
+    const finalVerification = await stream.query('SELECT * FROM notes ORDER BY id');
     info('Final notes in database:', finalVerification.rows);
     
     info('\nAll comprehensive tests passed!');
@@ -183,16 +191,24 @@ program
           // Create a client instance
           const client = new TributaryClient({
             server: fakeServer,
-            privateKey: keyPair.secretKey,
-            collectionId: 'test-collection',
             db: db
           });
           info('Created TributaryClient instance');
           
+          // Derive public key to use as stream ID
+          const publicKey = keyPair.secretKey.slice(32);
+          const streamId = encodeBase64(publicKey);
+          // Sanitize stream ID for use as schema name (replace invalid characters)
+          const sanitizedStreamId = streamId.replace(/[+/]/g, '_').replace(/=/g, '');
+          
+          // Add stream to client
+          const stream = await client.addWriteKey(keyPair.secretKey, 'test', sanitizedStreamId);
+          info('Created TributaryStream instance');
+          
           try {
             // Execute the provided SQL
             info('Executing SQL command...');
-            const result = await client.query(sql);
+            const result = await stream.query(sql);
             info('SQL command executed successfully');
             info('Result:', result);
             return;
@@ -251,82 +267,41 @@ program
 // Create static site management commands
 const staticCmd = program
   .command('static')
-  .description('Static site management commands');
+  .description('Static site management commands (no longer supported)');
 
 staticCmd
   .command('up')
-  .description('Upload a static site')
+  .description('Upload a static site (no longer supported)')
   .argument('<staticRoot>', 'Path to the static site root directory')
   .option('-w, --writekey <key>', 'Key to use for write operations')
   .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
   .option('-t, --test', 'Use test mode with FakeServer')
   .action(async (staticRoot, options) => {
-    try {
-      if (!options.writekey) {
-        errorLog('Error: Write key is required. Use --writekey to specify a key.');
-        process.exit(1);
-      }
-      
-      await uploadStaticSite({
-        writeKey: options.writekey,
-        staticRoot,
-        collectionId: options.collection,
-        useTestServer: options.test
-      });
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
-      process.exit(1);
-    }
+    errorLog('Error: Static site functionality is no longer supported.');
+    process.exit(1);
   });
 
 staticCmd
   .command('ls')
-  .description('List static site files')
+  .description('List static site files (no longer supported)')
   .option('-w, --writekey <key>', 'Key to use for write operations')
   .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
   .option('-t, --test', 'Use test mode with FakeServer')
   .action(async (options) => {
-    try {
-      if (!options.writekey) {
-        errorLog('Error: Write key is required. Use --writekey to specify a key.');
-        process.exit(1);
-      }
-      
-      await listStaticSite({
-        writeKey: options.writekey,
-        collectionId: options.collection,
-        useTestServer: options.test
-      });
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
-      process.exit(1);
-    }
+    errorLog('Error: Static site functionality is no longer supported.');
+    process.exit(1);
   });
 
 staticCmd
   .command('cat')
-  .description('Retrieve a static site file')
+  .description('Retrieve a static site file (no longer supported)')
   .argument('<filePath>', 'Path to the file to retrieve')
   .option('-w, --writekey <key>', 'Key to use for write operations')
   .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
   .option('-t, --test', 'Use test mode with FakeServer')
   .action(async (filePath, options) => {
-    try {
-      if (!options.writekey) {
-        errorLog('Error: Write key is required. Use --writekey to specify a key.');
-        process.exit(1);
-      }
-      
-      await catStaticSiteFile({
-        writeKey: options.writekey,
-        filePath,
-        collectionId: options.collection,
-        useTestServer: options.test
-      });
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
-      process.exit(1);
-    }
+    errorLog('Error: Static site functionality is no longer supported.');
+    process.exit(1);
   });
 
 program.parse();

@@ -15,7 +15,7 @@ describe('Consolidated Sync Test', () => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
     testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
-    collectionId = 'consolidated-test-' + Date.now();
+    collectionId = 'consolidated_test_' + Date.now(); // Use underscore instead of dash
   });
 
   it('should sync data between two clients properly', async () => {
@@ -26,36 +26,38 @@ describe('Consolidated Sync Test', () => {
     // Create first client
     const client1 = new TributaryClient({
       server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: collectionId,
       db: db1
     });
+    
+    // Add a stream to work with
+    const stream1 = await client1.addWriteKey(testPrivateKeyBase64, 'test', collectionId);
 
     // Create second client
     const client2 = new TributaryClient({
       server: fakeServer,
-      privateKey: testPrivateKeyBase64,
-      collectionId: collectionId,
       db: db2
     });
+    
+    // Add a stream to work with
+    const stream2 = await client2.addWriteKey(testPrivateKeyBase64, 'test', collectionId);
 
     console.log('=== Test Phase 1: Initialize DB1 and create schema ===');
     // Create table in DB1
-    await client1.query("CREATE TABLE IF NOT EXISTS sync_test (id INTEGER PRIMARY KEY, message TEXT, source TEXT, timestamp TEXT)");
+    await stream1.exec("CREATE TABLE IF NOT EXISTS sync_test (id INTEGER PRIMARY KEY, message TEXT, source TEXT, timestamp TEXT)");
     
     console.log('=== Test Phase 2: Insert initial data from DB1 ===');
     // Insert first record from DB1
-    await client1.query("INSERT INTO sync_test VALUES (1, 'Hello from DB1', 'DB1', '" + new Date().toISOString() + "')");
+    await stream1.exec("INSERT INTO sync_test VALUES (1, 'Hello from DB1', 'DB1', '" + new Date().toISOString() + "')");
 
     console.log('=== Test Phase 3: Verify DB2 can read DB1\'s data ===');
     // Create table in DB2 (schema needs to exist locally)
-    await client2.query("CREATE TABLE IF NOT EXISTS sync_test (id INTEGER PRIMARY KEY, message TEXT, source TEXT, timestamp TEXT)");
+    await stream2.exec("CREATE TABLE IF NOT EXISTS sync_test (id INTEGER PRIMARY KEY, message TEXT, source TEXT, timestamp TEXT)");
     
     // Sync DB2 to get DB1's data
-    await client2.sync();
+    await stream2.sync();
     
     // Query data in DB2 (should see DB1's message after sync)
-    const db2QueryResult = await client2.query("SELECT * FROM sync_test ORDER BY id");
+    const db2QueryResult = await stream2.query("SELECT * FROM sync_test ORDER BY id");
     console.log('DB2 query result:', db2QueryResult.rows);
     
     // Check if DB2 sees DB1's data
@@ -69,14 +71,14 @@ describe('Consolidated Sync Test', () => {
 
     console.log('=== Test Phase 4: Insert data from DB2 ===');
     // Insert record from DB2
-    await client2.query("INSERT INTO sync_test VALUES (2, 'Hello from DB2', 'DB2', '" + new Date().toISOString() + "')");
+    await stream2.exec("INSERT INTO sync_test VALUES (2, 'Hello from DB2', 'DB2', '" + new Date().toISOString() + "')");
 
     console.log('=== Test Phase 5: Verify DB1 can read DB2\'s data ===');
     // Sync DB1 to get DB2's data
-    await client1.sync();
+    await stream1.sync();
     
     // Query data in DB1 (should see both messages after sync)
-    const db1QueryResult = await client1.query("SELECT * FROM sync_test ORDER BY id");
+    const db1QueryResult = await stream1.query("SELECT * FROM sync_test ORDER BY id");
     console.log('DB1 query result:', db1QueryResult.rows);
 
     console.log('=== Final Validation ===');
