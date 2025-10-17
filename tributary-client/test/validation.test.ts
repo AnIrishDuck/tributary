@@ -23,7 +23,7 @@ describe('Hash Process Validation', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
 
     // Execute a few operations
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");

@@ -30,7 +30,7 @@ describe('Consolidated Sync Test', () => {
     });
     
     // Add a stream to work with
-    const stream1 = await client1.addWriteKey(testPrivateKeyBase64, 'test', collectionId);
+    const stream1 = await client1.addWriteKey('test', testPrivateKeyBase64);
 
     // Create second client
     const client2 = new TributaryClient({
@@ -39,7 +39,7 @@ describe('Consolidated Sync Test', () => {
     });
     
     // Add a stream to work with
-    const stream2 = await client2.addWriteKey(testPrivateKeyBase64, 'test', collectionId);
+    const stream2 = await client2.addWriteKey('test', testPrivateKeyBase64);
 
     console.log('=== Test Phase 1: Initialize DB1 and create schema ===');
     // Create table in DB1

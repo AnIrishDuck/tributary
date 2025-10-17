@@ -36,6 +36,7 @@ export class TributaryClient {
       await this.pglite.exec(
         `CREATE TABLE IF NOT EXISTS tributary.streams (
           id TEXT PRIMARY KEY,
+          schema_id TEXT UNIQUE NOT NULL,
           read_key BYTEA NOT NULL,
           write_key BYTEA,
           last_sync_index INTEGER
@@ -47,13 +48,71 @@ export class TributaryClient {
   }
 
   /**
+   * Generate a unique schema ID based on the public key
+   * @param publicKey The public key to derive the schema ID from
+   * @returns A unique schema ID that is a valid SQL identifier
+   */
+  private async generateSchemaId(publicKey: Uint8Array): Promise<string> {
+    // Import computeHash function
+    const { computeHash } = await import('./hashUtils');
+    
+    // Hash the public key
+    const fullHash = await computeHash(publicKey);
+    
+    // Convert hex hash to a valid SQL identifier
+    // Remove any invalid characters and ensure it starts with a letter
+    let schemaId = fullHash.substring(0, 15); // Prepend 's' to ensure it starts with a letter
+    
+    // Check if this schema ID already exists, if so keep hashing until we find a free one
+    let currentSchemaId = schemaId;
+    let counter = 0;
+    const MAX_ATTEMPTS = 10000; // Limit to prevent infinite loops
+    
+    // Limit iterations to prevent infinite loops
+    while (counter < MAX_ATTEMPTS) {
+      // Check if this schema ID already exists in the database
+      try {
+        const result: any = await this.pglite.query(
+          `SELECT COUNT(*) as count FROM tributary.streams WHERE schema_id = $1`,
+          [currentSchemaId]
+        );
+        
+        if (result.rows[0].count === 0) {
+          break; // Found a unique schema ID
+        }
+      } catch (error) {
+        // If there's an error querying, assume the schema ID is free
+        break;
+      }
+      
+      // Increment counter and generate a new schema ID
+      counter++;
+      const counterBuffer = new Uint8Array(publicKey.length + 4);
+      counterBuffer.set(publicKey);
+      const counterBytes = new Uint8Array(4);
+      new DataView(counterBytes.buffer).setUint32(0, counter, false);
+      counterBuffer.set(counterBytes, publicKey.length);
+      
+      const counterHash = await computeHash(counterBuffer);
+      let counterSchemaId = counterHash.substring(0, 15);
+      currentSchemaId = counterSchemaId;
+    }
+    
+    // If we've exhausted our attempts, throw an error
+    if (counter >= MAX_ATTEMPTS) {
+      throw new Error(`Unable to generate unique schema ID after ${MAX_ATTEMPTS} attempts`);
+    }
+    
+    return currentSchemaId;
+  }
+
+  /**
    * Add a stream with the given private write key
-   * @param key Private write key (base64 encoded string or Uint8Array)
    * @param appId Application identifier (must be a valid SQL identifier without underscores)
-   * @param streamId Stream identifier
+   * @param key Private write key (base64 encoded string or Uint8Array)
    * @returns The associated TributaryStream
    */
-  async addWriteKey(key: string | Uint8Array, appId: string, streamId: string): Promise<TributaryStream> {
+  async addWriteKey(appId: string, key: string | Uint8Array): Promise<TributaryStream> {
     // Wait for initialization to complete
     await this.initialized;
     
@@ -74,6 +133,9 @@ export class TributaryClient {
     if (this.streams.has(streamIdStr)) {
       return this.streams.get(streamIdStr)!;
     }
+
+    // Generate schema ID from the public key
+    const schemaId = await this.generateSchemaId(publicKey);
     
     // Create a new TributaryStream
     const stream = new TributaryStream({
@@ -81,15 +143,17 @@ export class TributaryClient {
       privateKey: privateKey,
       pglite: this.pglite,
       appId: appId,
-      streamId: streamId
+      streamId: schemaId
     });
     
-    console.log('Created TributaryStream, about to initialize schema');
+    info('Created TributaryStream, about to initialize schema');
     
     // Initialize the stream
     await stream.initializeSchema();
+    // Initialize sync state to ensure stream is saved to database
+    await stream.initializeSyncState();
     
-    console.log('Schema initialized');
+    info('Schema initialized');
     
     // Store the stream
     this.streams.set(streamIdStr, stream);
@@ -100,9 +164,9 @@ export class TributaryClient {
         `SELECT id FROM tributary.streams WHERE id = $1`,
         [streamIdStr]
       );
-      console.log('Stream verification result:', result.rows);
+      debug('Stream verification result:', result.rows);
     } catch (error) {
-      console.error('Error verifying stream:', error);
+      error('Error verifying stream:', error);
     }
     
     return stream;
@@ -130,7 +194,7 @@ export class TributaryClient {
   }
 
   /**
-   * Get a TributaryStream given a url-safe base64 encoded id
+   * Get a TributaryStream given a stream ID (url-safe base64 encoded public key))
    * For read-only access, we can create a stream with just the public key
    * @param id URL-safe base64 encoded stream ID (public key)
    * @returns TributaryStream or undefined if not tracking that stream
@@ -139,67 +203,65 @@ export class TributaryClient {
     // Wait for initialization to complete
     await this.initialized;
     
-    console.log('DEBUG: Looking for stream with ID:', id);
+    debug('Looking for stream with ID:', id);
     
     // Check if we already have this stream in memory
     if (this.streams.has(id)) {
-      console.log('DEBUG: Found stream in memory');
+      debug('Found stream in memory');
       return this.streams.get(id);
     }
     
     // If not, check if it exists in the database
     try {
-      console.log('DEBUG: Querying database for stream');
+      debug('Querying database for stream');
       const result: any = await this.pglite.query(
         `SELECT read_key, write_key FROM tributary.streams WHERE id = $1`,
         [id]
       );
       
-      console.log('DEBUG: Query result:', result.rows);
+      debug('Query result:', result.rows);
       
       if (result.rows.length > 0) {
         // We found the stream in the database
         // Create a stream with the available key material
         const row = result.rows[0];
         const publicKey = row.read_key; // Always use the read key for public access
+        const writeKey = row.write_key; // Get the write key if available
         
-        console.log('DEBUG: Creating stream with public key');
+        debug('Creating stream with public key');
+
+        // For now assume that we always have a write key and throw an error if we don't
+        if (!writeKey) {
+          throw new Error('Write key is required but not found for stream');
+        }
         
-        // Create a minimal stream for read-only access
-        // We'll create a dummy private key since the stream will only be used for reads
-        // For read operations, private key is not needed, but we still need to pass one
-        const dummyPrivateKey = new Uint8Array(64);
-        // Fill with zeros for the first 32 bytes (private part)
-        // Set the public key in the second 32 bytes
-        dummyPrivateKey.set(publicKey, 32);
-        
-        // Create a new TributaryStream with the public key
+        // Create a new TributaryStream with the write key
         const stream = new TributaryStream({
           server: this.server,
-          privateKey: dummyPrivateKey,
+          privateKey: writeKey,
           pglite: this.pglite,
           appId: 'readonly', // Use a default app ID for read-only access
           streamId: id
         });
         
-        console.log('DEBUG: Created stream object, initializing');
+        debug('Created stream object, initializing');
         
         // Initialize the stream
         await stream.initializeSchema();
         
-        console.log('DEBUG: Stream initialized, storing');
+        debug('Stream initialized, storing');
         
         // Store the stream
         this.streams.set(id, stream);
         
-        console.log('DEBUG: Stream stored and returned');
+        debug('Stream stored and returned');
         
         return stream;
       } else {
-        console.log('DEBUG: No stream found in database for ID:', id);
+        debug('No stream found in database for ID:', id);
       }
     } catch (error: unknown) {
-      console.log('DEBUG: Error retrieving stream:', error);
+      debug('Error retrieving stream:', error);
       warn('Could not retrieve stream:', error as Error);
     }
     

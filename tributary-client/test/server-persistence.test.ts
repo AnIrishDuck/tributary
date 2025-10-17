@@ -36,7 +36,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -65,7 +65,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute multiple write operations
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -88,7 +88,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute multiple write operations
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -130,7 +130,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute a write operation
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -161,7 +161,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute multiple operations like in the server integration tests
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -214,7 +214,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create a table first
     await stream.query("CREATE TABLE users (name TEXT)");
@@ -236,7 +236,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -262,7 +262,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute multiple write operations using exec
     await stream.exec("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -304,7 +304,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create a table first
     await stream.exec("CREATE TABLE users (name TEXT)");
@@ -326,7 +326,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Track server calls
     let serverStoreCalls = 0;
@@ -359,7 +359,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to the temporary client
-    const tempStream = await tempClient.addWriteKey(testPrivateKeyBase64, 'temp', 'collection');
+    const tempStream = await tempClient.addWriteKey('temp', testPrivateKeyBase64);
     
     // Decrypt the blob data
     const decryptedData = (tempStream as any).decryptData(blobs[0].data);
@@ -382,7 +382,7 @@ describe('Server Persistence', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create a table first outside the transaction
     await stream.exec("CREATE TABLE users (name TEXT)");

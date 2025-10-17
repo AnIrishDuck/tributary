@@ -24,7 +24,7 @@ async function example() {
   console.log('TributaryClient created successfully');
   
   // Add a stream with a write key
-  const stream = await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+  const stream = await client.addWriteKey('scribe', privateKeyBase64);
   console.log('TributaryStream created successfully');
   
   // List all streams

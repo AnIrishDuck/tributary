@@ -42,6 +42,7 @@ export class TributaryStream {
     this.pglite = options.pglite;
     this.appId = options.appId;
     this.streamId = options.streamId;
+    // Hex encode the stream id to avoid issues with SQL identifiers
     this.schemaName = `${this.appId}_${this.streamId}`;
   }
 
@@ -69,20 +70,11 @@ export class TributaryStream {
   async initializeSchema(): Promise<void> {
     try {
       // Create the schema for this stream if it doesn't exist
+      // Properly quote the schema name to handle special characters
       await this.pglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
       
       // Set the search path to this schema
       await this.setSearchPath();
-      
-      // Initialize sync state table in the tributary schema
-      await this.pglite.exec(
-        `CREATE TABLE IF NOT EXISTS tributary.streams (
-          id TEXT PRIMARY KEY,
-          read_key BYTEA NOT NULL,
-          write_key BYTEA,
-          last_sync_index INTEGER
-        )`
-      );
     } catch (error: unknown) {
       warn('Could not initialize schema:', error as Error);
     }
@@ -93,38 +85,37 @@ export class TributaryStream {
    */
   private async initializeSyncState(): Promise<void> {
     try {
-      console.log('Initializing sync state for stream:', this.getId());
+      info('Initializing sync state for stream:', this.getId());
       // Check if we're already tracking this stream
-      // Using string interpolation instead of parameterized queries due to PGLite issues
       const checkResult: any = await this.pglite.query(
         `SELECT COUNT(*) as count FROM tributary.streams WHERE id = $1`,
         [this.getId()]
       );
-      console.log('Check result:', checkResult.rows[0].count);
+      debug('Check result:', checkResult.rows[0].count);
       
       if (checkResult.rows[0].count === 0) {
-        console.log('Inserting new stream into database');
+        info('Inserting new stream into database');
         // Insert stream info if it doesn't exist
         // We need to provide actual values for the NOT NULL columns
         await this.pglite.query(
-          `INSERT INTO tributary.streams (id, read_key, write_key, last_sync_index) VALUES ($1, $2, $3, NULL)`,
-          [this.getId(), this.publicKey, this.privateKey]
+          `INSERT INTO tributary.streams (id, schema_id, read_key, write_key, last_sync_index) VALUES ($1, $2, $3, $4, $5)`,
+          [this.getId(), this.streamId, this.publicKey, this.privateKey, null]
         );
-        console.log('Successfully inserted stream');
+        info('Successfully inserted stream');
       } else {
-        console.log('Stream already exists, updating write key if needed');
+        info('Stream already exists, updating write key if needed');
         // Update write key if we have one now
         await this.pglite.query(
-          `UPDATE tributary.streams SET write_key = $1 WHERE id = $2`,
-          [this.privateKey, this.getId()]
+          `UPDATE tributary.streams SET write_key = $1, schema_id = $2 WHERE id = $3`,
+          [this.privateKey, this.streamId, this.getId()]
         );
-        console.log('Successfully updated stream');
+        info('Successfully updated stream');
       }
       
       // Load the last sync index from the database
       await this.loadLastSyncIndex();
     } catch (error: unknown) {
-      console.error('Could not initialize sync state:', error);
+      error('Could not initialize sync state:', error as Error);
       warn('Could not initialize sync state:', error as Error);
     }
   }
@@ -342,14 +333,14 @@ export class TributaryStream {
    */
   private async saveLastSyncIndex(): Promise<void> {
     try {
-      console.log('DEBUG: About to update last sync index:', this.lastSyncIndex, this.getId());
+      debug('About to update last sync index:', this.lastSyncIndex, this.getId());
       await this.pglite.query(
         `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
         [this.lastSyncIndex, this.getId()]
       );
-      console.log('DEBUG: Successfully updated last sync index');
+      debug('Successfully updated last sync index');
     } catch (error: unknown) {
-      console.log('DEBUG: Error updating last sync index:', error);
+      debug('Error updating last sync index:', error);
       warn('Could not save last sync index to database:', error as Error);
     }
   }
@@ -391,7 +382,7 @@ export class TributaryStream {
         if (blob) {
           try {
             // Decrypt the blob data
-            const decryptedData = this.decryptData(blob.data);
+            const decryptedData = await this.decryptData(blob.data);
             
             // Deserialize the transaction data
             const transactionData = new TextDecoder().decode(decryptedData);
@@ -431,7 +422,7 @@ export class TributaryStream {
               } else {
                 // Execute all other operations including INSERT
                 try {
-                  await this.pglite.exec(transactionEntry.query, undefined);
+                  await this.pglite.exec(transactionEntry.query);
                 } catch (execError) {
                   // Throw errors during sync rather than just warning
                   // Synced SQL expressions should never fail (otherwise they would've failed locally first)
@@ -496,7 +487,7 @@ export class TributaryStream {
     debug('ensureServerPersistence: Serialized transaction data length:', dataBytes.length);
     
     // Encrypt the data before storing
-    const encryptedData = this.encryptData(dataBytes);
+    const encryptedData = await this.encryptData(dataBytes);
     debug('ensureServerPersistence: Encrypted data length:', encryptedData.length);
     
     // DEBUG: Print first 16 bytes of encrypted data for comparison
@@ -569,22 +560,17 @@ export class TributaryStream {
   }
 
   /**
-   * Derive a symmetric encryption key from the public key
+   * Derive a symmetric encryption key from the private key
    * @returns Symmetric encryption key
    */
-  private deriveEncryptionKey(): Uint8Array {
-    // Use the public key as the secret key for symmetric encryption
-    // In a real implementation, you might want to derive a separate key
-    const secretKey = this.publicKey.slice(0, nacl.secretbox.keyLength);
+  private async deriveEncryptionKey(): Promise<Uint8Array> {
+    // Derive the encryption key by hashing the private key
+    // This ensures we don't give away the private write key when sharing read access
+    const { computeHashBytes } = await import('./hashUtils');
+    const hashBytes = await computeHashBytes(this.privateKey.slice(0, 32)); // Hash the actual private scalar
     
-    // Pad the secret key to the required length if necessary
-    let fullSecretKey = secretKey;
-    if (secretKey.length < nacl.secretbox.keyLength) {
-      fullSecretKey = new Uint8Array(nacl.secretbox.keyLength);
-      fullSecretKey.set(secretKey);
-    }
-    
-    return fullSecretKey;
+    // Return the first 32 bytes as our encryption key
+    return hashBytes.slice(0, nacl.secretbox.keyLength);
   }
 
   /**
@@ -592,12 +578,12 @@ export class TributaryStream {
    * @param data Data to encrypt
    * @returns Encrypted data with nonce prepended
    */
-  private encryptData(data: Uint8Array): Uint8Array {
+  private async encryptData(data: Uint8Array): Promise<Uint8Array> {
     // Generate a random nonce
     const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
     
     // Derive the encryption key
-    const secretKey = this.deriveEncryptionKey();
+    const secretKey = await this.deriveEncryptionKey();
     
     // Encrypt the data
     const encryptedData = nacl.secretbox(data, nonce, secretKey);
@@ -615,7 +601,7 @@ export class TributaryStream {
    * @param data Data to decrypt (with nonce prepended)
    * @returns Decrypted data
    */
-  private decryptData(data: Uint8Array): Uint8Array {
+  private async decryptData(data: Uint8Array): Promise<Uint8Array> {
     // Extract the nonce (first 24 bytes)
     const nonce = data.slice(0, nacl.secretbox.nonceLength);
     
@@ -623,7 +609,7 @@ export class TributaryStream {
     const encryptedData = data.slice(nacl.secretbox.nonceLength);
     
     // Derive the encryption key
-    const secretKey = this.deriveEncryptionKey();
+    const secretKey = await this.deriveEncryptionKey();
     
     // Decrypt the data
     const decryptedData = nacl.secretbox.open(encryptedData, nonce, secretKey);

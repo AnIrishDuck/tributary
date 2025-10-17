@@ -42,13 +42,22 @@ Schemas take the following format (each app has a unique `app_id` e.g.
 `_`):
 
 - `tributary`: internal key and sync state storage
-- `[app_id]_[stream_id]`: materializes all the tables for the relevant stream
+- `[app_id]_[schema_id]`: materializes all the tables for the relevant stream
+
+The `schema_id` is a unique identifier generated from the stream's public key using the following process:
+1. Take the SHA-256 hash of the public key
+2. Extract the first 16 hexadecimal characters as the initial schema ID
+3. Check if this schema ID already exists in the database
+4. If it exists, increment a counter and hash the public key combined with the counter until a unique schema ID is found
+5. The final schema ID is guaranteed to be unique within the database
 
 ### Internal Schema
 
 Tributary keeps all of its own local state under the `tributary` schema:
 
 - `streams` - key and sequence tracking
+  - `id` - stream identifier (derived from public key)
+  - `schema_id` - unique schema identifier (derived from public key)
   - `read_key` - required. read key material for the stream. 
   - `write_key` - optional. only present if a write key has been given for the stream.
   - `last_sync_index` - optional. last sequence number from the server that has been
@@ -82,8 +91,7 @@ const client = new TributaryClient({
   server: new TributaryServer('https://your-tributary-server.com'),
 });
 
-const data = client.addWriteKey('your-private-key-base64');
-
+const data = client.addWriteKey('scribe', 'your-private-key-base64');
 ```
 
 ### Configuration Options
@@ -100,8 +108,8 @@ The `TributaryClient` object exposes methods for listing and adding streams:
 ### list()
 List all `TributaryStream` objects tracked locally
 
-### addWriteKey(key)
-Add a stream with the given private write key, return the associated `TributaryStream`
+### addWriteKey(appId, key)
+Add a stream with the given private write key and application ID, return the associated `TributaryStream`
 
 ### get(id)
 Get a `TributaryStream` given a url-safe base64 encoded id, `undefined` if are not tracking that stream

@@ -29,7 +29,7 @@ describe('TributaryClient - Multi-stream API', () => {
       server: fakeServer
     });
     
-    const stream = await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+    const stream = await client.addWriteKey('scribe', privateKeyBase64);
     
     expect(stream).toBeDefined();
     expect(stream.getId()).toBe(publicKeyBase64);
@@ -45,7 +45,7 @@ describe('TributaryClient - Multi-stream API', () => {
     expect(streams).toHaveLength(0);
     
     // Add a stream
-    await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+    await client.addWriteKey('scribe', privateKeyBase64);
     
     // Now we should have one stream
     streams = await client.list();
@@ -59,7 +59,7 @@ describe('TributaryClient - Multi-stream API', () => {
     });
     
     // Add a stream
-    const stream = await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+    const stream = await client.addWriteKey('scribe', privateKeyBase64);
     
     // Get the stream by ID
     const retrievedStream = await client.get(publicKeyBase64);
@@ -71,7 +71,7 @@ describe('TributaryClient - Multi-stream API', () => {
       server: fakeServer
     });
     
-    const stream = await client.addWriteKey(privateKeyBase64, 'scribe', 'stream1');
+    const stream = await client.addWriteKey('scribe', privateKeyBase64);
     
     // Create a table
     await stream.exec('CREATE TABLE IF NOT EXISTS documents (id SERIAL PRIMARY KEY, title TEXT, content TEXT)');

@@ -21,7 +21,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute CREATE TABLE using exec
     await stream.exec("CREATE TABLE users (id INTEGER, name TEXT)");
@@ -37,7 +37,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create table first
     await stream.exec("CREATE TABLE users (id INTEGER, name TEXT)");
@@ -56,7 +56,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create table and insert data first
     await stream.exec("CREATE TABLE users (id INTEGER, name TEXT)");
@@ -76,7 +76,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Create table and insert data first
     await stream.exec("CREATE TABLE users (id INTEGER, name TEXT)");
@@ -97,7 +97,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute multiple exec operations
     await stream.exec("CREATE TABLE users (id INTEGER, name TEXT)");
@@ -129,7 +129,7 @@ describe('Exec Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute a transaction that uses both query and exec
     const result = await stream.transaction(async (tx) => {

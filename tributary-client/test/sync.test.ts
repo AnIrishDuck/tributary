@@ -22,7 +22,7 @@ describe('Sync Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream = await client.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream = await client.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute some operations to create blobs on the server
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
@@ -76,7 +76,7 @@ describe('Sync Functionality', () => {
     });
     
     // Add a stream to work with
-    const stream1 = await client1.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream1 = await client1.addWriteKey('test', testPrivateKeyBase64);
     
     // Execute operations 
     await stream1.query("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
@@ -97,7 +97,7 @@ describe('Sync Functionality', () => {
     });
     
     // Get the same stream for the second client
-    const stream2 = await client2.addWriteKey(testPrivateKeyBase64, 'test', 'collection');
+    const stream2 = await client2.addWriteKey('test', testPrivateKeyBase64);
     
     // Sync the second client - this should NOT duplicate the data
     await stream2.sync();
