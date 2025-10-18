@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.0",
+    "tweetnacl": "https://esm.sh/tweetnacl@1.0.3",
+    "tweetnacl-util": "https://esm.sh/tweetnacl-util@0.15.1"
+  }
+}
