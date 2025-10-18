@@ -146,8 +146,8 @@ describe('Exec Functionality', () => {
     
     expect(result).toBe("transaction completed");
     
-    // Verify that all operations were executed
-    const finalResult = await stream.query("SELECT * FROM users");
+    // Verify that all operations were executed by querying the final state
+    const finalResult = await stream.query("SELECT * FROM users ORDER BY id");
     expect(finalResult.rows).toEqual([
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' }

@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 import { Server } from './server';
+import { TributaryLocal } from './tributaryLocal';
 import { logger, warn, error, info, debug } from './logger';
 import { computeHash } from './hashUtils';
 
@@ -62,7 +63,25 @@ export class TributaryStream {
    * Set the search path to include this stream's schema first
    */
   private async setSearchPath(): Promise<void> {
-    await this.pglite.exec(`SET LOCAL search_path TO ${this.schemaName}, tributary, public`);
+    await this.pglite.exec(`SET search_path TO ${this.schemaName}, tributary, public`);
+  }
+
+  /**
+   * Gets the fully qualified table name given a short table name.
+   * @param table The short table name
+   * @returns The fully qualified table name with schema
+   */
+  getFullTable(table: string): string {
+    return `"${this.schemaName}"."${table}"`;
+  }
+
+  /**
+   * Return a client that has been configured with the right search path for the schema used
+   * by this stream.
+   */
+  async local(): Promise<TributaryLocal> {
+    // Return a TributaryLocal instance with the correct schema
+    return new TributaryLocal(this.pglite, this.schemaName);
   }
 
   /**

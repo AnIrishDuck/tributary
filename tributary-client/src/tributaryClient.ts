@@ -217,7 +217,7 @@ export class TributaryClient {
     try {
       debug('Querying database for stream');
       const result: any = await this.pglite.query(
-        `SELECT read_key, write_key FROM tributary.streams WHERE id = $1`,
+        `SELECT read_key, write_key, schema_id FROM tributary.streams WHERE id = $1`,
         [id]
       );
       
@@ -229,6 +229,7 @@ export class TributaryClient {
         const row = result.rows[0];
         const publicKey = row.read_key; // Always use the read key for public access
         const writeKey = row.write_key; // Get the write key if available
+        const schemaId = row.schema_id; // Get the schema ID
         
         debug('Creating stream with public key');
 
@@ -243,7 +244,7 @@ export class TributaryClient {
           privateKey: writeKey,
           pglite: this.pglite,
           appId: 'readonly', // Use a default app ID for read-only access
-          schemaId: id
+          schemaId: schemaId
         });
         
         debug('Created stream object, initializing');
@@ -265,6 +266,53 @@ export class TributaryClient {
     } catch (error: unknown) {
       debug('Error retrieving stream:', error);
       warn('Could not retrieve stream:', error as Error);
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Get a TributaryLocal given a url-safe base64 encoded id
+   * @param id URL-safe base64 encoded stream ID (public key)
+   * @returns TributaryLocal or undefined if not tracking that stream
+   */
+  async getLocal(id: string): Promise<TributaryLocal | undefined> {
+    // Wait for initialization to complete
+    await this.initialized;
+    
+    debug('Looking for local stream with ID:', id);
+    
+    // Check if we already have this stream in memory
+    if (this.streams.has(id)) {
+      return await this.streams.get(id)!.local();
+    }
+    
+    // If not, check if it exists in the database
+    try {
+      debug('Querying database for local stream');
+      const result: any = await this.pglite.query(
+        `SELECT schema_id, id FROM tributary.streams WHERE id = $1`,
+        [id]
+      );
+      
+      debug('Query result:', result.rows);
+      
+      if (result.rows.length > 0) {
+        // We found the stream in the database
+        const row = result.rows[0];
+        const schemaId = row.schema_id;
+        
+        // Create a schema name (using a default app ID since we don't have the original)
+        const schemaName = `readonly_${schemaId}`;
+        
+        // Return a TributaryLocal instance with the correct schema
+        return new TributaryLocal(this.pglite, schemaName);
+      } else {
+        debug('No local stream found in database for ID:', id);
+      }
+    } catch (error: unknown) {
+      debug('Error retrieving local stream:', error);
+      warn('Could not retrieve local stream:', error as Error);
     }
     
     return undefined;

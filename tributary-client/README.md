@@ -114,6 +114,9 @@ Add a stream with the given private write key and application ID, return the ass
 ### get(id)
 Get a `TributaryStream` given a url-safe base64 encoded id, `undefined` if are not tracking that stream
 
+### getLocal(id)
+Get a `TributaryLocal` given a url-safe base64 encoded id, `undefined` if are not tracking that stream
+
 ## Stream API
 
 The `TributaryStream` object exposes methods for database operations.
@@ -138,6 +141,31 @@ When syncing, the client:
 2. Filters out operations that have already been processed (based on `last_sync_index`)
 3. Applies only new operations to the local database
 4. Updates the sync state in the local database
+
+### getFullTable(table)
+Gets the fully qualified table name given a short table name.
+
+### local()
+Returns a `TributaryLocal` object with the pglite database API and the correct
+schema search path set before each operation.
+
+## Local API
+The `TributaryLocal` object exposes methods for local (non-synced) database operations.
+
+It sets the appropriate schema `search_path` before each operation to ensure that
+they operate on the correct set of tables:
+
+### query(query, params?)
+Execute SQL query with persistence guarantee
+
+### exec(query, params?)
+Execute SQL command with persistence guarantee
+
+### transaction(callback)
+Execute SQL transaction with persistence guarantee
+
+### getFullTable(table)
+Gets the fully qualified table name given a short table name.
 
 ## Development
 
