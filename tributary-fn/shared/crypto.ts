@@ -2,7 +2,9 @@
 // This module handles signature verification and hashing using Web Crypto API and tweetnacl
 
 import nacl from 'tweetnacl';
-import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
+import util from 'tweetnacl-util';
+
+const { decodeBase64, encodeBase64 } = util;
 
 /**
  * Verify an Ed25519 signature
@@ -49,7 +51,9 @@ export async function verifySignature(
  * @returns Hex encoded hash
  */
 export async function computeHash(data: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  // Create a new ArrayBuffer from the Uint8Array to avoid type issues
+  const buffer = new Uint8Array(data).buffer;
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   const hashArray = new Uint8Array(hashBuffer);
   return Array.from(hashArray)
     .map(b => b.toString(16).padStart(2, '0'))
