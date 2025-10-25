@@ -1,151 +1,143 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { generateKeyPair, saveKeyPair, listKeys, showKey } from './key';
+import { generateKeyPair, saveKeyPair, listKeys, showKey, exportKey, importKey, loadKeyPair } from './key';
 import { executeSQL } from './psql';
 import { logger, info, error as errorLog, warn } from './logger';
-
-// Comprehensive test function
-import { TributaryClient, FakeServer } from 'tributary-client';
-import { loadKeyPair } from './key';
-import { PGlite } from '@electric-sql/pglite';
-import { encodeBase64 } from 'tweetnacl-util';
-
-async function comprehensivePsqlTest() {
-  info('Running comprehensive psql command test...');
-  
-  try {
-    // Load our existing test key
-    const keyPair = await loadKeyPair('test-key');
-    info('Loaded existing test key');
-    
-    // Create a FakeServer instance for testing
-    const fakeServer = new FakeServer();
-    info('Created FakeServer instance');
-    
-    // Create a local database instance
-    const db = new PGlite();
-    info('Created local PGlite database');
-    
-    // Create a client instance
-    const client = new TributaryClient({
-      server: fakeServer,
-      db: db
-    });
-    info('Created TributaryClient instance');
-    
-    // Derive public key to use as stream ID
-    const publicKey = keyPair.secretKey.slice(32);
-    const streamId = encodeBase64(publicKey);
-    // Sanitize stream ID for use as schema name (replace invalid characters)
-    const sanitizedStreamId = streamId.replace(/[+/]/g, '_').replace(/=/g, '');
-    
-    // Add stream to client
-    const stream = await client.addWriteKey(keyPair.secretKey, 'test', sanitizedStreamId);
-    info('Created TributaryStream instance');
-    
-    // Test a series of SQL operations
-    info('\n--- Testing CREATE TABLE ---');
-    await stream.exec(`
-      CREATE TABLE IF NOT EXISTS notes (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        content TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    info('Created notes table');
-    
-    info('\n--- Testing INSERT operations ---');
-    await stream.exec(
-      "INSERT INTO notes (title, content) VALUES ('First Note', 'This is the content of the first note')",
-    );
-    info('Inserted first note');
-    
-    await stream.exec(
-      "INSERT INTO notes (title, content) VALUES ('Second Note', 'This is the content of the second note')",
-    );
-    info('Inserted second note');
-    
-    info('\n--- Testing SELECT query ---');
-    const selectResult = await stream.query('SELECT * FROM notes ORDER BY id');
-    info('Selected notes:', selectResult.rows);
-    
-    info('\n--- Testing UPDATE operation ---');
-    await stream.exec("UPDATE notes SET content = 'Updated content' WHERE title = 'First Note'");
-    info('Updated first note');
-    
-    info('\n--- Testing SELECT after UPDATE ---');
-    const updatedResult = await stream.query('SELECT * FROM notes WHERE title = \'First Note\'');
-    info('Updated note:', updatedResult.rows[0]);
-    
-    info('\n--- Testing DELETE operation ---');
-    await stream.exec("DELETE FROM notes WHERE title = 'Second Note'");
-    info('Deleted second note');
-    
-    info('\n--- Testing SELECT after DELETE ---');
-    const finalResult = await stream.query('SELECT * FROM notes');
-    info('Remaining notes:', finalResult.rows);
-    
-    info('\n--- Testing transaction ---');
-    await stream.transaction(async (tx) => {
-      await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 1', 'Content 1')");
-      await tx.exec("INSERT INTO notes (title, content) VALUES ('Transaction Note 2', 'Content 2')");
-      // Let's also query within the transaction to verify we can see our changes
-      const txQueryResult = await tx.query('SELECT COUNT(*) as count FROM notes');
-      info('Count within transaction:', txQueryResult.rows[0]);
-    });
-    info('Transaction completed successfully');
-    
-    info('\n--- Final verification ---');
-    const finalVerification = await stream.query('SELECT * FROM notes ORDER BY id');
-    info('Final notes in database:', finalVerification.rows);
-    
-    info('\nAll comprehensive tests passed!');
-    return true;
-  } catch (error) {
-    errorLog('Comprehensive test failed:', (error as Error).message);
-    throw error;
-  }
-}
+import { getClient } from './util';
 
 const program = new Command();
 
 program
   .name('tributary')
   .description('CLI for Tributary operations')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('-d, --db <path>', 'Database directory path (default: ~/.tributary/db)');
 
-program
+// Create key management command with subcommands
+const keyCmd = program
   .command('key')
-  .description('Key management commands')
-  .option('-g, --generate <name>', 'Generate a new key pair with the given name')
-  .option('-l, --list', 'List all available keys')
-  .option('-s, --show <name>', 'Show details of a specific key')
-  .action(async (options) => {
+  .description('Key management commands');
+
+keyCmd
+  .command('generate')
+  .description('Generate a new key pair')
+  .argument('<app-id>', 'Application identifier')
+  .action(async (appId) => {
     try {
-      if (options.generate) {
-        const keyName = options.generate;
-        info(`Generating new key pair: ${keyName}`);
-        const keyPair = generateKeyPair();
-        await saveKeyPair(keyName, keyPair);
-        info(`Key pair '${keyName}' generated and saved successfully.`);
-      } else if (options.list) {
-        info('Available keys:');
-        const keys = await listKeys();
-        if (keys.length === 0) {
-          info('  No keys found.');
-        } else {
-          keys.forEach(key => info(`  ${key}`));
-        }
-      } else if (options.show) {
-        const keyName = options.show;
-        const keyDetails = await showKey(keyName);
-        info(`Key: ${keyName}`);
-        info(`Public Key: ${keyDetails.publicKey}`);
+      info(`Generating new key pair for app: ${appId}`);
+      const keyPair = generateKeyPair();
+      
+      // Get database path from global options or use default
+      const options = program.opts();
+      const { client, db, server } = await getClient(options);
+      
+      // Save the key pair to database using the actual stream ID
+      const streamId = await saveKeyPair(client, appId, keyPair);
+      
+      info(`Key pair generated and saved successfully for app '${appId}' with stream ID '${streamId}'.`);
+      info(`Stream ID: ${streamId}`);
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+keyCmd
+  .command('list')
+  .description('List all available keys')
+  .action(async () => {
+    try {
+      // Get database path from global options or use default
+      const options = program.opts();
+      const { client, db, server } = await getClient(options);
+      
+      info(`Available keys:`);
+      const keys = await listKeys(client);
+      if (keys.length === 0) {
+        info('  No keys found.');
       } else {
-        info('Please specify a key operation. Use --help for more information.');
+        keys.forEach(key => info(`  ${key}`));
       }
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+keyCmd
+  .command('show')
+  .description('Show details of a specific key')
+  .argument('<stream-id>', 'Stream identifier')
+  .action(async (streamId) => {
+    try {
+      // Get database path from global options or use default
+      const options = program.opts();
+      const { client, db, server } = await getClient(options);
+      
+      const keyDetails = await showKey(client, streamId);
+      info(`Key: ${streamId}`);
+      info(`Public Key: ${keyDetails.publicKey}`);
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+keyCmd
+  .command('export')
+  .description('Export a key as base64 encoded string')
+  .argument('<stream-id>', 'Stream identifier')
+  .action(async (streamId) => {
+    try {
+      // Get database path from global options or use default
+      const options = program.opts();
+      const { client, db, server } = await getClient(options);
+      
+      const base64Key = await exportKey(client, streamId);
+      // Print to stdout for piping
+      console.log(base64Key);
+    } catch (error) {
+      errorLog('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+keyCmd
+  .command('import')
+  .description('Import a key from base64 encoded string via stdin')
+  .argument('<app-id>', 'Application identifier')
+  .action(async (appId) => {
+    try {
+      // Get database path from global options or use default
+      const options = program.opts();
+      const { client, db, server } = await getClient(options);
+      
+      // Read base64 key from stdin
+      let base64Key = '';
+      if (process.stdin.isTTY) {
+        errorLog('Error: Please pipe the base64 encoded key to stdin');
+        process.exit(1);
+      }
+      
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('readable', () => {
+        let chunk;
+        while ((chunk = process.stdin.read()) !== null) {
+          base64Key += chunk;
+        }
+      });
+      
+      process.stdin.on('end', async () => {
+        try {
+          base64Key = base64Key.trim();
+          const streamId = await importKey(client, appId, base64Key);
+          info(`Key imported successfully for app '${appId}' with stream ID '${streamId}'.`);
+        } catch (error) {
+          errorLog('Error:', (error as Error).message);
+          process.exit(1);
+        }
+      });
     } catch (error) {
       errorLog('Error:', (error as Error).message);
       process.exit(1);
@@ -155,153 +147,29 @@ program
 program
   .command('psql')
   .description('Execute SQL commands on Tributary collections')
+  .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
   .argument('[sql]', 'SQL command to execute')
-  .option('-r, --readkey <key>', 'Key to use for read operations')
-  .option('-w, --writekey <key>', 'Key to use for write operations')
   .option('-d, --db <path>', 'Local database file path for persistence')
-  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
-  .option('-t, --test', 'Use test mode with FakeServer')
   .option('-n, --no-sync', 'Disable automatic sync with server before executing command')
-  .action(async (sql, options) => {
+  .action(async (appStreamId, sql, options) => {
     try {
-      if (!sql && options.sync) {
-        info('No SQL command provided. Use --help for more information.');
+      // Parse the app-id/stream-id format
+      const parts = appStreamId.split('/');
+      if (parts.length !== 2) {
+        errorLog('Error: Invalid format. Use app-id/stream-id');
         process.exit(1);
       }
+      const [appId, streamId] = parts;
       
-      if (options.test) {
-        // For test mode, we'll run a simple test instead of executing the SQL directly
-        info('Running test mode...');
-        if (sql) {
-          // If SQL was provided, we should execute it in test mode rather than run default test
-          info('Executing custom SQL in test mode:', sql);
-          
-          // Generate a test key pair
-          const keyPair = generateKeyPair();
-          info('Generated test key pair');
-          
-          // Create a FakeServer instance for testing
-          const fakeServer = new FakeServer();
-          info('Created FakeServer instance');
-          
-          // Create a local database instance
-          const db = new PGlite();
-          info('Created local PGlite database');
-          
-          // Create a client instance
-          const client = new TributaryClient({
-            server: fakeServer,
-            db: db
-          });
-          info('Created TributaryClient instance');
-          
-          // Derive public key to use as stream ID
-          const publicKey = keyPair.secretKey.slice(32);
-          const streamId = encodeBase64(publicKey);
-          // Sanitize stream ID for use as schema name (replace invalid characters)
-          const sanitizedStreamId = streamId.replace(/[+/]/g, '_').replace(/=/g, '');
-          
-          // Add stream to client
-          const stream = await client.addWriteKey(keyPair.secretKey, 'test', sanitizedStreamId);
-          info('Created TributaryStream instance');
-          
-          try {
-            // Execute the provided SQL
-            info('Executing SQL command...');
-            const result = await stream.query(sql);
-            info('SQL command executed successfully');
-            info('Result:', result);
-            return;
-          } catch (error) {
-            errorLog('SQL execution failed:', (error as Error).message);
-            throw error;
-          }
-        } else {
-          // For test mode with no SQL, run comprehensive test
-          await comprehensivePsqlTest();
-        }
-      } else {
-        const result = await executeSQL(sql, {
-          readKey: options.readkey,
-          writeKey: options.writekey,
-          localDb: options.db,
-          collectionId: options.collection,
-          sync: options.sync // This will be true by default, false if --no-sync is specified
-        });
-        info('Result:', result);
-      }
+      const result = await executeSQL(appId, streamId, sql, {
+        localDb: options.db,
+        sync: options.sync // This will be true by default, false if --no-sync is specified
+      });
+      info('Result:', result);
     } catch (error) {
       errorLog('Error:', (error as Error).message);
       process.exit(1);
     }
-  });
-
-program
-  .command('test')
-  .description('Run tests for Tributary CLI')
-  .action(async () => {
-    try {
-      info('Running Tributary CLI tests...');
-      await comprehensivePsqlTest();
-      info('All tests completed successfully!');
-    } catch (error) {
-      errorLog('Test failed:', (error as Error).message);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('comprehensive-test')
-  .description('Run comprehensive tests for Tributary CLI')
-  .action(async () => {
-    try {
-      info('Running comprehensive Tributary CLI tests...');
-      await comprehensivePsqlTest();
-      info('All comprehensive tests completed successfully!');
-    } catch (error) {
-      errorLog('Comprehensive test failed:', (error as Error).message);
-      process.exit(1);
-    }
-  });
-
-// Create static site management commands
-const staticCmd = program
-  .command('static')
-  .description('Static site management commands (no longer supported)');
-
-staticCmd
-  .command('up')
-  .description('Upload a static site (no longer supported)')
-  .argument('<staticRoot>', 'Path to the static site root directory')
-  .option('-w, --writekey <key>', 'Key to use for write operations')
-  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
-  .option('-t, --test', 'Use test mode with FakeServer')
-  .action(async (staticRoot, options) => {
-    errorLog('Error: Static site functionality is no longer supported.');
-    process.exit(1);
-  });
-
-staticCmd
-  .command('ls')
-  .description('List static site files (no longer supported)')
-  .option('-w, --writekey <key>', 'Key to use for write operations')
-  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
-  .option('-t, --test', 'Use test mode with FakeServer')
-  .action(async (options) => {
-    errorLog('Error: Static site functionality is no longer supported.');
-    process.exit(1);
-  });
-
-staticCmd
-  .command('cat')
-  .description('Retrieve a static site file (no longer supported)')
-  .argument('<filePath>', 'Path to the file to retrieve')
-  .option('-w, --writekey <key>', 'Key to use for write operations')
-  .option('-c, --collection <id>', 'Collection ID to use (default: "default")')
-  .option('-t, --test', 'Use test mode with FakeServer')
-  .action(async (filePath, options) => {
-    errorLog('Error: Static site functionality is no longer supported.');
-    process.exit(1);
   });
 
 program.parse();

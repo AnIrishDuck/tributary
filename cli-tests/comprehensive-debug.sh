@@ -10,11 +10,15 @@ cd /root/tributary/tributary-cli
 echo "Building CLI..."
 npm run build > /dev/null 2>&1
 
-# Create a new key with a unique name
-KEY_NAME="sigtest-$(date +%s)"
+# Create unique app and key names for this test
+TIMESTAMP=$(date +%s)
+APP_ID="sigtest_app_$TIMESTAMP"
+KEY_NAME="sigtest_$TIMESTAMP"
+
+echo "Using app: $APP_ID"
 echo "Creating new key: $KEY_NAME"
 
-node dist/index.js key --generate $KEY_NAME > /dev/null 2>&1
+node dist/index.js key $APP_ID --generate $KEY_NAME > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "Failed to create key"
     exit 1
@@ -94,14 +98,14 @@ console.log('Test key details:');
 console.log('Public key (base64):', encodeBase64(keyPair.publicKey));
 console.log('Secret key (base64):', encodeBase64(keyPair.secretKey));
 
-// Save this key to disk to use with tributary-cli
+// Save this key to disk to use with tributary-cli in app-specific directory
 const homeDir = os.homedir();
-const tributaryDir = path.join(homeDir, '.tributary');
-const keysDir = path.join(tributaryDir, 'keys');
+const appDir = path.join(homeDir, '.local', 'state', 'manual_test_app');
+const keysDir = path.join(appDir, 'keys');
 const keyPath = path.join(keysDir, 'manual-test-key.json');
 
 // Ensure directories exist
-require('fs-extra').ensureDirSync(tributaryDir);
+require('fs-extra').ensureDirSync(appDir);
 require('fs-extra').ensureDirSync(keysDir);
 
 const keyData = {
@@ -118,9 +122,9 @@ node /tmp/manual-key-gen.js
 # Now test with this manual key
 echo "Testing with manually generated key..."
 echo "Attempting to sync with manual key..."
-node dist/index.js psql --readkey manual-test-key --collection manual-test-collection --no-sync
+node dist/index.js psql manual_test_app manual-test-key "SELECT 1" --no-sync
 
 echo "Attempting to create table with manual key..."
-node dist/index.js psql "CREATE TABLE test_manual (id SERIAL PRIMARY KEY)" --writekey manual-test-key --collection manual-test-collection
+node dist/index.js psql manual_test_app manual-test-key "CREATE TABLE test_manual (id SERIAL PRIMARY KEY)"
 
 echo "=== Test completed ==="

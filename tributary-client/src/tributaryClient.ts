@@ -2,9 +2,10 @@
 import { PGlite } from '@electric-sql/pglite';
 import { Server } from './server';
 import { TributaryStream } from './tributaryStream';
+import { TributaryLocal } from './tributaryLocal';
 import { logger, warn, error, info, debug } from './logger';
 import nacl from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 
 export class TributaryClient {
   private pglite: PGlite;
@@ -119,15 +120,15 @@ export class TributaryClient {
     // Handle private key
     let privateKey: Uint8Array;
     if (typeof key === 'string') {
-      privateKey = decodeBase64(key);
+      privateKey = base64url.decode(key);
     } else {
-      privateKey = key;
+      privateKey = new Uint8Array(key);
     }
     
     // Derive public key from private key
     // In Ed25519, the public key is the last 32 bytes of the expanded private key
-    const publicKey = privateKey.slice(32);
-    const streamIdStr = encodeBase64(publicKey);
+    const publicKey = new Uint8Array(privateKey.slice(32));
+    const streamIdStr = base64url.encode(Buffer.from(publicKey));
     
     // Check if we already have this stream
     if (this.streams.has(streamIdStr)) {

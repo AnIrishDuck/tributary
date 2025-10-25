@@ -3,9 +3,8 @@
 import { Server } from './server';
 import { computeHash } from './hashUtils';
 
-// Import tweetnacl-util functions
-const util = require('tweetnacl-util');
-const { encodeBase64, decodeBase64 } = util;
+// Import base64url functions
+import * as base64url from 'urlsafe-base64';
 
 // Import tweetnacl functions
 import nacl from 'tweetnacl';
@@ -134,8 +133,8 @@ export class FakeServer implements Server {
     data: Uint8Array
   ): Promise<boolean> {
     try {
-      const pubkeyBytes = decodeBase64(pubkey);
-      const signatureBytes = decodeBase64(signature);
+      const pubkeyBytes = base64url.decode(pubkey);
+      const signatureBytes = base64url.decode(signature);
       
       // Create the data that was signed (the hash)
       const dataToSignBytes = new TextEncoder().encode(hash);

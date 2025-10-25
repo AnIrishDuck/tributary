@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TributaryClient, FakeServer } from '../src/index';
 import { PGlite } from '@electric-sql/pglite';
 import * as nacl from 'tweetnacl';
-import { encodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 
 describe('Consolidated Sync Test', () => {
   let fakeServer: FakeServer;
@@ -14,7 +14,7 @@ describe('Consolidated Sync Test', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
-    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
+    testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
     collectionId = 'consolidated_test_' + Date.now(); // Use underscore instead of dash
   });
 

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, TributaryLocal } from '../src/index';
 import { FakeServer } from '../src/fakeServer';
 import nacl from 'tweetnacl';
+import * as base64url from 'urlsafe-base64';
 
 describe('TributaryClient - getLocal() Method', () => {
   let client: TributaryClient;
@@ -15,8 +16,8 @@ describe('TributaryClient - getLocal() Method', () => {
     
     // Generate a key pair for testing
     const keyPair = nacl.sign.keyPair();
-    const privateKeyBase64 = Buffer.from(keyPair.secretKey).toString('base64');
-    streamId = Buffer.from(keyPair.publicKey).toString('base64');
+    const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
+    streamId = base64url.encode(Buffer.from(keyPair.publicKey));
     
     // Add a stream with a write key
     stream = await client.addWriteKey('scribe', privateKeyBase64);
@@ -61,7 +62,7 @@ describe('TributaryLocal Class', () => {
     
     // Generate a key pair for testing
     const keyPair = nacl.sign.keyPair();
-    const privateKeyBase64 = Buffer.from(keyPair.secretKey).toString('base64');
+    const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
     
     // Add a stream with a write key
     stream = await client.addWriteKey('scribe', privateKeyBase64);

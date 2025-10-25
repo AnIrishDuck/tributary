@@ -10,28 +10,41 @@ This command serves as a test wrapper for the core functionality of
 
 tributary-cli exposes a basic interface for key management:
 
-- `tributary key generate`
-  .. adds the key to the client and prints the url safe base64 encoded stream id to stdout ..
-- `tributary key list`
+GOOSE: there is no key name, these get inserted directly into the database by the 
+relevant TributaryClient methods. Also, the operations should be verbs, not --options
+as they are currently implemented:
+- `tributary key generate [app-id]`
+  .. adds the key to the client and the stream id ..
+- `tributary key list [app-id]`
   .. display the table of tracked streams in the local tributary database ..
-- `tributary key export [stream_id]`
-  .. prints url safe base64 encoded private key ..
-- `tributary key import`
-  .. imports url safe base64 encoded private key to local database and runs a full sync ..
+- `tributary key show [app-id]/[stream_id]`
+  .. prints schema info from local key database ..
+- `tributary key export [app-id]/[stream_id]`
+  .. prints url safe base64 encoded private key to stdout ..
+- `tributary key import [app-id]`
+  .. imports url safe base64 encoded private key to local database via stdin ..
+
+GOOSE: no, these keys are stored directly in the database via the relevant
+methods on `TributaryClient`.
+Note that all keys are stored in `~/.local/state/[app-id]/keys/` directory.
 
 Note that `key export` and `key import` can be used to transfer keys between databases:
 
-- `tributary key export --db a.db [stream_id] | tributary key import --db b.db` 
+- `tributary key export keymaster/af12d... | tributary key import scribe`
 
 # psql
 
 tributary-cli exposes an interface for raw sql commands on the database behind a given
 tributary stream:
 
-- `tributary psql [stream_id] 'SELECT * FROM table'`
+GOOSE: the slashes between [app-id] and [stream_id] were intentional here, ensure the cli
+works as documented
+- `tributary psql [app-id]/[stream_id] 'SELECT * FROM table'`
   .. prints query result to stdout ..
-- `tributary psql [stream_id] 'INSERT VALUES(..) INTO table'`
-- `tributary psql --db local.db [stream_id] 'INSERT VALUES(..) INTO table'`
+- `tributary psql [app-id]/[stream_id] 'INSERT VALUES(..) INTO table'`
+- `tributary psql --db local-db/ [app-id]/[stream_id] 'INSERT VALUES(..) INTO table'`
+
+The database directory defaults to `~/.local/state/[app-id]/`.
 
 # static sites
 

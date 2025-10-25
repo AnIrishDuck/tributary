@@ -2,9 +2,8 @@
 import { Server } from './server';
 import { warn } from './logger';
 
-// Import tweetnacl-util functions
-const util = require('tweetnacl-util');
-const { encodeBase64, decodeBase64 } = util;
+// Import base64url functions
+import * as base64url from 'urlsafe-base64';
 
 export class TributaryServer implements Server {
   private baseUrl: string;

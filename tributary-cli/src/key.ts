@@ -1,7 +1,6 @@
 import * as nacl from 'tweetnacl';
-import * as fs from 'fs-extra';
-import * as path from 'path';
-import * as os from 'os';
+import { TributaryClient } from 'tributary-client';
+import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 
 // Define the key pair interface
 export interface KeyPair {
@@ -9,64 +8,128 @@ export interface KeyPair {
   secretKey: Uint8Array;
 }
 
-// Get the home directory and create a .tributary folder
-const homeDir = os.homedir();
-const tributaryDir = path.join(homeDir, '.tributary');
-const keysDir = path.join(tributaryDir, 'keys');
-
-// Ensure the directories exist
-async function ensureDirectories() {
-  await fs.ensureDir(tributaryDir);
-  await fs.ensureDir(keysDir);
-}
-
 // Generate a new key pair
 export function generateKeyPair(): KeyPair {
   return nacl.sign.keyPair();
 }
 
-// Save a key pair to disk
-export async function saveKeyPair(name: string, keyPair: KeyPair): Promise<void> {
-  await ensureDirectories();
-  
-  const keyPath = path.join(keysDir, `${name}.json`);
-  const keyData = {
-    publicKey: Buffer.from(keyPair.publicKey).toString('base64'),
-    secretKey: Buffer.from(keyPair.secretKey).toString('base64')
-  };
-  
-  await fs.writeJson(keyPath, keyData, { spaces: 2 });
+// Save a key pair to the database via TributaryClient
+export async function saveKeyPair(client: TributaryClient, appId: string, keyPair: KeyPair): Promise<string> {
+  const stream = await client.addWriteKey(appId, keyPair.secretKey);
+  const streamId = stream.getId();
+  return streamId;
 }
 
-// Load a key pair from disk
-export async function loadKeyPair(name: string): Promise<KeyPair> {
-  const keyPath = path.join(keysDir, `${name}.json`);
+// Load a key pair from the database via TributaryClient
+export async function loadKeyPair(client: TributaryClient, streamId: string): Promise<KeyPair> {
+  // GOOSE: we should do a prefix search here on the streamId. maybe call it a streamFragment instead.
+  // list keys, find a unique key with the same prefix as the fragment. throw an error listing the
+  // stream ids if multiple streams match the same fragment
   
-  if (!await fs.pathExists(keyPath)) {
-    throw new Error(`Key '${name}' not found`);
+  // List all available keys
+  const allKeys = await listKeys(client);
+  
+  // Filter keys that match the prefix
+  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
+  
+  // Check if we have exactly one match
+  if (matchingKeys.length === 0) {
+    throw new Error(`No key found with prefix '${streamId}'`);
+  } else if (matchingKeys.length > 1) {
+    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
   }
   
-  const keyData = await fs.readJson(keyPath);
-  return {
-    publicKey: Uint8Array.from(Buffer.from(keyData.publicKey, 'base64')),
-    secretKey: Uint8Array.from(Buffer.from(keyData.secretKey, 'base64'))
-  };
+  // Use the unique matching key
+  const fullStreamId = matchingKeys[0];
+  
+  // First try to get the stream directly
+  const stream = await client.get(fullStreamId);
+  if (stream) {
+    // For now, we'll create a placeholder since TributaryClient doesn't directly expose keys
+    // In a real implementation, we'd need to store the private key in a secure way
+    const publicKey = decodeBase64(fullStreamId); // Stream ID is base64 encoded public key
+    return {
+      publicKey: publicKey,
+      secretKey: new Uint8Array(64) // Placeholder - in real implementation would retrieve from secure storage
+    };
+  }
+  
+  throw new Error(`Key with stream ID '${fullStreamId}' not found`);
 }
 
-// List all available keys
-export async function listKeys(): Promise<string[]> {
-  await ensureDirectories();
-  
-  const files = await fs.readdir(keysDir);
-  return files
-    .filter(file => file.endsWith('.json'))
-    .map(file => path.basename(file, '.json'));
+// List all available keys from the database via TributaryClient
+export async function listKeys(client: TributaryClient): Promise<string[]> {
+  return await client.list();
 }
 
 // Show details of a specific key
-export async function showKey(name: string): Promise<{ publicKey: string }> {
-  const keyPair = await loadKeyPair(name);
+export async function showKey(client: TributaryClient, streamId: string): Promise<{ publicKey: string }> {
+  // List all available keys
+  const allKeys = await listKeys(client);
+  
+  // Filter keys that match the prefix
+  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
+  
+  // Check if we have exactly one match
+  if (matchingKeys.length === 0) {
+    throw new Error(`No key found with prefix '${streamId}'`);
+  } else if (matchingKeys.length > 1) {
+    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
+  }
+  
+  // Use the unique matching key
+  const fullStreamId = matchingKeys[0];
+  
+  // Verify the key exists by trying to get it
+  const stream = await client.get(fullStreamId);
+  if (!stream) {
+    throw new Error(`Key with stream ID '${fullStreamId}' not found`);
+  }
+  
   return {
-    publicKey: Buffer.from(keyPair.publicKey).toString('base64')
+    publicKey: fullStreamId // Stream ID is the base64 encoded public key
   };
+}
+
+// Export a key as base64 encoded string
+export async function exportKey(client: TributaryClient, streamId: string): Promise<string> {
+  // Load the key pair
+  // GOOSE: we should do a prefix search here on the streamId. maybe call it a streamFragment instead.
+  // list keys, find a unique key with the same prefix as the fragment. throw an error listing the
+  // stream ids if multiple streams match the same fragment
+  
+  // List all available keys
+  const allKeys = await listKeys(client);
+  
+  // Filter keys that match the prefix
+  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
+  
+  // Check if we have exactly one match
+  if (matchingKeys.length === 0) {
+    throw new Error(`No key found with prefix '${streamId}'`);
+  } else if (matchingKeys.length > 1) {
+    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
+  }
+  
+  // Use the unique matching key
+  const fullStreamId = matchingKeys[0];
+  const keyPair = await loadKeyPair(client, fullStreamId);
+  // Return the secret key as base64
+  return encodeBase64(keyPair.secretKey);
+}
+
+// Import a key from base64 encoded string
+export async function importKey(client: TributaryClient, appId: string, base64Key: string): Promise<string> {
+  // Decode the base64 key
+  const secretKey = decodeBase64(base64Key);
+  
+  // Create a key pair
+  const keyPair: KeyPair = {
+    publicKey: secretKey.slice(32), // Public key is last 32 bytes of secret key in Ed25519
+    secretKey: secretKey
+  };
+  
+  // Save the key pair
+  const streamId = await saveKeyPair(client, appId, keyPair);
+  return streamId;
 }

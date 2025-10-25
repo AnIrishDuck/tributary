@@ -91,7 +91,7 @@ const client = new TributaryClient({
   server: new TributaryServer('https://your-tributary-server.com'),
 });
 
-const data = client.addWriteKey('scribe', 'your-private-key-base64');
+const data = client.addWriteKey('scribe', 'your-private-key-url-b64');
 ```
 
 ### Configuration Options
@@ -112,10 +112,10 @@ List all `TributaryStream` objects tracked locally
 Add a stream with the given private write key and application ID, return the associated `TributaryStream`
 
 ### get(id)
-Get a `TributaryStream` given a url-safe base64 encoded id, `undefined` if are not tracking that stream
+Get a `TributaryStream` given a url-base64 encoded id, `undefined` if are not tracking that stream
 
 ### getLocal(id)
-Get a `TributaryLocal` given a url-safe base64 encoded id, `undefined` if are not tracking that stream
+Get a `TributaryLocal` given a url-base64 encoded id, `undefined` if are not tracking that stream
 
 ## Stream API
 

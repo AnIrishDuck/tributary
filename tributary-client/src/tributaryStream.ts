@@ -1,7 +1,7 @@
 // TributaryStream class for managing individual streams
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import { Server } from './server';
 import { TributaryLocal } from './tributaryLocal';
 import { logger, warn, error, info, debug } from './logger';
@@ -43,13 +43,13 @@ export class TributaryStream {
     this.pglite = options.pglite;
     this.appId = options.appId;
     this.schemaId = options.schemaId;
-    // Hex encode the stream id to avoid issues with SQL identifiers
-    this.schemaName = `${this.appId}_${this.schemaId}`;
+    // Quote the schema name to handle special characters
+    this.schemaName = `"${this.appId}_${this.schemaId}"`;
     debug("schemaName", this.schemaName);
   }
 
   getId(): string {
-    return encodeBase64(this.publicKey);
+    return base64url.encode(Buffer.from(this.publicKey));
   }
 
   /**
@@ -72,7 +72,9 @@ export class TributaryStream {
    * @returns The fully qualified table name with schema
    */
   getFullTable(table: string): string {
-    return `"${this.schemaName}"."${table}"`;
+    // Remove quotes from schema name if already quoted, then re-quote properly
+    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
+    return `"${cleanSchemaName}"."${table}"`;
   }
 
   /**
@@ -80,8 +82,10 @@ export class TributaryStream {
    * by this stream.
    */
   async local(): Promise<TributaryLocal> {
+    // Remove quotes from schema name if already quoted
+    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
     // Return a TributaryLocal instance with the correct schema
-    return new TributaryLocal(this.pglite, this.schemaName);
+    return new TributaryLocal(this.pglite, cleanSchemaName);
   }
 
   /**
@@ -529,7 +533,7 @@ export class TributaryStream {
     
     // Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
-    const signature = encodeBase64(signatureBytes);
+    const signature = base64url.encode(Buffer.from(signatureBytes));
     debug('ensureServerPersistence: Generated signature length:', signature.length);
     
     try {
@@ -662,7 +666,7 @@ export class TributaryStream {
   }
 
   private getPublicKeyBase64(): string {
-    return encodeBase64(this.publicKey);
+    return base64url.encode(Buffer.from(this.publicKey));
   }
 
   private generateTransactionId(): string {

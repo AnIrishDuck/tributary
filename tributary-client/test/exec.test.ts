@@ -1,7 +1,7 @@
 // Tests for exec functionality
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, FakeServer } from '../src/index';
-import { encodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 describe('Exec Functionality', () => {
@@ -12,7 +12,7 @@ describe('Exec Functionality', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
-    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
+    testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
   });
 
   it('should execute CREATE TABLE command with exec', async () => {

@@ -1,7 +1,7 @@
 // Comprehensive validation test for the simplified hash process
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, FakeServer } from '../src/index';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 describe('Hash Process Validation', () => {
@@ -13,8 +13,8 @@ describe('Hash Process Validation', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
-    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
-    testPublicKeyBase64 = encodeBase64(testKeyPair.publicKey);
+    testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
+    testPublicKeyBase64 = base64url.encode(Buffer.from(testKeyPair.publicKey));
   });
 
   it('should validate the simplified hash process with manual verification', async () => {
@@ -61,8 +61,8 @@ describe('Hash Process Validation', () => {
       expect(blob.hash).toBe(expectedHash);
       
       // 3. Verify signature validation
-      const pubkeyBytes = decodeBase64(blob.pubkey);
-      const signatureBytes = decodeBase64(blob.signature);
+      const pubkeyBytes = base64url.decode(blob.pubkey);
+      const signatureBytes = base64url.decode(blob.signature);
       const dataToSignBytes = new TextEncoder().encode(blob.hash);
       const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
       expect(isValid).toBe(true);
@@ -89,7 +89,7 @@ describe('Hash Process Validation', () => {
     
     // Step 5: Sign the data
     const signatureBytes = nacl.sign.detached(dataToSignBytes, testKeyPair.secretKey);
-    const signature = encodeBase64(signatureBytes);
+    const signature = base64url.encode(Buffer.from(signatureBytes));
     
     // Step 6: Store the blob using FakeServer
     const result = await fakeServer.storeBlob(
@@ -113,8 +113,8 @@ describe('Hash Process Validation', () => {
     expect(retrievedBlob!.sequenceNumber).toBe(1);
     
     // Step 8: Verify the signature using the same method as the server
-    const pubkeyBytes = decodeBase64(retrievedBlob!.pubkey);
-    const signatureBytesFromBlob = decodeBase64(retrievedBlob!.signature);
+    const pubkeyBytes = base64url.decode(retrievedBlob!.pubkey);
+    const signatureBytesFromBlob = base64url.decode(retrievedBlob!.signature);
     const dataToSignBytesFromBlob = new TextEncoder().encode(retrievedBlob!.hash);
     const isValid = nacl.sign.detached.verify(dataToSignBytesFromBlob, signatureBytesFromBlob, pubkeyBytes);
     expect(isValid).toBe(true);
@@ -128,7 +128,7 @@ describe('Hash Process Validation', () => {
     const concatenated1 = `${priorHash1}${bodyHash1}`;
     const hash1 = await computeHash(new TextEncoder().encode(concatenated1));
     const dataToSign1 = new TextEncoder().encode(hash1);
-    const signature1 = encodeBase64(nacl.sign.detached(dataToSign1, testKeyPair.secretKey));
+    const signature1 = base64url.encode(Buffer.from(nacl.sign.detached(dataToSign1, testKeyPair.secretKey)));
     
     await fakeServer.storeBlob(testPublicKeyBase64, data1, hash1, priorHash1, signature1, 1);
     
@@ -139,7 +139,7 @@ describe('Hash Process Validation', () => {
     const concatenated2 = `${priorHash2}${bodyHash2}`;
     const hash2 = await computeHash(new TextEncoder().encode(concatenated2));
     const dataToSign2 = new TextEncoder().encode(hash2);
-    const signature2 = encodeBase64(nacl.sign.detached(dataToSign2, testKeyPair.secretKey));
+    const signature2 = base64url.encode(Buffer.from(nacl.sign.detached(dataToSign2, testKeyPair.secretKey)));
     
     await fakeServer.storeBlob(testPublicKeyBase64, data2, hash2, priorHash2, signature2, 2);
     

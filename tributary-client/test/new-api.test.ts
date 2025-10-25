@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, TributaryServer, FakeServer } from '../src/index';
 import nacl from 'tweetnacl';
-import { encodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 
 describe('TributaryClient - Multi-stream API', () => {
   let fakeServer: FakeServer;
@@ -12,8 +12,8 @@ describe('TributaryClient - Multi-stream API', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     const keyPair = nacl.sign.keyPair();
-    privateKeyBase64 = encodeBase64(keyPair.secretKey);
-    publicKeyBase64 = encodeBase64(keyPair.publicKey);
+    privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
+    publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey));
   });
 
   it('should create a TributaryClient instance', () => {

@@ -11,22 +11,38 @@ cd /root/tributary/tributary-cli
 
 # Create unique identifiers for this test
 TIMESTAMP=$(date +%s)
+APP_ID="consolidated_app_$TIMESTAMP"
 TEST_ID="consolidated-$TIMESTAMP"
-KEY_NAME="$TEST_ID-key"
-COLLECTION_NAME="$TEST_ID-collection"
-DB1_PATH="/tmp/$TEST_ID-db1"
-DB2_PATH="/tmp/$TEST_ID-db2"
+DB1_PATH="/tmp/$TEST_ID-db1.sqlite"
+DB2_PATH="/tmp/$TEST_ID-db2.sqlite"
 
 echo "Test ID: $TEST_ID"
-echo "Key: $KEY_NAME"
-echo "Collection: $COLLECTION_NAME"
+echo "App: $APP_ID"
 echo "DB1 path: $DB1_PATH"
 echo "DB2 path: $DB2_PATH"
 
-# Cleanup any existing database folders and keys
+# Cleanup any existing database files
 echo "Cleaning up previous test artifacts..."
-rm -rf "$DB1_PATH" "$DB2_PATH"
-node dist/index.js key --generate $KEY_NAME > /dev/null 2>&1
+rm -f "$DB1_PATH" "$DB2_PATH"
+
+# Create new key for this test
+echo "Creating new key..."
+GENERATE_OUTPUT=$(node dist/index.js key generate $APP_ID)
+
+# Extract the stream ID from the output (this is a simplified approach)
+STREAM_ID=$(echo "$GENERATE_OUTPUT" | grep "Stream ID:" | awk '{print $3}')
+
+# Check if key creation was successful
+if [ -z "$STREAM_ID" ]; then
+    echo "Failed to create key"
+    exit 1
+fi
+
+echo "Key created successfully with stream ID: $STREAM_ID"
+
+# List keys to confirm it was created
+echo "Listing available keys:"
+node dist/index.js key list
 
 # Function to execute SQL and validate success
 execute_sql() {
@@ -35,9 +51,7 @@ execute_sql() {
     local operation_desc=$3
     
     echo "[$operation_desc] Executing: $sql_cmd"
-    node dist/index.js psql "$sql_cmd" \
-        --writekey $KEY_NAME \
-        --collection $COLLECTION_NAME \
+    node dist/index.js psql "$APP_ID/$STREAM_ID" "$sql_cmd" \
         --db $db_path 2>&1
         
     if [ $? -ne 0 ]; then
@@ -54,9 +68,7 @@ query_data() {
     local operation_desc=$3
     
     echo "[$operation_desc] Querying: $sql_cmd"
-    local result=$(node dist/index.js psql "$sql_cmd" \
-        --readkey $KEY_NAME \
-        --collection $COLLECTION_NAME \
+    local result=$(node dist/index.js psql "$APP_ID/$STREAM_ID" "$sql_cmd" \
         --db $db_path 2>&1)
         
     if [ $? -ne 0 ]; then
@@ -95,9 +107,7 @@ fi
 
 # Query data in DB2 (should see DB1's message after sync)
 echo "[DB2 Read] Querying: SELECT * FROM sync_test ORDER BY id"
-DB2_QUERY_RESULT=$(node dist/index.js psql "SELECT * FROM sync_test ORDER BY id" \
-    --readkey $KEY_NAME \
-    --collection $COLLECTION_NAME \
+DB2_QUERY_RESULT=$(node dist/index.js psql "$APP_ID/$STREAM_ID" "SELECT * FROM sync_test ORDER BY id" \
     --db $DB2_PATH 2>&1)
 
 if [ $? -ne 0 ]; then
@@ -130,9 +140,7 @@ echo ""
 echo "=== Test Phase 5: Verify DB1 can read DB2's data ==="
 # Query data in DB1 (should see both messages after sync)
 echo "[DB1 Read Both] Querying: SELECT * FROM sync_test ORDER BY id"
-DB1_QUERY_RESULT=$(node dist/index.js psql "SELECT * FROM sync_test ORDER BY id" \
-    --readkey $KEY_NAME \
-    --collection $COLLECTION_NAME \
+DB1_QUERY_RESULT=$(node dist/index.js psql "$APP_ID/$STREAM_ID" "SELECT * FROM sync_test ORDER BY id" \
     --db $DB1_PATH 2>&1)
 
 if [ $? -ne 0 ]; then
@@ -167,8 +175,8 @@ if [ $RECORDS_FOUND -eq 2 ]; then
     echo "=== Consolidated Sync Test Completed Successfully! ==="
     echo "Test Summary:"
     echo "- Test ID: $TEST_ID"
-    echo "- Key used: $KEY_NAME"
-    echo "- Collection used: $COLLECTION_NAME"
+    echo "- App used: $APP_ID"
+    echo "- Stream ID used: $STREAM_ID"
     echo "- Both databases synchronized successfully"
     echo "- All validations passed"
 else

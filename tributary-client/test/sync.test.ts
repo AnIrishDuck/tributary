@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, FakeServer } from '../src/index';
 import { PGlite } from '@electric-sql/pglite';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 describe('Sync Functionality', () => {
@@ -13,7 +13,7 @@ describe('Sync Functionality', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
-    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
+    testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
   });
 
   it('should track last sync index in database and avoid replaying commands', async () => {

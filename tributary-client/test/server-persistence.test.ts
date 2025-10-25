@@ -1,7 +1,7 @@
 // Tests for server persistence functionality
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TributaryClient, FakeServer } from '../src/index';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 // Helper functions to compute hashes the same way as the client and server
@@ -27,7 +27,7 @@ describe('Server Persistence', () => {
   beforeEach(() => {
     fakeServer = new FakeServer();
     testKeyPair = nacl.sign.keyPair();
-    testPrivateKeyBase64 = encodeBase64(testKeyPair.secretKey);
+    testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
   });
 
   it('should persist write operations to server before local execution', async () => {
@@ -144,8 +144,8 @@ describe('Server Persistence', () => {
     
     // Verify the signature using the same method as the server
     // This mimics how tributary-server verifies signatures
-    const pubkeyBytes = decodeBase64(blob.pubkey);
-    const signatureBytes = decodeBase64(blob.signature);
+    const pubkeyBytes = base64url.decode(blob.pubkey);
+    const signatureBytes = base64url.decode(blob.signature);
     
     // Recreate the data that was signed (just the concatenated hash)
     const dataToSignBytes = new TextEncoder().encode(blob.hash);
@@ -195,8 +195,8 @@ describe('Server Persistence', () => {
     
     // 4. Verify all signatures are valid
     for (const blob of blobs) {
-      const pubkeyBytes = decodeBase64(blob.pubkey);
-      const signatureBytes = decodeBase64(blob.signature);
+      const pubkeyBytes = base64url.decode(blob.pubkey);
+      const signatureBytes = base64url.decode(blob.signature);
       const dataToSignBytes = new TextEncoder().encode(blob.hash);
       const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
       expect(isValid).toBe(true);

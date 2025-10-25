@@ -4,7 +4,7 @@ import { TributaryClient } from '../src/tributaryClient';
 import { FakeServer } from '../src/fakeServer';
 import { createStringFileReader } from '../src/fileUtils';
 import nacl from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 
 describe.skip('Static Site Upload', () => {
   let client: TributaryClient;
@@ -18,7 +18,7 @@ describe.skip('Static Site Upload', () => {
     privateKey = keyPair.secretKey;
     publicKey = keyPair.publicKey;
     
-    const privateKeyBase64 = encodeBase64(privateKey);
+    const privateKeyBase64 = base64url.encode(Buffer.from(privateKey));
     
     // Create fake server and client for testing
     server = new FakeServer();
@@ -58,7 +58,7 @@ describe.skip('Static Site Upload', () => {
     });
 
     // Verify files were uploaded
-    const allBlobs = server.getAllBlobs(encodeBase64(publicKey));
+    const allBlobs = server.getAllBlobs(base64url.encode(Buffer.from(publicKey)));
     expect(allBlobs).toHaveLength(3); // 2 files + 1 directory structure
 
     // Verify directory structure (last blob)
@@ -85,7 +85,7 @@ describe.skip('Static Site Upload', () => {
     await client.uploadStaticSite(files, fileReader);
 
     // Should only upload directory structure
-    const allBlobs = server.getAllBlobs(encodeBase64(publicKey));
+    const allBlobs = server.getAllBlobs(base64url.encode(Buffer.from(publicKey)));
     expect(allBlobs).toHaveLength(1);
 
     // Verify empty directory structure
@@ -112,7 +112,7 @@ describe.skip('Static Site Upload', () => {
     });
 
     // Verify chaining by checking hashes
-    const allBlobs = server.getAllBlobs(encodeBase64(publicKey));
+    const allBlobs = server.getAllBlobs(base64url.encode(Buffer.from(publicKey)));
     expect(allBlobs).toHaveLength(2); // 1 file + 1 directory structure
     
     // First blob (file) should have empty prior hash
