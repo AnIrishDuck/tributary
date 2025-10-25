@@ -61,8 +61,7 @@ export class TributaryClient {
     const fullHash = await computeHash(publicKey);
     
     // Convert hex hash to a valid SQL identifier
-    // Remove any invalid characters and ensure it starts with a letter
-    let schemaId = fullHash.substring(0, 15); // Prepend 's' to ensure it starts with a letter
+    let schemaId = fullHash.substring(0, 16);
     
     // Check if this schema ID already exists, if so keep hashing until we find a free one
     let currentSchemaId = schemaId;
@@ -95,7 +94,7 @@ export class TributaryClient {
       counterBuffer.set(counterBytes, publicKey.length);
       
       const counterHash = await computeHash(counterBuffer);
-      let counterSchemaId = counterHash.substring(0, 15);
+      let counterSchemaId = counterHash.substring(0, 16);
       currentSchemaId = counterSchemaId;
     }
     
