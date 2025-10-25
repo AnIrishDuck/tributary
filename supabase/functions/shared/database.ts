@@ -4,55 +4,74 @@
 import { createClient } from '@supabase/supabase-js';
 import { Blob, BlobMetadata, CollectionInfo } from './models.ts';
 
-// Initialize Supabase client (conditionally to allow for testing)
-let supabase: any = null;
+// Helper function to convert hex string to Uint8Array
+function hexStringToUint8Array(hexString: string): Uint8Array {
+  // Remove the \x prefix if present
+  if (hexString.startsWith('\\x')) {
+    hexString = hexString.substring(2);
+  }
+  
+  const bytes = new Uint8Array(hexString.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
 
-// Only initialize if we have the required environment variables
-const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-
-if (supabaseUrl && supabaseKey) {
-  supabase = createClient(supabaseUrl, supabaseKey);
+// Helper function to convert Uint8Array to hex string for storage
+function uint8ArrayToHexString(uint8Array: Uint8Array): string {
+  return '\\x' + Array.from(uint8Array)
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export class Database {
   private client: any;
 
-  constructor(supabaseUrl?: string, supabaseKey?: string) {
-    if (supabaseUrl && supabaseKey) {
-      // Initialize with provided credentials for testing
-      this.client = createClient(supabaseUrl, supabaseKey);
-    } else {
-      // Use the global client for normal operation
-      this.client = supabase;
+  constructor(noSessions: boolean = false) {
+    // Always connect using DATABASE_URL as SUPABASE_URL
+    // In local development, this will be set to the local Supabase instance
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_KEY') || '';
+    
+    let clientOptions = {};
+    
+    // Set options to prevent connection leaks in tests only when noSessions is true
+    if (noSessions) {
+      clientOptions = {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+        global: {
+          headers: {
+            'X-Client-Info': 'tributary-fn-test'
+          }
+        }
+      };
     }
+    
+    // Initialize with provided credentials and options
+    this.client = createClient(supabaseUrl, supabaseKey, clientOptions);
   }
 
   // Store a blob in the database
   async storeBlob(blob: Blob): Promise<boolean> {
-    // Return true in test environments where supabase is not initialized
-    if (!this.client) {
-      console.log('Supabase not initialized, skipping storeBlob in test mode');
-      return true;
-    }
-
+    // Convert Uint8Array to hex string for storage
+    const blobForStorage = {
+      ...blob,
+      data: uint8ArrayToHexString(blob.data)
+    };
+    
     const { error } = await this.client
       .from('blobs')
-      .upsert({
-        id: blob.id,
-        pubkey: blob.pubkey,
-        data: blob.data,
-        hash: blob.hash,
-        prior_hash: blob.prior_hash,
-        signature: blob.signature,
-        sequence_number: blob.sequence_number,
-        created_at: blob.created_at
-      }, {
+      .upsert(blobForStorage, {
         onConflict: 'pubkey,id'
       });
 
     if (error) {
-      console.error('Database error:', error);
+      console.error('Database error in storeBlob:', error);
       return false;
     }
 
@@ -61,12 +80,6 @@ export class Database {
 
   // Retrieve a blob from the database
   async retrieveBlob(pubkey: string, id: string): Promise<Blob | null> {
-    // Return null in test environments where supabase is not initialized
-    if (!this.client) {
-      console.log('Supabase not initialized, returning null in test mode');
-      return null;
-    }
-
     const { data, error } = await this.client
       .from('blobs')
       .select('*')
@@ -75,8 +88,17 @@ export class Database {
       .single();
 
     if (error) {
+      // Return null if not found (not an error)
+      if (error.code === 'PGRST116') {
+        return null;
+      }
       console.error('Database error:', error);
       return null;
+    }
+
+    // Convert hex string back to Uint8Array
+    if (data && typeof data.data === 'string') {
+      data.data = hexStringToUint8Array(data.data);
     }
 
     return data as Blob;
@@ -84,12 +106,6 @@ export class Database {
 
   // Get blob metadata from the database
   async getBlobMetadata(pubkey: string, id: string): Promise<BlobMetadata | null> {
-    // Return null in test environments where supabase is not initialized
-    if (!this.client) {
-      console.log('Supabase not initialized, returning null in test mode');
-      return null;
-    }
-
     const { data, error } = await this.client
       .from('blobs')
       .select('id, pubkey, hash, prior_hash, signature, sequence_number, created_at, data')
@@ -98,8 +114,17 @@ export class Database {
       .single();
 
     if (error) {
+      // Return null if not found (not an error)
+      if (error.code === 'PGRST116') {
+        return null;
+      }
       console.error('Database error:', error);
       return null;
+    }
+
+    // Convert hex string back to Uint8Array
+    if (data && typeof data.data === 'string') {
+      data.data = hexStringToUint8Array(data.data);
     }
 
     return data as BlobMetadata;
@@ -107,12 +132,6 @@ export class Database {
 
   // Get the latest blob for a pubkey
   async getLatestBlob(pubkey: string): Promise<BlobMetadata | null> {
-    // Return null in test environments where supabase is not initialized
-    if (!this.client) {
-      console.log('Supabase not initialized, returning null in test mode');
-      return null;
-    }
-
     const { data, error } = await this.client
       .from('blobs')
       .select('id, pubkey, hash, prior_hash, signature, sequence_number, created_at, data')
@@ -130,21 +149,16 @@ export class Database {
       return null;
     }
 
+    // Convert hex string back to Uint8Array
+    if (data && typeof data.data === 'string') {
+      data.data = hexStringToUint8Array(data.data);
+    }
+
     return data as BlobMetadata;
   }
 
   // Get collection info
   async getCollectionInfo(pubkey: string): Promise<CollectionInfo> {
-    // Return default values in test environments where supabase is not initialized
-    if (!this.client) {
-      console.log('Supabase not initialized, returning default values in test mode');
-      return {
-        blob_count: 0,
-        first_blob_timestamp: null,
-        last_blob_timestamp: null
-      };
-    }
-
     const { data, error } = await this.client
       .from('blobs')
       .select('created_at')

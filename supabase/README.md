@@ -47,8 +47,6 @@ Tributary provides a verifiable streaming protocol where each entry in a stream 
 - Chain hash calculation: `SHA256(prior_hash + SHA256(data))`
 
 ✅ **Phase 4: End-to-End Compatibility** - IN PROGRESS
-- GOOSE: let's focus on this end-to-end testing. what do we need to test these functions?
-  what should we do next to verify they work with tributary-client?
 - Ensuring identical request/response formats between Rust server and Edge Functions
 - Maintaining client compatibility. Create tests using tributary-client that
   work with a real TributaryServer on our functions.

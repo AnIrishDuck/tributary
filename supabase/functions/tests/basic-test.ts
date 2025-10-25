@@ -18,11 +18,11 @@ Deno.test('Health endpoint returns correct response', async () => {
 
 // Test general structure
 Deno.test('Functions directory has required files', async () => {
-  const requiredFiles = ['upload.ts', 'health.ts', 'retrieve.ts', 'info.ts', 'latest.ts'];
+  const requiredFiles = ['stream/index.ts'];
   
   for (const file of requiredFiles) {
     try {
-      const stat = await Deno.stat(`/root/tributary-fn/tributary-fn/functions/${file}`);
+      const stat = await Deno.stat(`/root/tributary-fn/supabase/functions/${file}`);
       assert(stat.isFile, `${file} should exist`);
     } catch (error: any) {
       throw new Error(`${file} not found: ${error.message}`);
@@ -36,7 +36,7 @@ Deno.test('Shared directory has required files', async () => {
   
   for (const file of requiredFiles) {
     try {
-      const stat = await Deno.stat(`/root/tributary-fn/tributary-fn/shared/${file}`);
+      const stat = await Deno.stat(`/root/tributary-fn/supabase/functions/shared/${file}`);
       assert(stat.isFile, `${file} should exist`);
     } catch (error: any) {
       throw new Error(`${file} not found: ${error.message}`);
@@ -47,7 +47,7 @@ Deno.test('Shared directory has required files', async () => {
 // Test import map exists
 Deno.test('Import map exists', async () => {
   try {
-    const stat = await Deno.stat('/root/tributary-fn/tributary-fn/import_map.json');
+    const stat = await Deno.stat('/root/tributary-fn/supabase/functions/import_map.json');
     assert(stat.isFile, 'import_map.json should exist');
   } catch (error: any) {
     throw new Error(`import_map.json not found: ${error.message}`);
