@@ -1,6 +1,6 @@
 import * as nacl from 'tweetnacl';
 import { TributaryClient } from 'tributary-client';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 
 // Define the key pair interface
 export interface KeyPair {
@@ -47,7 +47,7 @@ export async function loadKeyPair(client: TributaryClient, streamId: string): Pr
   if (stream) {
     // For now, we'll create a placeholder since TributaryClient doesn't directly expose keys
     // In a real implementation, we'd need to store the private key in a secure way
-    const publicKey = decodeBase64(fullStreamId); // Stream ID is base64 encoded public key
+    const publicKey = base64url.decode(fullStreamId); // Stream ID is base64 encoded public key
     return {
       publicKey: publicKey,
       secretKey: new Uint8Array(64) // Placeholder - in real implementation would retrieve from secure storage
@@ -115,18 +115,18 @@ export async function exportKey(client: TributaryClient, streamId: string): Prom
   const fullStreamId = matchingKeys[0];
   const keyPair = await loadKeyPair(client, fullStreamId);
   // Return the secret key as base64
-  return encodeBase64(keyPair.secretKey);
+  return base64url.encode(Buffer.from(keyPair.secretKey));
 }
 
 // Import a key from base64 encoded string
 export async function importKey(client: TributaryClient, appId: string, base64Key: string): Promise<string> {
   // Decode the base64 key
-  const secretKey = decodeBase64(base64Key);
+  const secretKey = base64url.decode(base64Key);
   
   // Create a key pair
   const keyPair: KeyPair = {
-    publicKey: secretKey.slice(32), // Public key is last 32 bytes of secret key in Ed25519
-    secretKey: secretKey
+    publicKey: new Uint8Array(secretKey.slice(32)), // Public key is last 32 bytes of secret key in Ed25519
+    secretKey: new Uint8Array(secretKey)
   };
   
   // Save the key pair

@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
 import { info, error as errorLog } from './logger';
-import { encodeBase64 } from 'tweetnacl-util';
+import * as base64url from 'urlsafe-base64';
 import { getClient } from './util';
 
 // Execute SQL command

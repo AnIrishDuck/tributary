@@ -21,7 +21,8 @@
     "tributary-client": "file:../tributary-client",
     "tslog": "^4.10.2",
     "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "tweetnacl-util": "^0.15.1",
+    "urlsafe-base64": "^1.0.0"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

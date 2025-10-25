@@ -20,9 +20,9 @@ as they are currently implemented:
 - `tributary key show [app-id]/[stream_id]`
   .. prints schema info from local key database ..
 - `tributary key export [app-id]/[stream_id]`
-  .. prints url safe base64 encoded private key to stdout ..
+  .. prints url-base64 encoded private key to stdout ..
 - `tributary key import [app-id]`
-  .. imports url safe base64 encoded private key to local database via stdin ..
+  .. imports url-base64 encoded private key to local database via stdin ..
 
 GOOSE: no, these keys are stored directly in the database via the relevant
 methods on `TributaryClient`.
