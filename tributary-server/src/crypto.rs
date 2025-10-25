@@ -21,16 +21,14 @@ impl std::fmt::Display for CryptoError {
 impl std::error::Error for CryptoError {}
 
 pub fn verify_signature(request: &SignatureVerificationRequest) -> Result<bool, CryptoError> {
-    // Decode the public key from base64 (try URL_SAFE first, then STANDARD for backward compatibility)
+    // Decode the public key from base64 (URL_SAFE only)
     let pubkey_bytes = general_purpose::URL_SAFE
         .decode(&request.pubkey)
-        .or_else(|_| general_purpose::STANDARD.decode(&request.pubkey))
         .map_err(CryptoError::Base64DecodeError)?;
 
-    // Decode the signature from base64 (try URL_SAFE first, then STANDARD for backward compatibility)
+    // Decode the signature from base64 (URL_SAFE only)
     let signature_bytes = general_purpose::URL_SAFE
         .decode(&request.signature)
-        .or_else(|_| general_purpose::STANDARD.decode(&request.signature))
         .map_err(CryptoError::Base64DecodeError)?;
 
     // Convert to ed25519 verifying key
