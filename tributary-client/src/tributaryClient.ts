@@ -49,28 +49,42 @@ export class TributaryClient {
   }
 
   /**
-   * Generate a unique schema ID based on the public key
+   * Generate a schema ID based on the public key
+   * For the same public key and database, this should return the same schema ID
    * @param publicKey The public key to derive the schema ID from
-   * @returns A unique schema ID that is a valid SQL identifier
+   * @returns A schema ID that is a valid SQL identifier
    */
   private async generateSchemaId(publicKey: Uint8Array): Promise<string> {
     // Import computeHash function
     const { computeHash } = await import('./hashUtils');
     
-    // Hash the public key
-    const fullHash = await computeHash(publicKey);
+    // First check if we already have a stream with this exact public key
+    try {
+      const result: any = await this.pglite.query(
+        `SELECT schema_id FROM tributary.streams WHERE read_key = $1`,
+        [publicKey]
+      );
+      
+      if (result.rows.length > 0) {
+        // Found existing stream with same public key, return its schema ID
+        return result.rows[0].schema_id;
+      }
+    } catch (error) {
+      // If there's an error querying, continue with generated schema ID
+      warn('Error checking for existing stream with same public key:', error as Error);
+    }
     
-    // Convert hex hash to a valid SQL identifier
+    // Generate initial schema ID from public key
+    const fullHash = await computeHash(publicKey);
     let schemaId = fullHash.substring(0, 16);
     
-    // Check if this schema ID already exists, if so keep hashing until we find a free one
+    // Check if this schema ID already exists in the database (handle potential hash collisions)
     let currentSchemaId = schemaId;
     let counter = 0;
     const MAX_ATTEMPTS = 10000; // Limit to prevent infinite loops
     
     // Limit iterations to prevent infinite loops
     while (counter < MAX_ATTEMPTS) {
-      // Check if this schema ID already exists in the database
       try {
         const result: any = await this.pglite.query(
           `SELECT COUNT(*) as count FROM tributary.streams WHERE schema_id = $1`,
@@ -85,7 +99,7 @@ export class TributaryClient {
         break;
       }
       
-      // Increment counter and generate a new schema ID
+      // Increment counter and generate a new schema ID to avoid collisions
       counter++;
       const counterBuffer = new Uint8Array(publicKey.length + 4);
       counterBuffer.set(publicKey);
@@ -94,8 +108,7 @@ export class TributaryClient {
       counterBuffer.set(counterBytes, publicKey.length);
       
       const counterHash = await computeHash(counterBuffer);
-      let counterSchemaId = counterHash.substring(0, 16);
-      currentSchemaId = counterSchemaId;
+      currentSchemaId = counterHash.substring(0, 16);
     }
     
     // If we've exhausted our attempts, throw an error
