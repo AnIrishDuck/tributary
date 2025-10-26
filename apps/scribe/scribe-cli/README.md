@@ -29,13 +29,12 @@ The sync command performs bidirectional synchronization:
 - Updates the local index directory with changes
 
 Options:
-- `--read-key <file>`: File containing the read key for the collection
-- `--write-key <file>`: File containing the write key for the collection
 - `--db <path>`: Local database directory that is synced with the server (optional - by default uses `db/` subdirectory within the checkout)
 - `--dry-run`: Show what would be synced without making changes
 - `-l, --limit <number>`: Maximum number of blocks to process in this run (default: 100)
 
-Sync uses file modification times and content comparison to detect local changes efficiently. By default, the local database is stored in a `db/` subdirectory within the checkout directory, making it portable and self-contained.
+Sync uses file modification times and content comparison to detect local
+changes efficiently.
 
 ### init
 
@@ -47,11 +46,12 @@ scribe init [options] <directory>
 
 Initialize a local directory for use with Scribe. This command sets up the necessary directory structure and database tables.
 
+Outputs the stream ID of the new collection.
+
 Arguments:
 - `<directory>`: Local directory to initialize for Scribe
 
 Options:
-- `--write-key <file>`: File containing the write key for the collection (required for creating the seed document)
 - `--db <path>`: Local database directory that is synced with the server (optional - by default uses `db/` subdirectory within the checkout)
 - `--empty`: Initialize database tables only, without creating a seed document
 

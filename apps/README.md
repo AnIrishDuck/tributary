@@ -2,15 +2,11 @@ This contains official "apps" used to organize tributary data.
 
 The typical source structure for apps looks like this (e.g. the catalog app):
 
-- apps/catalog-data  - core data definitions (e.g. migrations) and operations
-- apps/catalog-cli   - command line tool for viewing and modifying catalog
-- apps/catalog-react - browser app for catalog exposing the UI. 
+- apps/catalog/catalog-data  - core data definitions (e.g. migrations) and operations
+- apps/catalog/catalog-cli   - command line tool for viewing and modifying catalog
+- apps/catalog/catalog-react - browser app for catalog exposing the UI. 
 
-# Deploying App Bundles
+# CLI Conventions
 
-App UIs are typically static sites built via e.g. Vite.
-
-They utilize the static stream layout functionality built into
-`tributary-server`.
-
-Thus, they can be uploaded with `tributary-cli static`
+The CLI for apps defaults to storing the database for that app in the local home
+directory with the app id: `~/.local/state/<app id>/`
