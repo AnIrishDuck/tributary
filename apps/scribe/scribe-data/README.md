@@ -24,12 +24,12 @@ The indexing process is designed to be:
 
 ## Functions
 
-### `indexSlugs(db, options)`
+### `indexSlugs(localDb, options)`
 
 Indexes document titles from unprocessed blocks and converts them to URL-friendly slugs.
 
 **Parameters:**
-- `db`: Kysely database instance
+- `localDb`: Kysely database instance using a TributaryLocal wrapper for local-only operations (index tables)
 - `options`: Indexing options
   - `limit`: Maximum number of blocks to process (default: 100)
 
@@ -41,7 +41,7 @@ The function:
 1. Identifies unindexed blocks that are authoritative (latest versions)
 2. Extracts titles from these blocks using `extractTitleFromMarkdown`
 3. Converts titles to URL-friendly slugs using `titleToSlug`
-4. Updates the `indexed_block` and `block_slug` tables
+4. Updates the `indexed_block` and `block_slug` tables using the Kysely instance with TributaryLocal wrapper
 5. Returns statistics about the indexing operation
 
 ### `extractTitleFromMarkdown(body)`
@@ -75,7 +75,110 @@ link text and target start with # and are identical (e.g., `[#mytag](#mytag)`).
 **Returns:**
 - Array of unique tags found in the document
 
+### `getAllBlockSlugs(db)`
+
+Retrieves all block slugs from the index.
+
+**Parameters:**
+- `db`: Kysely database instance
+
+**Returns:**
+- Array of block slugs
+
+### `getBlockSlugByUuid(db, blockUuid)`
+
+Get block slug by block UUID.
+
+**Parameters:**
+- `db`: Kysely database instance
+- `blockUuid`: The block UUID
+
+**Returns:**
+- The block slug or null if not found
+
+### `getBlockBySlug(db, slug)`
+
+Get block slug by slug.
+
+**Parameters:**
+- `db`: Kysely database instance
+- `slug`: The slug to search for
+
+**Returns:**
+- The block slug or null if not found
+
+### `getAuthoritativeVersionByBlockUuid(db, blockUuid)`
+
+Get authoritative version for a block.
+
+**Parameters:**
+- `db`: Kysely database instance
+- `blockUuid`: The block UUID
+
+**Returns:**
+- The authoritative version mapping or null if not found
+
+### `getAllAuthoritativeVersions(db)`
+
+Get all authoritative versions.
+
+**Parameters:**
+- `db`: Kysely database instance
+
+**Returns:**
+- Array of authoritative version mappings
+
+### `getTagsForBlock(db, blockUuid)`
+
+Get all tags for a block.
+
+**Parameters:**
+- `db`: Kysely database instance
+- `blockUuid`: The block UUID
+
+**Returns:**
+- Array of tags for the block
+
+### `getBlocksByTag(db, tag)`
+
+Get all blocks that have a specific tag.
+
+**Parameters:**
+- `db`: Kysely database instance
+- `tag`: The tag to search for
+
+**Returns:**
+- Array of block UUIDs that have this tag
+
+### `getAllTags(db)`
+
+Get all unique tags.
+
+**Parameters:**
+- `db`: Kysely database instance
+
+**Returns:**
+- Array of all unique tags
+
 ## Design Principles
+
+### Database Access Patterns
+
+Scribe data operations are divided into two categories based on database access patterns, both using Kysely as the query interface with different underlying wrappers:
+
+#### Synced Operations (Kysely with TributaryStream wrapper)
+- Data stored in synchronized tables (e.g., `block`)
+- Operations are replicated to other devices via the Tributary server
+- Used for core document content and metadata
+- All write operations are guaranteed to be persisted on the server before local confirmation
+- Uses a Kysely instance with a TributaryStream wrapper as the dialect
+
+#### Local Operations (Kysely with TributaryLocal wrapper)
+- Data stored in non-synchronized tables (e.g., `indexed_block`, `block_slug`, `authoritative_version`, `block_tag`)
+- Operations are local-only and not replicated to other devices
+- Used for indexing, caching, and user-specific data
+- Provides faster read/write operations without network overhead
+- Uses a Kysely instance with a TributaryLocal wrapper as the dialect
 
 ### Non-Synchronized Indexes
 
@@ -84,6 +187,7 @@ via Tributary. This ensures that:
 - Index rebuilding doesn't affect sync performance
 - Local index corruption doesn't affect other users
 - Users can rebuild indexes without affecting the shared collection
+- Indexes can be customized per device without conflicts
 
 ### Authoritative Versions
 
@@ -105,6 +209,7 @@ the database. This allows for:
 
 Planned features:
 - Full text search indexing
-- Tag indexing and tag-based navigation
-- Backlink indexing for document linking
-- Conflict detection and resolution
+- Enhanced tag indexing and tag-based navigation
+- Backlink tracking for document relationships
+- Conflict detection and resolution in the UI
+- Performance optimizations for large document collections
