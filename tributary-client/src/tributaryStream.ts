@@ -81,7 +81,7 @@ export class TributaryStream {
    * Return a client that has been configured with the right search path for the schema used
    * by this stream.
    */
-  async local(): Promise<TributaryLocal> {
+  local(): TributaryLocal {
     // Remove quotes from schema name if already quoted
     const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
     // Return a TributaryLocal instance with the correct schema
