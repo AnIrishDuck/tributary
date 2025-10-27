@@ -62,7 +62,7 @@ describe('TributaryClient - Multi-stream API', () => {
     const stream = await client.addWriteKey('scribe', privateKeyBase64);
     
     // Get the stream by ID
-    const retrievedStream = await client.get(publicKeyBase64);
+    const retrievedStream = await client.get('scribe', publicKeyBase64);
     expect(retrievedStream).toBeDefined();
   });
 

@@ -111,11 +111,11 @@ List all `TributaryStream` objects tracked locally
 ### addWriteKey(appId, key)
 Add a stream with the given private write key and application ID, return the associated `TributaryStream`
 
-### get(id)
-Get a `TributaryStream` given a url-base64 encoded id, `undefined` if are not tracking that stream
+### get(appId, id)
+Get a `TributaryStream` given an application ID and url-base64 encoded stream ID, `undefined` if are not tracking that stream
 
-### getLocal(id)
-Get a `TributaryLocal` given a url-base64 encoded id, `undefined` if are not tracking that stream
+### getLocal(appId, id)
+Get a `TributaryLocal` given an application ID and url-base64 encoded stream ID, `undefined` if are not tracking that stream
 
 ## Stream API
 

@@ -65,7 +65,7 @@ describe('getFullTable Method', () => {
 
   it('should work with the local instance retrieved via getLocal()', async () => {
     // Get a TributaryLocal instance via getLocal
-    const localInstance = await client.getLocal(streamId);
+    const localInstance = await client.getLocal('scribe', streamId);
     
     // Ensure we got a valid instance
     expect(localInstance).toBeDefined();

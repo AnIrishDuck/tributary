@@ -25,7 +25,7 @@ describe('TributaryClient - getLocal() Method', () => {
 
   it('should return a PGLite instance when calling getLocal on an existing stream', async () => {
     // Get the local database instance using getLocal
-    const localDB = await client.getLocal(streamId);
+    const localDB = await client.getLocal('scribe', streamId);
     
     // Verify it's a PGLite instance by checking for expected methods
     expect(localDB).toBeDefined();
@@ -44,7 +44,7 @@ describe('TributaryClient - getLocal() Method', () => {
   it('should return undefined for a non-existent stream ID', async () => {
     // Try to get a local database instance for a non-existent stream
     const nonExistentId = 'non-existent-stream-id';
-    const localDB = await client.getLocal(nonExistentId);
+    const localDB = await client.getLocal('scribe', nonExistentId);
     
     // Should return undefined
     expect(localDB).toBeUndefined();

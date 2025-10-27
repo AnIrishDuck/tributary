@@ -209,12 +209,13 @@ export class TributaryClient {
   }
 
   /**
-   * Get a TributaryStream given a stream ID (url-safe base64 encoded public key))
+   * Get a TributaryStream given an application ID and stream ID (url-safe base64 encoded public key))
    * For read-only access, we can create a stream with just the public key
+   * @param appId Application identifier (must be a valid SQL identifier without underscores)
    * @param id URL-safe base64 encoded stream ID (public key)
    * @returns TributaryStream or undefined if not tracking that stream
    */
-  async get(id: string): Promise<TributaryStream | undefined> {
+  async get(appId: string, id: string): Promise<TributaryStream | undefined> {
     // Wait for initialization to complete
     await this.initialized;
     
@@ -256,7 +257,7 @@ export class TributaryClient {
           server: this.server,
           privateKey: writeKey,
           pglite: this.pglite,
-          appId: 'readonly', // Use a default app ID for read-only access
+          appId: appId, // Use provided app ID
           schemaId: schemaId
         });
         
@@ -285,11 +286,12 @@ export class TributaryClient {
   }
 
   /**
-   * Get a TributaryLocal given a url-safe base64 encoded id
+   * Get a TributaryLocal given an application ID and stream ID (url-safe base64 encoded public key)
+   * @param appId Application identifier (must be a valid SQL identifier without underscores)
    * @param id URL-safe base64 encoded stream ID (public key)
    * @returns TributaryLocal or undefined if not tracking that stream
    */
-  async getLocal(id: string): Promise<TributaryLocal | undefined> {
+  async getLocal(appId: string, id: string): Promise<TributaryLocal | undefined> {
     // Wait for initialization to complete
     await this.initialized;
     
@@ -315,8 +317,8 @@ export class TributaryClient {
         const row = result.rows[0];
         const schemaId = row.schema_id;
         
-        // Create a schema name (using a default app ID since we don't have the original)
-        const schemaName = `readonly_${schemaId}`;
+        // Create a schema name using the provided app ID
+        const schemaName = `${appId}_${schemaId}`;
         
         // Return a TributaryLocal instance with the correct schema
         return new TributaryLocal(this.pglite, schemaName);
