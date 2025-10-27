@@ -12,16 +12,13 @@ export async function createTestDB(): Promise<{ syncedDb: Kysely<any>, localDb: 
   // Create a fake server for testing
   const server = new FakeServer()
   
-  // Generate a key pair for testing
-  const keyPair = nacl.sign.keyPair()
-  const privateKeyBase64 = encodeBase64(keyPair.secretKey)
-  
   // Create TributaryClient
   const client = new TributaryClient({
-    server,
-    privateKey: privateKeyBase64,
-    collectionId: 'test-scribe-collection'
+    server
   })
+  
+  // Generate a key pair for testing
+  const keyPair = nacl.sign.keyPair()
   
   // Add a write key to get a stream
   const stream = await client.addWriteKey('testapp', keyPair.secretKey)
