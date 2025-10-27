@@ -12,7 +12,7 @@ describe('scribe-data migrations and operations', () => {
   beforeEach(async () => {
     // Create a fresh test database for each test
     const result = await createTestDB()
-    db = result.db
+    db = result.syncedDb
     cleanup = async () => {
       await db.destroy()
     }

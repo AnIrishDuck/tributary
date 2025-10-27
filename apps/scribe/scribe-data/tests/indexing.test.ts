@@ -13,19 +13,21 @@ import { createTestDB } from './test-utils.js'
 import { NewBlockRecord } from '../src/types.js'
 
 describe('scribe-data indexing', () => {
-  let db: Kysely<any>
+  let syncedDb: Kysely<any>
+  let localDb: Kysely<any>
   let cleanup: () => Promise<void>
 
   beforeEach(async () => {
     // Create a fresh test database for each test
     const result = await createTestDB()
-    db = result.db
+    syncedDb = result.syncedDb
+    localDb = result.localDb
     cleanup = async () => {
-      await db.destroy()
+      await syncedDb.destroy()
     }
     
     // Run the migration
-    await up(db)
+    await up(syncedDb)
   })
 
   afterEach(async () => {
@@ -96,16 +98,16 @@ describe('scribe-data indexing', () => {
       body: '# My Test Document\n\nThis is a test document with a title.'
     }
     
-    await db.insertInto('block').values(block).execute()
+    await syncedDb.insertInto('block').values(block).execute()
     
     // Run indexing
-    const result: IndexSlugsResult = await indexSlugs(db)
+    const result: IndexSlugsResult = await indexSlugs(localDb)
     
     expect(result.indexedCount).toBe(1)
     expect(result.hasMore).toBe(false)
     
     // Check that the block was marked as indexed
-    const indexedBlock = await db.selectFrom('indexed_block')
+    const indexedBlock = await localDb.selectFrom('indexed_block')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -115,7 +117,7 @@ describe('scribe-data indexing', () => {
     expect(indexedBlock?.indexed).toBe(true)
     
     // Check that the slug was created
-    const slug = await db.selectFrom('block_slug')
+    const slug = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -141,16 +143,16 @@ describe('scribe-data indexing', () => {
       body: 'This is a document without a title.'
     }
     
-    await db.insertInto('block').values(block).execute()
+    await syncedDb.insertInto('block').values(block).execute()
     
     // Run indexing
-    const result: IndexSlugsResult = await indexSlugs(db)
+    const result: IndexSlugsResult = await indexSlugs(localDb)
     
     expect(result.indexedCount).toBe(0) // No slug to index
     expect(result.hasMore).toBe(false)
     
     // Check that the block was still marked as indexed
-    const indexedBlock = await db.selectFrom('indexed_block')
+    const indexedBlock = await localDb.selectFrom('indexed_block')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -160,7 +162,7 @@ describe('scribe-data indexing', () => {
     expect(indexedBlock?.indexed).toBe(true)
     
     // Check that no slug was created
-    const slug = await db.selectFrom('block_slug')
+    const slug = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -185,13 +187,13 @@ describe('scribe-data indexing', () => {
       body: '# Original Title\n\nThis is the first version.'
     }
     
-    await db.insertInto('block').values(blockV1).execute()
+    await syncedDb.insertInto('block').values(blockV1).execute()
     
     // Run indexing on first version
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check initial slug
-    const initialSlug = await db.selectFrom('block_slug')
+    const initialSlug = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -211,16 +213,16 @@ describe('scribe-data indexing', () => {
       body: '# Updated Title\n\nThis is the updated version.'
     }
     
-    await db.insertInto('block').values(blockV2).execute()
+    await syncedDb.insertInto('block').values(blockV2).execute()
     
     // Run indexing again
-    const result: IndexSlugsResult = await indexSlugs(db)
+    const result: IndexSlugsResult = await indexSlugs(localDb)
     
     expect(result.indexedCount).toBe(1)
     expect(result.hasMore).toBe(false)
     
     // Check updated slug
-    const updatedSlug = await db.selectFrom('block_slug')
+    const updatedSlug = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -230,7 +232,7 @@ describe('scribe-data indexing', () => {
     expect(updatedSlug?.title).toBe('Updated Title')
     
     // Check that the indexed_block record was updated
-    const indexedBlock = await db.selectFrom('indexed_block')
+    const indexedBlock = await localDb.selectFrom('indexed_block')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .executeTakeFirst()
@@ -253,17 +255,17 @@ describe('scribe-data indexing', () => {
         body: `# Document ${i}\n\nThis is document number ${i}.`
       }
       
-      await db.insertInto('block').values(block).execute()
+      await syncedDb.insertInto('block').values(block).execute()
     }
     
     // Run indexing with limit of 3
-    const result: IndexSlugsResult = await indexSlugs(db, { limit: 3 })
+    const result: IndexSlugsResult = await indexSlugs(localDb, { limit: 3 })
     
     expect(result.indexedCount).toBe(3)
     expect(result.hasMore).toBe(true) // Should have more since we have 5 total
     
     // Run indexing again to get the rest
-    const result2: IndexSlugsResult = await indexSlugs(db, { limit: 3 })
+    const result2: IndexSlugsResult = await indexSlugs(localDb, { limit: 3 })
     
     expect(result2.indexedCount).toBe(2) // Remaining 2
     expect(result2.hasMore).toBe(false)
@@ -297,19 +299,19 @@ describe('scribe-data indexing', () => {
       body: '# Same Title\n\nThis is the second document with this title.'
     }
     
-    await db.insertInto('block').values(block1).execute()
-    await db.insertInto('block').values(block2).execute()
+    await syncedDb.insertInto('block').values(block1).execute()
+    await syncedDb.insertInto('block').values(block2).execute()
     
     // Run indexing
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Get both slugs
-    const slug1 = await db.selectFrom('block_slug')
+    const slug1 = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', block1Uuid)
       .executeTakeFirst()
     
-    const slug2 = await db.selectFrom('block_slug')
+    const slug2 = await localDb.selectFrom('block_slug')
       .selectAll()
       .where('block_uuid', '=', block2Uuid)
       .executeTakeFirst()
@@ -349,13 +351,13 @@ describe('scribe-data indexing', () => {
       body: '# My Document with Tags\n\nThis document has [#important](#important) and [#work](#work) tags.'
     }
     
-    await db.insertInto('block').values(block).execute()
+    await syncedDb.insertInto('block').values(block).execute()
     
     // Run indexing
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that tags were indexed
-    const tags = await db.selectFrom('block_tag')
+    const tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .orderBy('tag')
@@ -383,13 +385,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document has no tags initially.'
     }
     
-    await db.insertInto('block').values(blockV1).execute()
+    await syncedDb.insertInto('block').values(blockV1).execute()
     
     // Run indexing on first version
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that no tags exist
-    let tags = await db.selectFrom('block_tag')
+    let tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .execute()
@@ -407,13 +409,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#anothertag](#anothertag) tags.'
     }
     
-    await db.insertInto('block').values(blockV2).execute()
+    await syncedDb.insertInto('block').values(blockV2).execute()
     
     // Run indexing again
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that tags were added
-    tags = await db.selectFrom('block_tag')
+    tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .orderBy('tag')
@@ -441,13 +443,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document has [#tag1](#tag1) and [#tag2](#tag2) tags.'
     }
     
-    await db.insertInto('block').values(blockV1).execute()
+    await syncedDb.insertInto('block').values(blockV1).execute()
     
     // Run indexing on first version
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that tags exist
-    let tags = await db.selectFrom('block_tag')
+    let tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .orderBy('tag')
@@ -468,13 +470,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document now only has [#tag1](#tag1) tag.'
     }
     
-    await db.insertInto('block').values(blockV2).execute()
+    await syncedDb.insertInto('block').values(blockV2).execute()
     
     // Run indexing again
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that only remaining tag exists
-    tags = await db.selectFrom('block_tag')
+    tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .execute()
@@ -500,13 +502,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document has [#oldtag](#oldtag) tag.'
     }
     
-    await db.insertInto('block').values(blockV1).execute()
+    await syncedDb.insertInto('block').values(blockV1).execute()
     
     // Run indexing on first version
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that old tag exists
-    let tags = await db.selectFrom('block_tag')
+    let tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .execute()
@@ -525,13 +527,13 @@ describe('scribe-data indexing', () => {
       body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#different](#different) tags.'
     }
     
-    await db.insertInto('block').values(blockV2).execute()
+    await syncedDb.insertInto('block').values(blockV2).execute()
     
     // Run indexing again
-    await indexSlugs(db)
+    await indexSlugs(localDb)
     
     // Check that new tags exist and old ones are removed
-    tags = await db.selectFrom('block_tag')
+    tags = await localDb.selectFrom('block_tag')
       .selectAll()
       .where('block_uuid', '=', blockUuid)
       .orderBy('tag')

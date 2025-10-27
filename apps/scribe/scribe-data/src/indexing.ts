@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely'
 import { Database } from './types'
+import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 /**
  * Extract the title from a markdown document body
@@ -178,18 +179,18 @@ export interface IndexSlugsResult {
  * 4. Extracts tags from authoritative blocks
  * 5. Updates the block_slug and block_tag index tables
  * 
- * @param db The Kysely database instance
+ * @param localDb The Kysely database instance for local operations (index tables)
  * @param options Indexing options
  * @returns Result indicating how many slugs were indexed and if there are more
  */
 export async function indexSlugs(
-  db: Kysely<Database>,
+  localDb: Kysely<Database>,
   options: IndexSlugsOptions = {}
 ): Promise<IndexSlugsResult> {
   const limit = options.limit ?? 100
   
   // First, find the latest version of each block using a window function
-  const latestBlockVersions = db.selectFrom('block')
+  const latestBlockVersions = localDb.selectFrom('block')
     .select([
       'block_uuid',
       'version_uuid',
@@ -200,7 +201,7 @@ export async function indexSlugs(
     .as('latest_blocks')
   
   // Join with indexed_block to find unindexed latest versions
-  const unindexedBlocks = await db
+  const unindexedBlocks = await localDb
     .selectFrom(latestBlockVersions)
     .leftJoin('indexed_block as ib', 'latest_blocks.block_uuid', 'ib.block_uuid')
     .select([
@@ -241,7 +242,7 @@ export async function indexSlugs(
     const tags = extractTagsFromMarkdown(block.body)
     
     // Start a transaction to ensure consistency
-    await db.transaction().execute(async (tx) => {
+    await localDb.transaction().execute(async (tx) => {
       // Mark the block as indexed
       await tx
         .insertInto('indexed_block')
@@ -291,7 +292,7 @@ export async function indexSlugs(
           // Conflict detected - we need to update both blocks to have UUID prefixes
           
           // Get the existing block's data to update its slug
-          const existingBlock = await tx
+          const existingBlock = await localDb
             .selectFrom('block')
             .select(['block_uuid', 'body'])
             .where('block_uuid', '=', existingSlug.block_uuid)
