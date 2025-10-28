@@ -45,19 +45,35 @@ keyCmd
 
 keyCmd
   .command('list')
-  .description('List all available keys')
-  .action(async () => {
+  .description('List all available keys for an app')
+  .argument('<app-id>', 'Application identifier')
+  .action(async (appId) => {
     try {
       // Get database path from global options or use default
       const options = program.opts();
       const { client, db, server } = await getClient(options);
       
-      info(`Available keys:`);
+      info(`Available keys for app '${appId}':`);
       const keys = await listKeys(client);
       if (keys.length === 0) {
         info('  No keys found.');
       } else {
-        keys.forEach(key => info(`  ${key}`));
+        // Filter keys that belong to this app
+        const appKeys = keys.filter(key => {
+          // Try to get the stream for this key and check if it belongs to the app
+          try {
+            const stream = client.get(appId, key);
+            return stream !== undefined;
+          } catch (e) {
+            return false;
+          }
+        });
+        
+        if (appKeys.length === 0) {
+          info('  No keys found for this app.');
+        } else {
+          appKeys.forEach(key => info(`  ${key}`));
+        }
       }
     } catch (error) {
       errorLog('Error:', (error as Error).message);
@@ -68,14 +84,22 @@ keyCmd
 keyCmd
   .command('show')
   .description('Show details of a specific key')
-  .argument('<stream-id>', 'Stream identifier')
-  .action(async (streamId) => {
+  .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
+  .action(async (appStreamId) => {
     try {
+      // Parse the app-id/stream-id format
+      const parts = appStreamId.split('/');
+      if (parts.length !== 2) {
+        errorLog('Error: Invalid format. Use app-id/stream-id');
+        process.exit(1);
+      }
+      const [appId, streamId] = parts;
+      
       // Get database path from global options or use default
       const options = program.opts();
       const { client, db, server } = await getClient(options);
       
-      const keyDetails = await showKey(client, streamId);
+      const keyDetails = await showKey(client, appId, streamId);
       info(`Key: ${streamId}`);
       info(`Public Key: ${keyDetails.publicKey}`);
     } catch (error) {
@@ -87,14 +111,22 @@ keyCmd
 keyCmd
   .command('export')
   .description('Export a key as base64 encoded string')
-  .argument('<stream-id>', 'Stream identifier')
-  .action(async (streamId) => {
+  .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
+  .action(async (appStreamId) => {
     try {
+      // Parse the app-id/stream-id format
+      const parts = appStreamId.split('/');
+      if (parts.length !== 2) {
+        errorLog('Error: Invalid format. Use app-id/stream-id');
+        process.exit(1);
+      }
+      const [appId, streamId] = parts;
+      
       // Get database path from global options or use default
       const options = program.opts();
       const { client, db, server } = await getClient(options);
       
-      const base64Key = await exportKey(client, streamId);
+      const base64Key = await exportKey(client, appId, streamId);
       // Print to stdout for piping
       console.log(base64Key);
     } catch (error) {

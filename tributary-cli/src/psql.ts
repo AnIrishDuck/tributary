@@ -24,7 +24,7 @@ export async function executeSQL(
   const { client, db, server } = await getClient(optionsForClient);
   
   // Load the key pair from database using the client
-  const keyPair = await loadKeyPair(client, streamId);
+  const keyPair = await loadKeyPair(client, appId, streamId);
   
   // Add stream to client using the app ID
   const stream = await client.addWriteKey(appId, keyPair.secretKey);
