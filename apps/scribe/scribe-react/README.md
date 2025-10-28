@@ -13,11 +13,24 @@ the server URL is a DATA LEAK and MAJOR PRIVACY FAILURE.
 The minimum viable product consists of several user stories:
 
 - The user can create a new stream.
-- The user can create a new block within the stream (create the basic markdown
-  editor).
-- The user can list blocks within the stream (create the root listing page)
-- The user can edit an existing block within the stream (update the editor to
-  work with existing blocks).
+- The user can create a new block within the stream.
+  - There should be a stream listing page that only has a "+ New" button that
+    redirects to the stream new block route.
+  - This redirects to the "new block" route, the editor is react-codemirror.
+  - There is an "Add" button that adds the block, syncs, then redirects to the
+    slug of the newly created document.
+- The user can see html-rendered versions of previously created slugs.
+  - Use micromark to render the block markdown as html.
+  - No need to implement slug linking yet.
+- The user can list blocks within the stream
+  - Update the root listing page to render a list of all blocks by title,
+    linked to the appropriate slug routes
+- The user can edit an existing block within the stream
+  - Update the editor page to take an optional existing block uuid
+  - Fetch the authoritative version of that block and prepopulate the editor
+    with that content.
+  - The "Add" button is now "Update". It creates a new version of the block
+    referencing the prior version id.
 - A new user with a fresh database can import a key and list blocks previously
   added to that stream.
 
