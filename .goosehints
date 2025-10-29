@@ -1,5 +1,19 @@
+NEVER EVER EVER RUN ANY GIT COMMANDS. YOU ARE BAD AT THEM AND OFTEN DESTROY
+DATA.
+
 See .agent-docs in the relevant directory for documentation of referenced
 libraries.
+
+DO NOT START ANY SERVERS. You are in a docker container. STOP AND ASK THE
+USER IF YOU NEED A SERVER STARTED TO TEST AGAINST.
+
+We commonly refer to url-base64 (or url-b64). THIS IS NOT STANDARD BASE64
+ENCODING. It is "url-safe base64" encoding, and cannot be handled using
+standard base64 utils (e.g. tweetnacl-util). You must instead use the
+appropriate libraries to work with it (e.g. urlsafe-base64).
+
+WE PRETTY MUCH *NEVER* USE STANDARD base64 ENCODING. STOP AND ASK THE USER IF
+YOU THINK IT IS NEEDED.
 
 For rust packages, you can use ./doc-cargo to pull in docs for a crate.
 (e.g. `cd tributary-server && ../doc-cargo rand`)
@@ -12,3 +26,6 @@ VM. There's a chance it's been fetched already.
 
 You may need my help getting docs for a package you're having issues with.
 Pause and let me know if you need help fetching something.
+
+NEVER EVER EVER RUN ANY GIT COMMANDS. YOU ARE BAD AT THEM AND OFTEN DESTROY
+DATA.
