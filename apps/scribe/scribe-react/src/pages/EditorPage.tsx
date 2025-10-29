@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams, useLoaderData } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { KyselyTributary } from 'kysely-tributary'
-import * as scribeData from 'scribe-data'
-import { Kysely } from 'kysely'
+import { saveBlock } from '../actions/saveBlock'
 import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -31,7 +29,7 @@ const EditorPage: React.FC = () => {
     }
   }, [slug])
 
-  const handleSave = async () => {
+  const onSaveBlock = async () => {
     if (!client) {
       setError('Tributary client not available')
       return
@@ -56,35 +54,10 @@ const EditorPage: React.FC = () => {
         throw new Error('Failed to get stream')
       }
       
-      // Create Tributary dialect for synced operations
-      const { dialect } = new KyselyTributary(stream)
-      const syncedDb = new Kysely<any>({ dialect })
-      
-      // Create a new block
-      const block = await scribeData.createBlock(syncedDb, {
-        block_type: 'scribe/markdown',
-        body: content,
-        inserter: 'web-ui'
-      })
-      
-      // Sync to ensure persistence
-      await stream.sync()
-      
-      console.log('Created block:', block)
-      // After sync, create a local database and then run indexing on it
-      const { dialect: localDialect } = new KyselyTributary(stream.local())
-      const localDb = new Kysely<any>({ dialect: localDialect })
-      
-      // Run indexing on the local database
-      const { indexSlugs } = await import('scribe-data')
-      await indexSlugs(localDb)
+      const { block, blockSlug } = await saveBlock(stream, content)
       
       // After saving, navigate to the document view using the slug
       if (prefix) {
-        // Get the slug for this block from the local database
-        const { getBlockSlugByUuid } = await import('scribe-data')
-        const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
-        
         if (blockSlug) {
           navigate(`/pk/${prefix}/${blockSlug.slug}`)
         } else {
@@ -107,7 +80,7 @@ const EditorPage: React.FC = () => {
         <h1 className="text-3xl font-bold">{isNewDocument ? 'New Document' : 'Edit Document'}</h1>
         <div className="space-x-2">
           <button 
-            onClick={handleSave}
+            onClick={onSaveBlock}
             disabled={isLoading}
             className={`bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ${
               isLoading ? 'opacity-50 cursor-not-allowed' : ''
