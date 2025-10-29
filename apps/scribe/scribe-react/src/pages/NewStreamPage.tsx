@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { Kysely } from 'kysely'
 import { KyselyTributary } from 'kysely-tributary'
 
-const NewStreamPage: React.FC = ({ navigate: propNavigate }) => {
-  const navigate = propNavigate || useNavigate()
+const NewStreamPage: React.FC = () => {
+  const navigate = useNavigate()
   const { client } = useTributary()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +32,7 @@ const NewStreamPage: React.FC = ({ navigate: propNavigate }) => {
       const { dialect } = new KyselyTributary(stream)
       const syncedDb = new Kysely<any>({ dialect })
       
-      const { up } = await import('scribe-data/src/migrations')
+      const { up } = await import('scribe-data')
       await up(syncedDb)
 
       // Sync the stream to ensure persistence
@@ -42,8 +42,9 @@ const NewStreamPage: React.FC = ({ navigate: propNavigate }) => {
       const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
       const prefix = `pk/${publicKeyBase64}`
       
-      // Navigate to the new stream
-      navigate(`/${prefix}/`)
+      // Navigate to the new stream (URL-encode the prefix to handle slashes)
+      const encodedPrefix = encodeURIComponent(prefix)
+      navigate(`/${encodedPrefix}/`)
     } catch (err: any) {
       setError('Failed to create new stream. Please try again.')
       console.error('Error creating new stream:', err)

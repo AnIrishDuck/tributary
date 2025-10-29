@@ -1,20 +1,50 @@
 import React from 'react'
+import { useNavigate } from 'react-router'
 
 const HomePage: React.FC = () => {
+  const navigate = useNavigate()
+
+  const handleCreateDocument = () => {
+    // In a real app, we would get the prefix from the current stream
+    // For now, we'll use a placeholder
+    navigate('/pk/placeholder/new')
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Scribe Documents</h1>
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <p className="text-gray-700 mb-4">
-          Welcome to Scribe, your end-to-end encrypted document editor.
-        </p>
-        <div className="flex space-x-4">
-          <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-3xl font-bold text-center mb-8">Scribe - Encrypted Document Editor</h1>
+        
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Welcome to Scribe</h2>
+          <p className="text-gray-700 mb-4">
+            Scribe is an end-to-end encrypted document editor that allows you to create and manage 
+            your documents securely.
+          </p>
+          <p className="text-gray-700">
+            Your documents are encrypted locally before being synced, ensuring that the server 
+            cannot read your content.
+          </p>
+        </div>
+        
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Get Started</h2>
+          <p className="text-gray-700 mb-4">
+            Create a new encrypted document stream or import an existing one.
+          </p>
+          <button
+            onClick={handleCreateDocument}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
             Create New Document
           </button>
-          <button className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-            Import Stream
-          </button>
+        </div>
+        
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4">Existing Streams</h2>
+          <p className="text-gray-700">
+            In a real implementation, this would show your existing document streams.
+          </p>
         </div>
       </div>
     </div>

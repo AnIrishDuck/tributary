@@ -1,37 +1,123 @@
-import React, { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams, useLoaderData } from 'react-router'
+import { useTributary } from '../context/tributaryContext'
+import { KyselyTributary } from 'kysely-tributary'
+import * as scribeData from 'scribe-data'
+import { Kysely } from 'kysely'
+import * as base64url from 'urlsafe-base64'
+import CodeMirror from '@uiw/react-codemirror'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { languages } from '@codemirror/language-data'
 
-interface EditorPageProps {
-  isNew?: boolean
-}
-
-const EditorPage: React.FC<EditorPageProps> = ({ isNew = false }) => {
-  const [content, setContent] = useState<string>(isNew ? '# New Document\n\nStart writing here...' : '')
+const EditorPage: React.FC = () => {
+  const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { client } = useTributary()
+  const loaderData = useLoaderData() as { isNew: boolean }
+  
+  // Extract the streamId and optional slug id from params
   const { prefix, slug } = useParams()
 
-  const handleSave = () => {
-    // Save logic would go here
-    console.log('Saving document:', content)
-    // After saving, navigate back to the document view
-    if (prefix) {
-      navigate(`/${prefix}/`)
+  const isNewDocument = loaderData.isNew
+
+  // If editing an existing document, we would load it here
+  useEffect(() => {
+    if (slug && slug !== 'new') {
+      // In a real implementation, we would load the existing document here
+      // For now, we'll just set some placeholder content
+      setContent(`# ${slug}\n\nLoading existing content...`)
+    }
+  }, [slug])
+
+  const handleSave = async () => {
+    if (!client) {
+      setError('Tributary client not available')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      // Extract streamId from prefix (format: base64url-public-key)
+      if (!prefix) {
+        throw new Error('No stream prefix provided')
+      }
+      
+      // The prefix is already the base64url-public-key part
+      const streamId = prefix
+      
+      // Assuming app ID is 'scribe' based on NewStreamPage
+      const stream = await client.get('scribe', streamId)
+      
+      if (!stream) {
+        throw new Error('Failed to get stream')
+      }
+      
+      // Create Tributary dialect for synced operations
+      const { dialect } = new KyselyTributary(stream)
+      const syncedDb = new Kysely<any>({ dialect })
+      
+      // Create a new block
+      const block = await scribeData.createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: content,
+        inserter: 'web-ui'
+      })
+      
+      // Sync to ensure persistence
+      await stream.sync()
+      
+      console.log('Created block:', block)
+      // After sync, create a local database and then run indexing on it
+      const { dialect: localDialect } = new KyselyTributary(stream.local())
+      const localDb = new Kysely<any>({ dialect: localDialect })
+      
+      // Run indexing on the local database
+      const { indexSlugs } = await import('scribe-data')
+      await indexSlugs(localDb)
+      
+      // After saving, navigate to the document view using the slug
+      if (prefix) {
+        // Get the slug for this block from the local database
+        const { getBlockSlugByUuid } = await import('scribe-data')
+        const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
+        
+        if (blockSlug) {
+          navigate(`/pk/${prefix}/${blockSlug.slug}`)
+        } else {
+          navigate(`/pk/${prefix}/`)
+        }
+      } else {
+        navigate('/')
+      }
+    } catch (err: any) {
+      setError('Failed to save document: ' + (err.message || 'Unknown error'))
+      console.error('Error saving document:', err)
+    } finally {
+      setIsLoading(false)
     }
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">{isNew ? 'New Document' : 'Edit Document'}</h1>
+        <h1 className="text-3xl font-bold">{isNewDocument ? 'New Document' : 'Edit Document'}</h1>
         <div className="space-x-2">
           <button 
             onClick={handleSave}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            disabled={isLoading}
+            className={`bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            data-testid="save-button"
           >
-            Save
+            {isLoading ? 'Saving...' : (isNewDocument ? 'Add' : 'Update')}
           </button>
           <button 
-            onClick={() => prefix ? navigate(`/${prefix}/`) : navigate('/')}
+            onClick={() => prefix ? navigate(`/pk/${prefix}/`) : navigate('/')}
             className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
           >
             Cancel
@@ -39,12 +125,19 @@ const EditorPage: React.FC<EditorPageProps> = ({ isNew = false }) => {
         </div>
       </div>
       
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" data-testid="error-message">
+          {error}
+        </div>
+      )}
+      
       <div className="bg-white rounded-lg shadow-md p-6">
-        <textarea
+        <CodeMirror
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="w-full h-96 p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Write your document in Markdown format..."
+          height="400px"
+          extensions={[markdown({ base: markdownLanguage, codeLanguages: languages })]}
+          onChange={(value) => setContent(value)}
+          className="border border-gray-300 rounded-md"
         />
       </div>
     </div>
