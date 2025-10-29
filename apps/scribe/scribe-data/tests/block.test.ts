@@ -10,7 +10,7 @@ import {
   getBlockByUuid, 
   getBlockVersions, 
   getLatestBlockVersion 
-} from '../src/block-operations.js'
+} from '../src/block.js'
 
 describe('Block Operations', () => {
   let syncedDb: Kysely<Database>
