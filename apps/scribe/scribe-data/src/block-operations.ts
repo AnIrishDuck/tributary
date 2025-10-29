@@ -25,7 +25,7 @@ export async function createBlock(
     block_uuid: blockData.block_uuid || (uuidv4() as BlockUuid),
     block_type: blockData.block_type,
     version_uuid: uuidv4() as VersionUuid,
-    prior_version_uuid: blockData.prior_version_uuid || null,
+    prior_version_uuid: blockData.prior_version_uuid !== undefined ? blockData.prior_version_uuid : null,
     insert_datetime: now.toISOString(),
     inserter: blockData.inserter,
     body: blockData.body
@@ -33,10 +33,15 @@ export async function createBlock(
   
   const result = await db.insertInto('block').values(newBlock).executeTakeFirst()
   
-  // Retrieve the inserted block
+  // Retrieve the inserted block - explicitly check that version_uuid is defined
+  const versionUuid = newBlock.version_uuid;
+  if (!versionUuid) {
+    throw new Error('Failed to generate version UUID')
+  }
+  
   const insertedBlock = await db.selectFrom('block')
     .selectAll()
-    .where('version_uuid', '=', newBlock.version_uuid)
+    .where('version_uuid', '=', versionUuid)
     .executeTakeFirst()
   
   if (!insertedBlock) {
