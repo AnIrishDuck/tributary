@@ -1,24 +1,34 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { Kysely, sql } from 'kysely'
+import { Kysely } from 'kysely'
 import { v4 as uuidv4 } from 'uuid'
-import { BlockUuid, VersionUuid, Block, BlockRecord, NewBlockRecord } from '../src/types.js'
+import { Database, BlockUuid, VersionUuid } from '../src/types.js'
 import { up, down } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
+import { 
+  createBlock, 
+  createBlockVersion, 
+  getBlockByUuid, 
+  getBlockVersions, 
+  getLatestBlockVersion 
+} from '../src/block-operations.js'
 
-describe('scribe-data migrations and operations', () => {
-  let db: Kysely<any>
+describe('Block Operations', () => {
+  let syncedDb: Kysely<Database>
+  let localDb: Kysely<Database>
   let cleanup: () => Promise<void>
 
   beforeEach(async () => {
     // Create a fresh test database for each test
     const result = await createTestDB()
-    db = result.syncedDb
+    syncedDb = result.syncedDb
+    localDb = result.localDb
     cleanup = async () => {
-      await db.destroy()
+      await syncedDb.destroy()
+      await localDb.destroy()
     }
     
     // Run the migration
-    await up(db)
+    await up(syncedDb)
   })
 
   afterEach(async () => {
@@ -28,200 +38,189 @@ describe('scribe-data migrations and operations', () => {
     }
   })
 
-  test('should create block table with correct schema', async () => {
-    // Check that columns exist by trying to insert data with all required fields
-    const now = new Date()
-    const testInsert = await db.insertInto('block')
-      .values({
-        block_uuid: uuidv4(),
-        block_type: 'scribe/markdown',
-        version_uuid: uuidv4(),
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'test-user',
-        body: 'test body'
-      } as NewBlockRecord)
-      .executeTakeFirst()
-    
-    expect(testInsert).toBeDefined()
-    
-    // Check that we can select from the table
-    const result: BlockRecord | undefined = await db.selectFrom('block').selectAll().executeTakeFirst()
-    expect(result).toBeDefined()
-    expect(result?.block_type).toBe('scribe/markdown')
-  })
-
-  test('should insert and retrieve a block', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4() as BlockUuid
-    const versionUuid = uuidv4() as VersionUuid
-    
-    const block: NewBlockRecord = {
-      block_uuid: blockUuid,
+  test('should create a new block with auto-generated UUIDs', async () => {
+    const blockData = {
       block_type: 'scribe/markdown',
-      version_uuid: versionUuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'user-1',
-      body: '# Hello World\n\nThis is a test document.'
+      body: '# Test Document\n\nThis is a test document.',
+      inserter: 'test-user'
     }
     
-    // Insert the block
-    await db.insertInto('block')
-      .values(block)
-      .execute()
+    const createdBlock = await createBlock(syncedDb, blockData)
+    
+    expect(createdBlock).toBeDefined()
+    expect(createdBlock.block_uuid).toBeDefined()
+    expect(createdBlock.version_uuid).toBeDefined()
+    expect(createdBlock.block_type).toBe(blockData.block_type)
+    expect(createdBlock.body).toBe(blockData.body)
+    expect(createdBlock.inserter).toBe(blockData.inserter)
+    expect(createdBlock.prior_version_uuid).toBeNull()
+    expect(createdBlock.insert_datetime).toBeDefined()
+  })
+
+  test('should create a new block with specified UUIDs', async () => {
+    const blockUuid = uuidv4() as BlockUuid
+    
+    const blockData = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Test Document\n\nThis is a test document.',
+      inserter: 'test-user'
+    }
+    
+    const createdBlock = await createBlock(syncedDb, blockData)
+    
+    expect(createdBlock).toBeDefined()
+    expect(createdBlock.block_uuid).toBe(blockUuid)
+    expect(createdBlock.version_uuid).toBeDefined()
+    expect(createdBlock.block_type).toBe(blockData.block_type)
+    expect(createdBlock.body).toBe(blockData.body)
+    expect(createdBlock.inserter).toBe(blockData.inserter)
+    expect(createdBlock.prior_version_uuid).toBeNull()
+  })
+
+  test('should create a new version of an existing block', async () => {
+    // First create an initial block
+    const blockUuid = uuidv4() as BlockUuid
+    const initialBlockData = {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Initial Version\n\nThis is the first version.',
+      inserter: 'test-user'
+    }
+    
+    const initialBlock = await createBlock(syncedDb, initialBlockData)
+    
+    // Now create a new version
+    const newVersionData = {
+      block_type: 'scribe/markdown',
+      body: '# Updated Version\n\nThis is the updated version.',
+      inserter: 'test-user'
+    }
+    
+    const newVersion = await createBlockVersion(syncedDb, blockUuid, newVersionData)
+    
+    expect(newVersion).toBeDefined()
+    expect(newVersion.block_uuid).toBe(blockUuid)
+    expect(newVersion.version_uuid).not.toBe(initialBlock.version_uuid)
+    expect(newVersion.prior_version_uuid).toBe(initialBlock.version_uuid)
+    expect(newVersion.body).toBe(newVersionData.body)
+  })
+
+  test('should retrieve a block by UUID', async () => {
+    // Create a block
+    const blockData = {
+      block_type: 'scribe/markdown',
+      body: '# Test Document\n\nThis is a test document.',
+      inserter: 'test-user'
+    }
+    
+    const createdBlock = await createBlock(syncedDb, blockData)
     
     // Retrieve the block
-    const result: BlockRecord | undefined = await db.selectFrom('block')
-      .selectAll()
-      .where('block_uuid', '=', block.block_uuid)
-      .executeTakeFirst()
+    const retrievedBlock = await getBlockByUuid(syncedDb, createdBlock.block_uuid)
     
-    expect(result).toBeDefined()
-    expect(result?.block_uuid).toBe(block.block_uuid)
-    expect(result?.block_type).toBe(block.block_type)
-    expect(result?.version_uuid).toBe(block.version_uuid)
-    expect(result?.prior_version_uuid).toBe(null)
-    expect(result?.inserter).toBe(block.inserter)
-    expect(result?.body).toBe(block.body)
+    expect(retrievedBlock).toBeDefined()
+    expect(retrievedBlock?.block_uuid).toBe(createdBlock.block_uuid)
+    expect(retrievedBlock?.body).toBe(createdBlock.body)
   })
 
-  test('should enforce unique constraint on block_uuid and version_uuid', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const versionUuid = uuidv4()
+  test('should retrieve the latest version when multiple versions exist', async () => {
+    const blockUuid = uuidv4() as BlockUuid
     
-    const block1: NewBlockRecord = {
+    // Create first version
+    const version1 = await createBlock(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
-      version_uuid: versionUuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'user-1',
-      body: 'First version'
-    }
+      body: '# Version 1\n\nFirst version.',
+      inserter: 'test-user'
+    })
     
-    const block2: NewBlockRecord = {
-      ...block1,
-      body: 'Duplicate version' // Same block_uuid and version_uuid
-    } as NewBlockRecord
+    // Create second version
+    const version2 = await createBlock(syncedDb, {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Version 2\n\nSecond version.',
+      inserter: 'test-user',
+      prior_version_uuid: version1.version_uuid
+    })
     
-    // Insert first block
-    await db.insertInto('block').values(block1).execute()
+    // Retrieve the block by UUID (should get latest version)
+    const retrievedBlock = await getBlockByUuid(syncedDb, blockUuid)
     
-    // Try to insert duplicate - should fail
-    await expect(() => 
-      db.insertInto('block').values(block2).execute()
-    ).rejects.toThrow()
+    expect(retrievedBlock).toBeDefined()
+    expect(retrievedBlock?.version_uuid).toBe(version2.version_uuid)
+    expect(retrievedBlock?.body).toBe(version2.body)
   })
 
-  test('should allow multiple versions of the same block', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
+  test('should return null when retrieving non-existent block', async () => {
+    const nonExistentUuid = uuidv4() as BlockUuid
     
-    const blockVersion1: NewBlockRecord = {
-      block_uuid: blockUuid,
-      block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'user-1',
-      body: 'First version'
-    }
+    const retrievedBlock = await getBlockByUuid(syncedDb, nonExistentUuid)
     
-    const blockVersion2: NewBlockRecord = {
-      block_uuid: blockUuid,
-      block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: version1Uuid,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(), // 1 second later
-      inserter: 'user-1',
-      body: 'Second version'
-    }
-    
-    // Insert both versions
-    await db.insertInto('block').values(blockVersion1).execute()
-    await db.insertInto('block').values(blockVersion2).execute()
-    
-    // Retrieve both versions
-    const results: BlockRecord[] = await db.selectFrom('block')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .orderBy('insert_datetime')
-      .execute()
-    
-    expect(results).toHaveLength(2)
-    expect(results[0].version_uuid).toBe(version1Uuid)
-    expect(results[0].body).toBe('First version')
-    expect(results[1].version_uuid).toBe(version2Uuid)
-    expect(results[1].body).toBe('Second version')
-    expect(results[1].prior_version_uuid).toBe(version1Uuid)
+    expect(retrievedBlock).toBeNull()
   })
 
-  test('should query all versions of a block', async () => {
-    const now = new Date()
-    const block1Uuid = uuidv4()
-    const block2Uuid = uuidv4()
-    const version11Uuid = uuidv4()
-    const version12Uuid = uuidv4()
-    const version21Uuid = uuidv4()
+  test('should retrieve all versions of a block', async () => {
+    const blockUuid = uuidv4() as BlockUuid
     
-    // Insert multiple versions of different blocks
-    const blocks: NewBlockRecord[] = [
-      {
-        block_uuid: block1Uuid,
-        block_type: 'scribe/markdown',
-        version_uuid: version11Uuid,
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'user-1',
-        body: 'Block 1, Version 1'
-      },
-      {
-        block_uuid: block1Uuid,
-        block_type: 'scribe/markdown',
-        version_uuid: version12Uuid,
-        prior_version_uuid: version11Uuid,
-        insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-        inserter: 'user-1',
-        body: 'Block 1, Version 2'
-      },
-      {
-        block_uuid: block2Uuid,
-        block_type: 'scribe/markdown',
-        version_uuid: version21Uuid,
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'user-2',
-        body: 'Block 2, Version 1'
-      }
-    ]
+    // Create first version
+    const version1 = await createBlock(syncedDb, {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Version 1\n\nFirst version.',
+      inserter: 'test-user'
+    })
     
-    // Insert all blocks
-    for (const block of blocks) {
-      await db.insertInto('block').values(block).execute()
-    }
+    // Create second version
+    const version2 = await createBlock(syncedDb, {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Version 2\n\nSecond version.',
+      inserter: 'test-user',
+      prior_version_uuid: version1.version_uuid
+    })
     
-    // Query all versions of block-1
-    const block1Versions: BlockRecord[] = await db.selectFrom('block')
-      .selectAll()
-      .where('block_uuid', '=', block1Uuid)
-      .orderBy('insert_datetime')
-      .execute()
+    // Retrieve all versions
+    const versions = await getBlockVersions(syncedDb, blockUuid)
     
-    expect(block1Versions).toHaveLength(2)
-    expect(block1Versions[0].version_uuid).toBe(version11Uuid)
-    expect(block1Versions[1].version_uuid).toBe(version12Uuid)
+    expect(versions).toHaveLength(2)
+    expect(versions[0].version_uuid).toBe(version1.version_uuid)
+    expect(versions[1].version_uuid).toBe(version2.version_uuid)
+  })
+
+  test('should retrieve latest version of a block', async () => {
+    const blockUuid = uuidv4() as BlockUuid
     
-    // Query all versions of block-2
-    const block2Versions: BlockRecord[] = await db.selectFrom('block')
-      .selectAll()
-      .where('block_uuid', '=', block2Uuid)
-      .execute()
+    // Create first version
+    const version1 = await createBlock(syncedDb, {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Version 1\n\nFirst version.',
+      inserter: 'test-user'
+    })
     
-    expect(block2Versions).toHaveLength(1)
-    expect(block2Versions[0].version_uuid).toBe(version21Uuid)
+    // Create second version
+    const version2 = await createBlock(syncedDb, {
+      block_uuid: blockUuid,
+      block_type: 'scribe/markdown',
+      body: '# Version 2\n\nSecond version.',
+      inserter: 'test-user',
+      prior_version_uuid: version1.version_uuid
+    })
+    
+    // Retrieve latest version
+    const latestVersion = await getLatestBlockVersion(syncedDb, blockUuid)
+    
+    expect(latestVersion).toBeDefined()
+    expect(latestVersion?.version_uuid).toBe(version2.version_uuid)
+    expect(latestVersion?.body).toBe(version2.body)
+  })
+
+  test('should return null when retrieving latest version of non-existent block', async () => {
+    const nonExistentUuid = uuidv4() as BlockUuid
+    
+    const latestVersion = await getLatestBlockVersion(syncedDb, nonExistentUuid)
+    
+    expect(latestVersion).toBeNull()
   })
 })

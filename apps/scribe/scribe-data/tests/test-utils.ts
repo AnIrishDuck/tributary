@@ -4,6 +4,7 @@ import { TributaryClient, TributaryStream } from 'tributary-client'
 import { FakeServer } from 'tributary-client/src/fakeServer.js'
 import nacl from 'tweetnacl'
 import { encodeBase64 } from 'tweetnacl-util'
+import { PGlite } from '@electric-sql/pglite'
 
 /**
  * Create a test database connection using Tributary with a fake server
@@ -12,9 +13,13 @@ export async function createTestDB(): Promise<{ syncedDb: Kysely<any>, localDb: 
   // Create a fake server for testing
   const server = new FakeServer()
   
-  // Create TributaryClient
+  // Create an in-memory PGlite database for testing
+  const pglite = new PGlite('memory://')
+  
+  // Create TributaryClient with the in-memory database
   const client = new TributaryClient({
-    server
+    server,
+    db: pglite
   })
   
   // Generate a key pair for testing
