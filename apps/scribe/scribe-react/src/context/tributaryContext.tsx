@@ -1,6 +1,5 @@
 import React, { createContext, useContext, ReactNode } from 'react'
-import { TributaryClient } from 'tributary-client'
-import { FakeServer } from 'tributary-client/src/fakeServer.js'
+import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 
 // Define the context type
