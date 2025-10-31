@@ -213,3 +213,17 @@ Planned features:
 - Backlink tracking for document relationships
 - Conflict detection and resolution in the UI
 - Performance optimizations for large document collections
+
+## Testing
+
+To run the tests with normal verbosity:
+
+```bash
+npm test
+```
+
+To run the tests with verbose database log output:
+
+```bash
+npm run test:verbose
+```
