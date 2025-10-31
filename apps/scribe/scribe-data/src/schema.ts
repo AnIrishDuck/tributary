@@ -1,5 +1,3 @@
-import { ColumnType, Generated, GeneratedAlways } from 'kysely'
-
 /**
  * Database schema types for the scribe app
  */
@@ -31,7 +29,7 @@ export interface BlockTable {
   /**
    * Timestamp when this version was inserted
    */
-  insert_datetime: ColumnType<Date, string, string>
+  insert_datetime: string
 
   /**
    * User or device that inserted this version

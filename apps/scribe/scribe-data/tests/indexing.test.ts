@@ -1,5 +1,4 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { Kysely } from 'kysely'
 import { v4 as uuidv4 } from 'uuid'
 import { up } from '../src/migrations.js'
 import { 
@@ -7,14 +6,18 @@ import {
   extractTitleFromMarkdown, 
   titleToSlug, 
   extractTagsFromMarkdown,
+  getBlockSlugByUuid,
+  getAuthoritativeVersionByBlockUuid,
+  getTagsForBlock,
   IndexSlugsResult
 } from '../src/indexing.js'
 import { createTestDB } from './test-utils.js'
-import { NewBlockRecord } from '../src/types.js'
+import { TributaryStream, TributaryLocal } from 'tributary-client'
+import { createBlock, createBlockVersion } from '../src/block.js'
 
 describe('scribe-data indexing', () => {
-  let syncedDb: Kysely<any>
-  let localDb: Kysely<any>
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
   let cleanup: () => Promise<void>
 
   beforeEach(async () => {
@@ -23,11 +26,11 @@ describe('scribe-data indexing', () => {
     syncedDb = result.syncedDb
     localDb = result.localDb
     cleanup = async () => {
-      await syncedDb.destroy()
+      // Cleanup is handled by the test framework
     }
     
     // Run the migration
-    await up(syncedDb)
+    await up(syncedDb, localDb)
   })
 
   afterEach(async () => {
@@ -83,22 +86,15 @@ describe('scribe-data indexing', () => {
   })
 
   test('should index slugs for new blocks', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const versionUuid = uuidv4()
-    
-    // Insert a block with a title
-    const block: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert a block with a title using the block functions
+    const block = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: versionUuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# My Test Document\n\nThis is a test document with a title.'
-    }
+      body: '# My Test Document\n\nThis is a test document with a title.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(block).execute()
+    const blockUuid = block.block_uuid
+    const versionUuid = block.version_uuid
     
     // Run indexing
     const result: IndexSlugsResult = await indexSlugs(localDb)
@@ -106,21 +102,14 @@ describe('scribe-data indexing', () => {
     expect(result.indexedCount).toBe(1)
     expect(result.hasMore).toBe(false)
     
-    // Check that the block was marked as indexed
-    const indexedBlock = await localDb.selectFrom('indexed_block')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    // Check that the block was marked as indexed by checking authoritative version
+    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockUuid)
     
-    expect(indexedBlock).toBeDefined()
-    expect(indexedBlock?.version_uuid).toBe(versionUuid)
-    expect(indexedBlock?.indexed).toBe(true)
+    expect(authoritativeVersion).toBeDefined()
+    expect(authoritativeVersion?.version_uuid).toBe(versionUuid)
     
     // Check that the slug was created
-    const slug = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    const slug = await getBlockSlugByUuid(localDb, blockUuid)
     
     expect(slug).toBeDefined()
     expect(slug?.slug).toBe('my-test-document')
@@ -128,22 +117,15 @@ describe('scribe-data indexing', () => {
   })
 
   test('should handle blocks without titles', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const versionUuid = uuidv4()
-    
-    // Insert a block without a title
-    const block: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert a block without a title using the block functions
+    const block = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: versionUuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: 'This is a document without a title.'
-    }
+      body: 'This is a document without a title.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(block).execute()
+    const blockUuid = block.block_uuid
+    const versionUuid = block.version_uuid
     
     // Run indexing
     const result: IndexSlugsResult = await indexSlugs(localDb)
@@ -151,69 +133,47 @@ describe('scribe-data indexing', () => {
     expect(result.indexedCount).toBe(0) // No slug to index
     expect(result.hasMore).toBe(false)
     
-    // Check that the block was still marked as indexed
-    const indexedBlock = await localDb.selectFrom('indexed_block')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    // Check that the block was still marked as indexed by checking authoritative version
+    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockUuid)
     
-    expect(indexedBlock).toBeDefined()
-    expect(indexedBlock?.version_uuid).toBe(versionUuid)
-    expect(indexedBlock?.indexed).toBe(true)
+    expect(authoritativeVersion).toBeDefined()
+    expect(authoritativeVersion?.version_uuid).toBe(versionUuid)
     
     // Check that no slug was created
-    const slug = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    const slug = await getBlockSlugByUuid(localDb, blockUuid)
     
-    expect(slug).toBeUndefined()
+    expect(slug).toBeNull()
   })
 
   test('should update slug when block version changes', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
-    
-    // Insert first version with one title
-    const blockV1: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert first version with one title using the block functions
+    const blockV1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# Original Title\n\nThis is the first version.'
-    }
+      body: '# Original Title\n\nThis is the first version.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV1).execute()
+    const blockUuid = blockV1.block_uuid
+    const version1Uuid = blockV1.version_uuid
     
     // Run indexing on first version
     await indexSlugs(localDb)
     
     // Check initial slug
-    const initialSlug = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    const initialSlug = await getBlockSlugByUuid(localDb, blockUuid)
     
     expect(initialSlug).toBeDefined()
     expect(initialSlug?.slug).toBe('original-title')
     expect(initialSlug?.title).toBe('Original Title')
     
-    // Insert second version with updated title
-    const blockV2: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert second version with updated title using the block functions
+    const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
       block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: version1Uuid,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-      inserter: 'test-user',
-      body: '# Updated Title\n\nThis is the updated version.'
-    }
+      body: '# Updated Title\n\nThis is the updated version.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV2).execute()
+    const version2Uuid = blockV2.version_uuid
     
     // Run indexing again
     const result: IndexSlugsResult = await indexSlugs(localDb)
@@ -222,40 +182,28 @@ describe('scribe-data indexing', () => {
     expect(result.hasMore).toBe(false)
     
     // Check updated slug
-    const updatedSlug = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    const updatedSlug = await getBlockSlugByUuid(localDb, blockUuid)
     
     expect(updatedSlug).toBeDefined()
     expect(updatedSlug?.slug).toBe('updated-title')
     expect(updatedSlug?.title).toBe('Updated Title')
     
-    // Check that the indexed_block record was updated
-    const indexedBlock = await localDb.selectFrom('indexed_block')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .executeTakeFirst()
+    // Check that the authoritative version was updated
+    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockUuid)
     
-    expect(indexedBlock?.version_uuid).toBe(version2Uuid)
+    expect(authoritativeVersion?.version_uuid).toBe(version2Uuid)
   })
 
   test('should respect indexing limit', async () => {
-    const now = new Date()
-    
-    // Insert multiple blocks
+    // Insert multiple blocks using the block functions
+    const blocks = []
     for (let i = 0; i < 5; i++) {
-      const block: NewBlockRecord = {
-        block_uuid: uuidv4(),
+      const block = await createBlock(syncedDb, {
         block_type: 'scribe/markdown',
-        version_uuid: uuidv4(),
-        prior_version_uuid: null,
-        insert_datetime: new Date(now.getTime() + i * 1000).toISOString(),
-        inserter: 'test-user',
-        body: `# Document ${i}\n\nThis is document number ${i}.`
-      }
-      
-      await syncedDb.insertInto('block').values(block).execute()
+        body: `# Document ${i}\n\nThis is document number ${i}.`,
+        inserter: 'test-user'
+      })
+      blocks.push(block)
     }
     
     // Run indexing with limit of 3
@@ -272,49 +220,31 @@ describe('scribe-data indexing', () => {
   })
 
   test('should generate unique slugs with UUID prefixes for duplicate titles', async () => {
-    const now = new Date()
-    const block1Uuid = uuidv4()
-    const block2Uuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
-    
-    // Insert two blocks with the same title
-    const block1: NewBlockRecord = {
-      block_uuid: block1Uuid,
+    // Insert two blocks with the same title using the block functions
+    const block1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# Same Title\n\nThis is the first document with this title.'
-    }
+      body: '# Same Title\n\nThis is the first document with this title.',
+      inserter: 'test-user'
+    })
     
-    const block2: NewBlockRecord = {
-      block_uuid: block2Uuid,
+    const block1Uuid = block1.block_uuid
+    const version1Uuid = block1.version_uuid
+    
+    const block2 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: null,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-      inserter: 'test-user',
-      body: '# Same Title\n\nThis is the second document with this title.'
-    }
+      body: '# Same Title\n\nThis is the second document with this title.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(block1).execute()
-    await syncedDb.insertInto('block').values(block2).execute()
+    const block2Uuid = block2.block_uuid
+    const version2Uuid = block2.version_uuid
     
     // Run indexing
     await indexSlugs(localDb)
     
     // Get both slugs
-    const slug1 = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', block1Uuid)
-      .executeTakeFirst()
-    
-    const slug2 = await localDb.selectFrom('block_slug')
-      .selectAll()
-      .where('block_uuid', '=', block2Uuid)
-      .executeTakeFirst()
+    const slug1 = await getBlockSlugByUuid(localDb, block1Uuid)
+    const slug2 = await getBlockSlugByUuid(localDb, block2Uuid)
     
     expect(slug1).toBeDefined()
     expect(slug2).toBeDefined()
@@ -336,211 +266,143 @@ describe('scribe-data indexing', () => {
   })
 
   test('should index tags for new blocks', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const versionUuid = uuidv4()
-    
-    // Insert a block with tags
-    const block: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert a block with tags using the block functions
+    const block = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: versionUuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# My Document with Tags\n\nThis document has [#important](#important) and [#work](#work) tags.'
-    }
+      body: '# My Document with Tags\n\nThis document has [#important](#important) and [#work](#work) tags.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(block).execute()
+    const blockUuid = block.block_uuid
+    const versionUuid = block.version_uuid
     
     // Run indexing
     await indexSlugs(localDb)
     
     // Check that tags were indexed
-    const tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .orderBy('tag')
-      .execute()
+    const tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(2)
-    expect(tags[0].tag).toBe('important')
-    expect(tags[1].tag).toBe('work')
+    expect(tags).toContain('important')
+    expect(tags).toContain('work')
   })
 
   test('should add tags to an authoritative version of a block', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
-    
-    // Insert first version without tags
-    const blockV1: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert first version without tags using the block functions
+    const blockV1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document has no tags initially.'
-    }
+      body: '# Document Title\n\nThis document has no tags initially.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV1).execute()
+    const blockUuid = blockV1.block_uuid
+    const version1Uuid = blockV1.version_uuid
     
     // Run indexing on first version
     await indexSlugs(localDb)
     
     // Check that no tags exist
-    let tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .execute()
+    let tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(0)
     
-    // Insert second version with tags
-    const blockV2: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert second version with tags using the block functions
+    const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
       block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: version1Uuid,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#anothertag](#anothertag) tags.'
-    }
+      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#anothertag](#anothertag) tags.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV2).execute()
+    const version2Uuid = blockV2.version_uuid
     
     // Run indexing again
     await indexSlugs(localDb)
     
     // Check that tags were added
-    tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .orderBy('tag')
-      .execute()
+    tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(2)
-    expect(tags[0].tag).toBe('anothertag')
-    expect(tags[1].tag).toBe('newtag')
+    expect(tags).toContain('newtag')
+    expect(tags).toContain('anothertag')
   })
 
   test('should remove tags from an authoritative version of a block', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
-    
-    // Insert first version with tags
-    const blockV1: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert first version with tags using the block functions
+    const blockV1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document has [#tag1](#tag1) and [#tag2](#tag2) tags.'
-    }
+      body: '# Document Title\n\nThis document has [#tag1](#tag1) and [#tag2](#tag2) tags.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV1).execute()
+    const blockUuid = blockV1.block_uuid
+    const version1Uuid = blockV1.version_uuid
     
     // Run indexing on first version
     await indexSlugs(localDb)
     
     // Check that tags exist
-    let tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .orderBy('tag')
-      .execute()
+    let tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(2)
-    expect(tags[0].tag).toBe('tag1')
-    expect(tags[1].tag).toBe('tag2')
+    expect(tags).toContain('tag1')
+    expect(tags).toContain('tag2')
     
-    // Insert second version with fewer tags
-    const blockV2: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert second version with fewer tags using the block functions
+    const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
       block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: version1Uuid,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document now only has [#tag1](#tag1) tag.'
-    }
+      body: '# Document Title\n\nThis document now only has [#tag1](#tag1) tag.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV2).execute()
+    const version2Uuid = blockV2.version_uuid
     
     // Run indexing again
     await indexSlugs(localDb)
     
     // Check that only remaining tag exists
-    tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .execute()
+    tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(1)
-    expect(tags[0].tag).toBe('tag1')
+    expect(tags).toContain('tag1')
   })
 
   test('should change tags in an authoritative version of a block', async () => {
-    const now = new Date()
-    const blockUuid = uuidv4()
-    const version1Uuid = uuidv4()
-    const version2Uuid = uuidv4()
-    
-    // Insert first version with some tags
-    const blockV1: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert first version with some tags using the block functions
+    const blockV1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
-      version_uuid: version1Uuid,
-      prior_version_uuid: null,
-      insert_datetime: now.toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document has [#oldtag](#oldtag) tag.'
-    }
+      body: '# Document Title\n\nThis document has [#oldtag](#oldtag) tag.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV1).execute()
+    const blockUuid = blockV1.block_uuid
+    const version1Uuid = blockV1.version_uuid
     
     // Run indexing on first version
     await indexSlugs(localDb)
     
     // Check that old tag exists
-    let tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .execute()
+    let tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(1)
-    expect(tags[0].tag).toBe('oldtag')
+    expect(tags).toContain('oldtag')
     
-    // Insert second version with different tags
-    const blockV2: NewBlockRecord = {
-      block_uuid: blockUuid,
+    // Insert second version with different tags using the block functions
+    const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
       block_type: 'scribe/markdown',
-      version_uuid: version2Uuid,
-      prior_version_uuid: version1Uuid,
-      insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-      inserter: 'test-user',
-      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#different](#different) tags.'
-    }
+      body: '# Document Title\n\nThis document now has [#newtag](#newtag) and [#different](#different) tags.',
+      inserter: 'test-user'
+    })
     
-    await syncedDb.insertInto('block').values(blockV2).execute()
+    const version2Uuid = blockV2.version_uuid
     
     // Run indexing again
     await indexSlugs(localDb)
     
     // Check that new tags exist and old ones are removed
-    tags = await localDb.selectFrom('block_tag')
-      .selectAll()
-      .where('block_uuid', '=', blockUuid)
-      .orderBy('tag')
-      .execute()
+    tags = await getTagsForBlock(localDb, blockUuid)
     
     expect(tags).toHaveLength(2)
-    expect(tags[0].tag).toBe('different')
-    expect(tags[1].tag).toBe('newtag')
+    expect(tags).toContain('newtag')
+    expect(tags).toContain('different')
   })
 })

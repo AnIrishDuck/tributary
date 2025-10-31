@@ -1,6 +1,4 @@
-import { Kysely } from 'kysely'
-import { KyselyTributary } from 'kysely-tributary'
-import { TributaryClient, TributaryStream } from 'tributary-client'
+import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client'
 import { FakeServer } from 'tributary-client/src/fakeServer.js'
 import nacl from 'tweetnacl'
 import { encodeBase64 } from 'tweetnacl-util'
@@ -9,7 +7,7 @@ import { PGlite } from '@electric-sql/pglite'
 /**
  * Create a test database connection using Tributary with a fake server
  */
-export async function createTestDB(): Promise<{ syncedDb: Kysely<any>, localDb: Kysely<any>, client: TributaryClient, stream: TributaryStream, server: FakeServer }> {
+export async function createTestDB(): Promise<{ syncedDb: TributaryStream, localDb: TributaryLocal, client: TributaryClient, stream: TributaryStream, server: FakeServer }> {
   // Create a fake server for testing
   const server = new FakeServer()
   
@@ -30,10 +28,7 @@ export async function createTestDB(): Promise<{ syncedDb: Kysely<any>, localDb: 
   
   // For testing purposes, we'll use the same stream for both synced and local operations
   // In a real application, local operations would use TributaryLocal
-  const { dialect } = new KyselyTributary(stream)
-  const syncedDb = new Kysely<any>({ dialect })
-  const { dialect: localDialect } = new KyselyTributary(stream.local())
-  const localDb = new Kysely<any>({ dialect: localDialect })
+  const localDb = stream.local()
   
-  return { syncedDb, localDb, client, stream, server }
+  return { syncedDb: stream, localDb, client, stream, server }
 }

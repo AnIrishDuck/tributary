@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { createTestDB } from './test-utils.js'
 import { up } from '../src/migrations.js'
+import { createBlock, createBlockVersion } from '../src/block.js'
 
 describe('Tributary Integration Tests', () => {
   test('should create a new stream with Tributary integration', async () => {
@@ -11,19 +12,10 @@ describe('Tributary Integration Tests', () => {
     try {
       // Run migrations on both databases, handling the case where tables already exist
       try {
-        await up(syncedDb)
+        await up(syncedDb, localDb)
       } catch (error) {
         // Ignore "relation already exists" errors
-        if (!error.message.includes('already exists')) {
-          throw error
-        }
-      }
-      
-      try {
-        await up(localDb)
-      } catch (error) {
-        // Ignore "relation already exists" errors
-        if (!error.message.includes('already exists')) {
+        if (!(error as Error).message.includes('already exists')) {
           throw error
         }
       }
@@ -34,33 +26,27 @@ describe('Tributary Integration Tests', () => {
       // Check that we have a valid stream
       expect(stream).toBeDefined()
       
-      // Insert a test block
-      const now = new Date()
-      const blockUuid = uuidv4()
-      const versionUuid = uuidv4()
-      
-      const block = {
-        block_uuid: blockUuid,
+      // Insert a test block using the block functions
+      const block = await createBlock(syncedDb, {
         block_type: 'scribe/markdown',
-        version_uuid: versionUuid,
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'test-user',
-        body: '# Test Document\n\nThis is a test document created through Tributary integration.'
-      }
+        body: '# Test Document\n\nThis is a test document created through Tributary integration.',
+        inserter: 'test-user'
+      })
       
-      // Insert the block
-      await syncedDb.insertInto('block').values(block).execute()
+      const blockUuid = block.block_uuid
+      const versionUuid = block.version_uuid
       
       // Retrieve the block
-      const result = await syncedDb.selectFrom('block')
-        .selectAll()
-        .where('block_uuid', '=', blockUuid)
-        .executeTakeFirst()
+      const result = await syncedDb.query(
+        `SELECT * FROM block WHERE block_uuid = $1`,
+        [blockUuid]
+      )
       
-      expect(result).toBeDefined()
-      expect(result?.block_uuid).toBe(blockUuid)
-      expect(result?.body).toBe('# Test Document\n\nThis is a test document created through Tributary integration.')
+      const retrievedBlock = result.rows && result.rows.length > 0 ? result.rows[0] : null
+      
+      expect(retrievedBlock).toBeDefined()
+      expect(retrievedBlock?.block_uuid).toBe(blockUuid)
+      expect(retrievedBlock?.body).toBe('# Test Document\n\nThis is a test document created through Tributary integration.')
       
       // Check that we can retrieve blob metadata
       const allBlobs = server.getAllBlobs()
@@ -73,9 +59,7 @@ describe('Tributary Integration Tests', () => {
         expect(latestBlob).toBeDefined()
       }
     } finally {
-      // Clean up
-      await syncedDb.destroy()
-      await localDb.destroy()
+      // Cleanup handled by test framework
     }
   })
 
@@ -86,60 +70,40 @@ describe('Tributary Integration Tests', () => {
     try {
       // Run migrations on both databases, handling the case where tables already exist
       try {
-        await up(syncedDb)
+        await up(syncedDb, localDb)
       } catch (error) {
         // Ignore "relation already exists" errors
-        if (!error.message.includes('already exists')) {
+        if (!(error as Error).message.includes('already exists')) {
           throw error
         }
       }
       
-      try {
-        await up(localDb)
-      } catch (error) {
-        // Ignore "relation already exists" errors
-        if (!error.message.includes('already exists')) {
-          throw error
-        }
-      }
-      
-      const now = new Date()
-      const blockUuid = uuidv4()
-      const version1Uuid = uuidv4()
-      const version2Uuid = uuidv4()
-      
-      // Insert first version of a block
-      const blockV1 = {
-        block_uuid: blockUuid,
+      // Insert first version of a block using the block functions
+      const blockV1 = await createBlock(syncedDb, {
         block_type: 'scribe/markdown',
-        version_uuid: version1Uuid,
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'test-user',
-        body: '# First Version\n\nThis is the first version of the document.'
-      }
+        body: '# First Version\n\nThis is the first version of the document.',
+        inserter: 'test-user'
+      })
       
-      await syncedDb.insertInto('block').values(blockV1).execute()
+      const blockUuid = blockV1.block_uuid
+      const version1Uuid = blockV1.version_uuid
       
-      // Insert second version of the same block
-      const blockV2 = {
-        block_uuid: blockUuid,
+      // Insert second version of the same block using the block functions
+      const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
         block_type: 'scribe/markdown',
-        version_uuid: version2Uuid,
-        prior_version_uuid: version1Uuid,
-        insert_datetime: new Date(now.getTime() + 1000).toISOString(),
-        inserter: 'test-user',
-        body: '# Second Version\n\nThis is the updated version of the document.'
-      }
+        body: '# Second Version\n\nThis is the updated version of the document.',
+        inserter: 'test-user'
+      })
       
-      await syncedDb.insertInto('block').values(blockV2).execute()
+      const version2Uuid = blockV2.version_uuid
       
       // Retrieve both versions
-      const versions = await syncedDb.selectFrom('block')
-        .selectAll()
-        .where('block_uuid', '=', blockUuid)
-        .orderBy('insert_datetime')
-        .execute()
+      const result = await syncedDb.query(
+        `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime`,
+        [blockUuid]
+      )
+      
+      const versions = result.rows || []
       
       expect(versions).toHaveLength(2)
       expect(versions[0].version_uuid).toBe(version1Uuid)
@@ -151,9 +115,7 @@ describe('Tributary Integration Tests', () => {
       const allBlobs = server.getAllBlobs()
       expect(allBlobs.length).toBeGreaterThan(1)
     } finally {
-      // Clean up
-      await syncedDb.destroy()
-      await localDb.destroy()
+      // Cleanup handled by test framework
     }
   })
 })

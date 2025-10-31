@@ -1,6 +1,27 @@
-import { Kysely, sql } from 'kysely'
-import { Database } from './types'
-import { TributaryStream, TributaryLocal } from 'tributary-client'
+import { TributaryLocal } from 'tributary-client'
+import { BlockDBRow, BlockSlugDBRow, AuthoritativeVersionDBRow, BlockTagDBRow, PGliteResult } from './types'
+
+// TODO: Transactions don't really work in the current implementation.
+// We're using individual queries instead of transactions to avoid correctness issues.
+// In the future, when we have proper transaction support, we should wrap related
+// operations in transactions for consistency.
+
+// Add proper typing for the query results
+interface UnindexedBlock {
+  block_uuid: string;
+  version_uuid: string;
+  body: string;
+  insert_datetime: string;
+}
+
+interface ExistingSlugResult {
+  block_uuid: string;
+}
+
+interface ExistingBlockResult {
+  block_uuid: string;
+  body: string;
+}
 
 /**
  * Extract the title from a markdown document body
@@ -52,13 +73,14 @@ export function titleToSlug(title: string): string {
  * @param db Database transaction
  * @returns A unique slug with UUID fragments appended as needed
  */
-export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db: Kysely<Database>): Promise<string> {
+export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db: TributaryLocal): Promise<string> {
   // Find all existing blocks with the exact same base slug
-  const existingBlocks = await db
-    .selectFrom('block_slug')
-    .select(['block_uuid'])
-    .where('slug', '=', baseSlug)
-    .execute()
+  const result = await db.query(
+    `SELECT block_uuid FROM block_slug WHERE slug = $1`,
+    [baseSlug]
+  )
+  
+  const existingBlocks = result.rows || []
   
   // If no conflicts, return base slug
   if (existingBlocks.length === 0) {
@@ -74,12 +96,12 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
   const slugWith4CharPrefix = `${prefix4}-${baseSlug}`
   
   // Check if this conflicts with any existing slug
-  const existingSlugWith4Prefix = await db
-    .selectFrom('block_slug')
-    .select('block_uuid')
-    .where('slug', '=', slugWith4CharPrefix)
-    .where('block_uuid', '!=', blockUuid)
-    .executeTakeFirst()
+  const existingResult = await db.query(
+    `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
+    [slugWith4CharPrefix, blockUuid]
+  )
+  
+  const existingSlugWith4Prefix = existingResult.rows && existingResult.rows.length > 0 ? existingResult.rows[0] : null
   
   if (!existingSlugWith4Prefix) {
     return slugWith4CharPrefix
@@ -94,12 +116,12 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
     const slugWithPrefix = `${prefix}-${baseSlug}`
     
     // Check if this conflicts with any existing slug
-    const existingSlugWithPrefix = await db
-      .selectFrom('block_slug')
-      .select('block_uuid')
-      .where('slug', '=', slugWithPrefix)
-      .where('block_uuid', '!=', blockUuid)
-      .executeTakeFirst()
+    const existingPrefixResult = await db.query(
+      `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
+      [slugWithPrefix, blockUuid]
+    )
+    
+    const existingSlugWithPrefix = existingPrefixResult.rows && existingPrefixResult.rows.length > 0 ? existingPrefixResult.rows[0] : null
     
     if (!existingSlugWithPrefix) {
       return slugWithPrefix
@@ -179,47 +201,40 @@ export interface IndexSlugsResult {
  * 4. Extracts tags from authoritative blocks
  * 5. Updates the block_slug and block_tag index tables
  * 
- * @param localDb The Kysely database instance for local operations (index tables)
+ * @param localDb The TributaryLocal database instance for local operations (index tables)
  * @param options Indexing options
  * @returns Result indicating how many slugs were indexed and if there are more
  */
 export async function indexSlugs(
-  localDb: Kysely<Database>,
+  localDb: TributaryLocal,
   options: IndexSlugsOptions = {}
 ): Promise<IndexSlugsResult> {
   const limit = options.limit ?? 100
   
   // First, find the latest version of each block using a window function
-  const latestBlockVersions = localDb.selectFrom('block')
-    .select([
-      'block_uuid',
-      'version_uuid',
-      'body',
-      'insert_datetime',
-      sql`ROW_NUMBER() OVER (PARTITION BY block_uuid ORDER BY insert_datetime DESC)`.as('rn')
-    ])
-    .as('latest_blocks')
+  const unindexedBlocksResult = await localDb.query(`
+    SELECT 
+      latest_blocks.block_uuid,
+      latest_blocks.version_uuid,
+      latest_blocks.body,
+      latest_blocks.insert_datetime
+    FROM (
+      SELECT 
+        block_uuid,
+        version_uuid,
+        body,
+        insert_datetime,
+        ROW_NUMBER() OVER (PARTITION BY block_uuid ORDER BY insert_datetime DESC) as rn
+      FROM block
+    ) latest_blocks
+    LEFT JOIN indexed_block ib ON latest_blocks.block_uuid = ib.block_uuid
+    WHERE latest_blocks.rn = 1  -- Only latest versions
+    AND (ib.block_uuid IS NULL OR latest_blocks.version_uuid != ib.version_uuid)
+    ORDER BY latest_blocks.insert_datetime ASC  -- Process oldest first
+    LIMIT $1
+  `, [limit])
   
-  // Join with indexed_block to find unindexed latest versions
-  const unindexedBlocks = await localDb
-    .selectFrom(latestBlockVersions)
-    .leftJoin('indexed_block as ib', 'latest_blocks.block_uuid', 'ib.block_uuid')
-    .select([
-      'latest_blocks.block_uuid',
-      'latest_blocks.version_uuid',
-      'latest_blocks.body',
-      'latest_blocks.insert_datetime'
-    ])
-    .where('latest_blocks.rn', '=', 1) // Only latest versions
-    .where((eb) => 
-      eb.or([
-        eb('ib.block_uuid', 'is', null), // Not indexed at all
-        eb('latest_blocks.version_uuid', '!=', eb.ref('ib.version_uuid')) // Different version
-      ])
-    )
-    .orderBy('latest_blocks.insert_datetime', 'asc') // Process oldest first
-    .limit(limit)
-    .execute()
+  const unindexedBlocks: UnindexedBlock[] = (unindexedBlocksResult.rows || []) as UnindexedBlock[]
   
   // If no unindexed blocks, return early
   if (unindexedBlocks.length === 0) {
@@ -241,64 +256,58 @@ export async function indexSlugs(
     // Extract tags from the block body
     const tags = extractTagsFromMarkdown(block.body)
     
-    // Start a transaction to ensure consistency
-    await localDb.transaction().execute(async (tx) => {
+    // TODO: In the future, when we have proper transaction support, we should wrap these
+    // related operations in a transaction to ensure consistency
+    try {
       // Mark the block as indexed
-      await tx
-        .insertInto('indexed_block')
-        .values({
-          block_uuid: block.block_uuid,
-          version_uuid: block.version_uuid,
-          indexed: true,
-          last_indexed_at: new Date().toISOString()
-        })
-        .onConflict(oc => oc
-          .column('block_uuid')
-          .doUpdateSet({
-            version_uuid: block.version_uuid,
-            indexed: true,
-            last_indexed_at: new Date().toISOString()
-          })
-        )
-        .execute()
+      await localDb.query(
+        `INSERT INTO indexed_block (block_uuid, version_uuid, indexed, last_indexed_at) 
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (block_uuid) 
+         DO UPDATE SET version_uuid = $2, indexed = $3, last_indexed_at = $4`,
+        [
+          block.block_uuid,
+          block.version_uuid,
+          true,
+          new Date().toISOString()
+        ]
+      )
       
       // Update the authoritative version mapping
-      await tx
-        .insertInto('authoritative_version')
-        .values({
-          block_uuid: block.block_uuid,
-          version_uuid: block.version_uuid,
-          indexed_at: new Date().toISOString()
-        })
-        .onConflict(oc => oc
-          .column('block_uuid')
-          .doUpdateSet({
-            version_uuid: block.version_uuid,
-            indexed_at: new Date().toISOString()
-          })
-        )
-        .execute()
+      await localDb.query(
+        `INSERT INTO authoritative_version (block_uuid, version_uuid, indexed_at) 
+         VALUES ($1, $2, $3)
+         ON CONFLICT (block_uuid) 
+         DO UPDATE SET version_uuid = $2, indexed_at = $3`,
+        [
+          block.block_uuid,
+          block.version_uuid,
+          new Date().toISOString()
+        ]
+      )
       
       // Handle slug updates
       if (baseSlug && title) {
         // Check if this base slug already exists for a different block
-        const existingSlug = await tx
-          .selectFrom('block_slug')
-          .selectAll()
-          .where('slug', '=', baseSlug)
-          .executeTakeFirst()
+        const existingSlugResult = await localDb.query(
+          `SELECT block_uuid FROM block_slug WHERE slug = $1`,
+          [baseSlug]
+        )
+        
+        const existingSlugRow = existingSlugResult.rows && existingSlugResult.rows.length > 0 ? existingSlugResult.rows[0] as ExistingSlugResult : null
+        const existingSlug = existingSlugRow ? existingSlugRow : null
         
         if (existingSlug && existingSlug.block_uuid !== block.block_uuid) {
           // Conflict detected - we need to update both blocks to have UUID prefixes
           
           // Get the existing block's data to update its slug
-          const existingBlock = await localDb
-            .selectFrom('block')
-            .select(['block_uuid', 'body'])
-            .where('block_uuid', '=', existingSlug.block_uuid)
-            .orderBy('insert_datetime', 'desc')
-            .limit(1)
-            .executeTakeFirst()
+          const existingBlockResult = await localDb.query(
+            `SELECT block_uuid, body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+            [existingSlug.block_uuid]
+          )
+          
+          const existingBlockRow = existingBlockResult.rows && existingBlockResult.rows.length > 0 ? existingBlockResult.rows[0] as ExistingBlockResult : null
+          const existingBlock = existingBlockRow ? existingBlockRow : null
           
           if (existingBlock) {
             // Extract title from the existing block
@@ -311,15 +320,15 @@ export async function indexSlugs(
               const updatedExistingSlug = `${existingBlockPrefix}-${existingBaseSlug}`
               
               // Update the existing block's slug
-              await tx
-                .updateTable('block_slug')
-                .set({
-                  slug: updatedExistingSlug,
-                  title: existingTitle || "Untitled",
-                  indexed_at: new Date().toISOString()
-                })
-                .where('block_uuid', '=', existingBlock.block_uuid)
-                .execute()
+              await localDb.query(
+                `UPDATE block_slug SET slug = $1, title = $2, indexed_at = $3 WHERE block_uuid = $4`,
+                [
+                  updatedExistingSlug,
+                  existingTitle || "Untitled",
+                  new Date().toISOString(),
+                  existingBlock.block_uuid
+                ]
+              )
             }
           }
           
@@ -328,72 +337,67 @@ export async function indexSlugs(
           const finalSlug = `${currentBlockPrefix}-${baseSlug}`
           
           // Update or insert the slug entry for this block
-          await tx
-            .insertInto('block_slug')
-            .values({
-              block_uuid: block.block_uuid,
-              slug: finalSlug,
-              title: title,
-              indexed_at: new Date().toISOString()
-            })
-            .onConflict(oc => oc
-              .column('block_uuid')
-              .doUpdateSet({
-                slug: finalSlug,
-                title: title,
-                indexed_at: new Date().toISOString()
-              })
-            )
-            .execute()
+          await localDb.query(
+            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at) 
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (block_uuid) 
+             DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
+            [
+              block.block_uuid,
+              finalSlug,
+              title,
+              new Date().toISOString()
+            ]
+          )
         } else {
           // No conflict or updating the same block, just use the base slug
-          await tx
-            .insertInto('block_slug')
-            .values({
-              block_uuid: block.block_uuid,
-              slug: baseSlug,
-              title: title,
-              indexed_at: new Date().toISOString()
-            })
-            .onConflict(oc => oc
-              .column('block_uuid')
-              .doUpdateSet({
-                slug: baseSlug,
-                title: title,
-                indexed_at: new Date().toISOString()
-              })
-            )
-            .execute()
+          await localDb.query(
+            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at) 
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (block_uuid) 
+             DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
+            [
+              block.block_uuid,
+              baseSlug,
+              title,
+              new Date().toISOString()
+            ]
+          )
         }
         
         indexedCount++
       } else {
         // If no slug, delete any existing slug entry for this block
-        await tx
-          .deleteFrom('block_slug')
-          .where('block_uuid', '=', block.block_uuid)
-          .execute()
+        await localDb.query(
+          `DELETE FROM block_slug WHERE block_uuid = $1`,
+          [block.block_uuid]
+        )
       }
       
       // Handle tag updates
       // First, delete all existing tags for this block
-      await tx
-        .deleteFrom('block_tag')
-        .where('block_uuid', '=', block.block_uuid)
-        .execute()
+      await localDb.query(
+        `DELETE FROM block_tag WHERE block_uuid = $1`,
+        [block.block_uuid]
+      )
       
       // Then insert new tags for this block
       for (const tag of tags) {
-        await tx
-          .insertInto('block_tag')
-          .values({
-            block_uuid: block.block_uuid,
-            tag: tag,
-            indexed_at: new Date().toISOString()
-          })
-          .execute()
+        await localDb.query(
+          `INSERT INTO block_tag (block_uuid, tag, indexed_at) VALUES ($1, $2, $3)`,
+          [
+            block.block_uuid,
+            tag,
+            new Date().toISOString()
+          ]
+        )
       }
-    })
+    } catch (error) {
+      // TODO: In the future, with transaction support, we could rollback all changes
+      // for this block if an error occurs
+      console.error(`Error indexing block ${block.block_uuid}:`, error)
+      // Continue with other blocks
+    }
   }
   
   return {
@@ -405,122 +409,139 @@ export async function indexSlugs(
 
 /**
  * Get all block slugs
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @returns Array of block slugs
  */
-export async function getAllBlockSlugs(db: Kysely<Database>) {
-  return await db
-    .selectFrom('block_slug')
-    .selectAll()
-    .execute()
+export async function getAllBlockSlugs(db: TributaryLocal) {
+  const result = await db.query(`SELECT * FROM block_slug`, [])
+  return result.rows || []
 }
 
 /**
  * Get block slug by block UUID
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @param blockUuid The block UUID
  * @returns The block slug or null if not found
  */
 export async function getBlockSlugByUuid(
-  db: Kysely<Database>,
+  db: TributaryLocal,
   blockUuid: string
 ) {
-  return await db
-    .selectFrom('block_slug')
-    .selectAll()
-    .where('block_uuid', '=', blockUuid)
-    .executeTakeFirst()
+  const result = await db.query(
+    `SELECT * FROM block_slug WHERE block_uuid = $1`,
+    [blockUuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0]
 }
 
 /**
  * Get block slug by slug
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @param slug The slug to search for
  * @returns The block slug or null if not found
  */
 export async function getBlockBySlug(
-  db: Kysely<Database>,
+  db: TributaryLocal,
   slug: string
 ) {
-  return await db
-    .selectFrom('block_slug')
-    .selectAll()
-    .where('slug', '=', slug)
-    .executeTakeFirst()
+  const result = await db.query(
+    `SELECT * FROM block_slug WHERE slug = $1`,
+    [slug]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0]
 }
 
 /**
  * Get authoritative version for a block
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @param blockUuid The block UUID
  * @returns The authoritative version mapping or null if not found
  */
 export async function getAuthoritativeVersionByBlockUuid(
-  db: Kysely<Database>,
+  db: TributaryLocal,
   blockUuid: string
 ) {
-  return await db
-    .selectFrom('authoritative_version')
-    .selectAll()
-    .where('block_uuid', '=', blockUuid)
-    .executeTakeFirst()
+  const result = await db.query(
+    `SELECT * FROM authoritative_version WHERE block_uuid = $1`,
+    [blockUuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0]
 }
 
 /**
  * Get all authoritative versions
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @returns Array of authoritative version mappings
  */
-export async function getAllAuthoritativeVersions(db: Kysely<Database>) {
-  return await db
-    .selectFrom('authoritative_version')
-    .selectAll()
-    .execute()
+export async function getAllAuthoritativeVersions(db: TributaryLocal) {
+  const result = await db.query(`SELECT * FROM authoritative_version`, [])
+  return result.rows || []
 }
 
 /**
  * Get all tags for a block
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @param blockUuid The block UUID
  * @returns Array of tags for the block
  */
 export async function getTagsForBlock(
-  db: Kysely<Database>,
+  db: TributaryLocal,
   blockUuid: string
-) {
-  return await db
-    .selectFrom('block_tag')
-    .select('tag')
-    .where('block_uuid', '=', blockUuid)
-    .execute()
+): Promise<string[]> {
+  const result = await db.query(
+    `SELECT tag FROM block_tag WHERE block_uuid = $1`,
+    [blockUuid]
+  )
+  
+  // Extract just the tag strings from the database rows
+  return (result.rows || []).map((row: any) => row.tag)
 }
 
 /**
  * Get all blocks that have a specific tag
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @param tag The tag to search for
  * @returns Array of block UUIDs that have this tag
  */
 export async function getBlocksByTag(
-  db: Kysely<Database>,
+  db: TributaryLocal,
   tag: string
-) {
-  return await db
-    .selectFrom('block_tag')
-    .select('block_uuid')
-    .where('tag', '=', tag)
-    .execute()
+): Promise<string[]> {
+  const result = await db.query(
+    `SELECT block_uuid FROM block_tag WHERE tag = $1`,
+    [tag]
+  )
+  
+  // Extract just the block_uuid strings from the database rows
+  return (result.rows || []).map((row: any) => row.block_uuid)
 }
 
 /**
  * Get all unique tags
- * @param db The Kysely database instance
+ * @param db The TributaryLocal database instance
  * @returns Array of all unique tags
  */
-export async function getAllTags(db: Kysely<Database>) {
-  return await db
-    .selectFrom('block_tag')
-    .select('tag')
-    .distinct()
-    .execute()
+export async function getAllTags(db: TributaryLocal): Promise<string[]> {
+  const result = await db.query(
+    `SELECT DISTINCT tag FROM block_tag`,
+    []
+  )
+  
+  // Extract just the tag strings from the database rows
+  return (result.rows || []).map((row: any) => row.tag)
 }

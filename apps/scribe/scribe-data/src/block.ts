@@ -1,82 +1,92 @@
-import { Kysely } from 'kysely'
 import { v4 as uuidv4 } from 'uuid'
-import { Database, NewBlockRecord, BlockRecord, BlockUuid, VersionUuid } from './types'
+import { TributaryStream } from 'tributary-client'
+import { BlockRow, BlockDBRow, PGliteResult } from './types'
+
+interface BlockQueryResult {
+  version_uuid: string;
+}
 
 /**
  * Create a new block in the database
  * 
- * @param db The Kysely database instance
+ * @param db The TributaryStream database instance
  * @param blockData The block data to insert
  * @returns The inserted block record
  */
 export async function createBlock(
-  db: Kysely<Database>,
+  db: TributaryStream,
   blockData: {
-    block_uuid?: BlockUuid
+    block_uuid?: string
     block_type: string
     body: string
     inserter: string
-    prior_version_uuid?: VersionUuid | null
+    prior_version_uuid?: string | null
   }
-): Promise<BlockRecord> {
+): Promise<BlockRow> {
   const now = new Date()
   
-  const newBlock: NewBlockRecord = {
-    block_uuid: blockData.block_uuid || (uuidv4() as BlockUuid),
+  const newBlock: BlockRow = {
+    block_uuid: blockData.block_uuid || uuidv4(),
     block_type: blockData.block_type,
-    version_uuid: uuidv4() as VersionUuid,
+    version_uuid: uuidv4(),
     prior_version_uuid: blockData.prior_version_uuid !== undefined ? blockData.prior_version_uuid : null,
     insert_datetime: now.toISOString(),
     inserter: blockData.inserter,
     body: blockData.body
   }
   
-  const result = await db.insertInto('block').values(newBlock).executeTakeFirst()
+  await db.exec(
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      newBlock.block_uuid,
+      newBlock.block_type,
+      newBlock.version_uuid,
+      newBlock.prior_version_uuid,
+      newBlock.insert_datetime,
+      newBlock.inserter,
+      newBlock.body
+    ]
+  )
   
-  // Retrieve the inserted block - explicitly check that version_uuid is defined
-  const versionUuid = newBlock.version_uuid;
-  if (!versionUuid) {
-    throw new Error('Failed to generate version UUID')
-  }
+  // Retrieve the inserted block
+  const result = await db.query(
+    `SELECT * FROM block WHERE version_uuid = $1`,
+    [newBlock.version_uuid]
+  )
   
-  const insertedBlock = await db.selectFrom('block')
-    .selectAll()
-    .where('version_uuid', '=', versionUuid)
-    .executeTakeFirst()
-  
-  if (!insertedBlock) {
+  if (!result.rows || result.rows.length === 0) {
     throw new Error('Failed to retrieve inserted block')
   }
   
-  return insertedBlock
+  return result.rows[0] as BlockRow
 }
 
 /**
  * Create a new version of an existing block
  * 
- * @param db The Kysely database instance
+ * @param db The TributaryStream database instance
  * @param block_uuid The UUID of the block to create a new version for
  * @param blockData The new block data
  * @returns The inserted block record
  */
 export async function createBlockVersion(
-  db: Kysely<Database>,
-  block_uuid: BlockUuid,
+  db: TributaryStream,
+  block_uuid: string,
   blockData: {
     block_type: string
     body: string
     inserter: string
   }
-): Promise<BlockRecord> {
+): Promise<BlockRow> {
   // Get the latest version of this block to set as prior_version_uuid
-  const latestVersion = await db.selectFrom('block')
-    .selectAll()
-    .where('block_uuid', '=', block_uuid)
-    .orderBy('insert_datetime', 'desc')
-    .limit(1)
-    .executeTakeFirst()
+  const result = await db.query(
+    `SELECT version_uuid FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    [block_uuid]
+  )
   
-  const prior_version_uuid = latestVersion?.version_uuid || null
+  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as BlockQueryResult : null
+  const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   
   return createBlock(db, {
     block_uuid,
@@ -90,55 +100,64 @@ export async function createBlockVersion(
 /**
  * Get a block by its UUID
  * 
- * @param db The Kysely database instance
+ * @param db The TributaryStream database instance
  * @param block_uuid The UUID of the block to retrieve
  * @returns The block record or null if not found
  */
 export async function getBlockByUuid(
-  db: Kysely<Database>,
-  block_uuid: BlockUuid
-): Promise<BlockRecord | null> {
-  return await db.selectFrom('block')
-    .selectAll()
-    .where('block_uuid', '=', block_uuid)
-    .orderBy('insert_datetime', 'desc')
-    .limit(1)
-    .executeTakeFirst() || null
+  db: TributaryStream,
+  block_uuid: string
+): Promise<BlockRow | null> {
+  const result = await db.query(
+    `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    [block_uuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0] as BlockRow
 }
 
 /**
  * Get all versions of a block
  * 
- * @param db The Kysely database instance
+ * @param db The TributaryStream database instance
  * @param block_uuid The UUID of the block to retrieve versions for
  * @returns Array of block records ordered by insertion time
  */
 export async function getBlockVersions(
-  db: Kysely<Database>,
-  block_uuid: BlockUuid
-): Promise<BlockRecord[]> {
-  return await db.selectFrom('block')
-    .selectAll()
-    .where('block_uuid', '=', block_uuid)
-    .orderBy('insert_datetime', 'asc')
-    .execute()
+  db: TributaryStream,
+  block_uuid: string
+): Promise<BlockRow[]> {
+  const result = await db.query(
+    `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
+    [block_uuid]
+  )
+  
+  return (result.rows || []) as BlockRow[]
 }
 
 /**
  * Get the latest version of a block
  * 
- * @param db The Kysely database instance
+ * @param db The TributaryStream database instance
  * @param block_uuid The UUID of the block to retrieve
  * @returns The latest block record or null if not found
  */
 export async function getLatestBlockVersion(
-  db: Kysely<Database>,
-  block_uuid: BlockUuid
-): Promise<BlockRecord | null> {
-  return await db.selectFrom('block')
-    .selectAll()
-    .where('block_uuid', '=', block_uuid)
-    .orderBy('insert_datetime', 'desc')
-    .limit(1)
-    .executeTakeFirst() || null
+  db: TributaryStream,
+  block_uuid: string
+): Promise<BlockRow | null> {
+  const result = await db.query(
+    `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    [block_uuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0] as BlockRow
 }

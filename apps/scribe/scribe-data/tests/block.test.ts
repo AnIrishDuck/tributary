@@ -1,7 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { Kysely } from 'kysely'
 import { v4 as uuidv4 } from 'uuid'
-import { Database, BlockUuid, VersionUuid } from '../src/types.js'
+import { BlockUuid, VersionUuid } from '../src/types.js'
 import { up, down } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
 import { 
@@ -11,10 +10,11 @@ import {
   getBlockVersions, 
   getLatestBlockVersion 
 } from '../src/block.js'
+import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 describe('Block Operations', () => {
-  let syncedDb: Kysely<Database>
-  let localDb: Kysely<Database>
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
   let cleanup: () => Promise<void>
 
   beforeEach(async () => {
@@ -23,12 +23,11 @@ describe('Block Operations', () => {
     syncedDb = result.syncedDb
     localDb = result.localDb
     cleanup = async () => {
-      await syncedDb.destroy()
-      await localDb.destroy()
+      // Cleanup handled by test framework
     }
     
     // Run the migration
-    await up(syncedDb)
+    await up(syncedDb, localDb)
   })
 
   afterEach(async () => {
