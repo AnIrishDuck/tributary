@@ -23,49 +23,9 @@ export type BlockType = 'scribe/markdown'
 export type Inserter = string
 
 /**
- * A block represents a unit of content in the scribe app
- */
-export interface Block {
-  /**
-   * Unique identifier for the block (UUID format)
-   */
-  block_uuid: BlockUuid
-
-  /**
-   * Type of the block
-   */
-  block_type: BlockType
-
-  /**
-   * Unique identifier for this version (UUID format)
-   */
-  version_uuid: VersionUuid
-
-  /**
-   * Identifier for the previous version (null for first version, UUID format)
-   */
-  prior_version_uuid: VersionUuid | null
-
-  /**
-   * Timestamp when this version was inserted
-   */
-  insert_datetime: Date
-
-  /**
-   * User or device that inserted this version
-   */
-  inserter: Inserter
-
-  /**
-   * The content of the block
-   */
-  body: string
-}
-
-/**
  * Database representation of a block (with proper types for database storage)
  */
-export interface BlockRow {
+export interface Block {
   block_uuid: string
   block_type: string
   version_uuid: string
@@ -78,7 +38,7 @@ export interface BlockRow {
 /**
  * Database representation of an indexed block (with proper types for database storage)
  */
-export interface IndexedBlockRow {
+export interface IndexedBlock {
   block_uuid: string
   version_uuid: string
   indexed: boolean
@@ -94,32 +54,9 @@ export interface PGliteResult {
 }
 
 /**
- * Type for a block database row (used for raw SQL queries)
- */
-export interface BlockDBRow {
-  block_uuid: string;
-  block_type: string;
-  version_uuid: string;
-  prior_version_uuid: string | null;
-  insert_datetime: string;
-  inserter: string;
-  body: string;
-}
-
-/**
- * Type for an indexed block database row
- */
-export interface IndexedBlockDBRow {
-  block_uuid: string;
-  version_uuid: string;
-  indexed: boolean;
-  last_indexed_at: string;
-}
-
-/**
  * Type for a block slug database row
  */
-export interface BlockSlugDBRow {
+export interface BlockSlug {
   block_uuid: string;
   slug: string;
   title: string;
@@ -129,7 +66,7 @@ export interface BlockSlugDBRow {
 /**
  * Type for an authoritative version database row
  */
-export interface AuthoritativeVersionDBRow {
+export interface AuthoritativeVersion {
   block_uuid: string;
   version_uuid: string;
   indexed_at: string;
@@ -138,7 +75,7 @@ export interface AuthoritativeVersionDBRow {
 /**
  * Type for a block tag database row
  */
-export interface BlockTagDBRow {
+export interface BlockTag {
   block_uuid: string;
   tag: string;
   indexed_at: string;

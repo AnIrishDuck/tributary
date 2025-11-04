@@ -6,6 +6,7 @@ import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
+import { BlockSlug } from 'scribe-data'
 
 const EditorPage: React.FC = () => {
   const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
@@ -54,7 +55,7 @@ const EditorPage: React.FC = () => {
         throw new Error('Failed to get stream')
       }
       
-      const { block, blockSlug } = await saveBlock(stream, content)
+      const { block, blockSlug } = await saveBlock(stream, content) as { block: any, blockSlug: BlockSlug | null }
       
       // After saving, navigate to the document view using the slug
       if (prefix) {

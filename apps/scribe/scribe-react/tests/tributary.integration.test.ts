@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createTestDB } from 'scribe-data/tests/test-utils'
 import { up } from 'scribe-data/src/migrations'
+import { createBlock } from 'scribe-data/src/block'
 
 describe('Tributary Integration', () => {
   it('should create a Tributary client and initialize database', async () => {
@@ -18,7 +19,7 @@ describe('Tributary Integration', () => {
       expect(localDb).toBeDefined()
       
       // Run migrations on the synced database
-      await up(syncedDb)
+      await up(syncedDb, localDb)
     } finally {
       // Clean up - only try to destroy if the method exists
       if (syncedDb && typeof (syncedDb as any).destroy === 'function') {
@@ -36,33 +37,27 @@ describe('Tributary Integration', () => {
     
     try {
       // Run migrations to create the required tables
-      await up(syncedDb)
+      await up(syncedDb, localDb)
       
-      // Insert a test block
-      const now = new Date()
-      const block = {
-        block_uuid: 'test-block-uuid',
+      // Insert a test block using the scribe-data block module
+      const block = await createBlock(stream, {
         block_type: 'scribe/markdown',
-        version_uuid: 'test-version-uuid',
-        prior_version_uuid: null,
-        insert_datetime: now.toISOString(),
-        inserter: 'test-user',
-        body: '# Test Document\n\nThis is a test document.'
-      }
+        body: '# Test Document\n\nThis is a test document.',
+        inserter: 'test-user'
+      })
       
-      // Insert the block through Tributary
-      const result = await syncedDb.insertInto('block').values(block).executeTakeFirst()
-      expect(result).toBeDefined()
+      // Retrieve the block using raw SQL
+      const queryResult = await syncedDb.query(
+        `SELECT * FROM block WHERE block_uuid = $1`,
+        [block.block_uuid]
+      )
       
-      // Retrieve the block
-      const retrievedBlock = await syncedDb.selectFrom('block')
-        .selectAll()
-        .where('block_uuid', '=', 'test-block-uuid')
-        .executeTakeFirst()
+      expect(queryResult.rows).toBeDefined()
+      expect(queryResult.rows.length).toBe(1)
+      const retrievedBlock = queryResult.rows[0]
       
-      expect(retrievedBlock).toBeDefined()
-      expect(retrievedBlock?.block_uuid).toBe('test-block-uuid')
-      expect(retrievedBlock?.body).toBe('# Test Document\n\nThis is a test document.')
+      expect(retrievedBlock.block_uuid).toBe(block.block_uuid)
+      expect(retrievedBlock.body).toBe('# Test Document\n\nThis is a test document.')
       
       // Check that the block was stored in the fake server
       const allBlobs = server.getAllBlobs()

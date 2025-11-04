@@ -1,8 +1,7 @@
 import { TributaryClient } from 'tributary-client'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { Kysely } from 'kysely'
-import { KyselyTributary } from 'kysely-tributary'
+import { up } from 'scribe-data'
 
 export async function createStream(client: TributaryClient) {
   // Generate a new key pair
@@ -12,11 +11,7 @@ export async function createStream(client: TributaryClient) {
   const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
   // Run scribe migrations on new stream
-  const { dialect } = new KyselyTributary(stream)
-  const syncedDb = new Kysely<any>({ dialect })
-  
-  const { up } = await import('scribe-data')
-  await up(syncedDb)
+  await up(stream, stream.local())
 
   // Sync the stream to ensure persistence
   await stream.sync()

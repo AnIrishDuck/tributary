@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { BlockDBRow, BlockSlugDBRow, AuthoritativeVersionDBRow, BlockTagDBRow, PGliteResult } from './types'
+import { Block, BlockSlug, AuthoritativeVersion, BlockTag, PGliteResult } from './types'
 
 // TODO: Transactions don't really work in the current implementation.
 // We're using individual queries instead of transactions to avoid correctness issues.

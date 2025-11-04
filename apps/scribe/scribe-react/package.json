@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "TRIBUTARY_LOG_LEVEL=5 vitest run",
+    "test:verbose": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -16,8 +17,6 @@
     "@electric-sql/pglite": "^0.3.10",
     "@uiw/react-codemirror": "^4.25.2",
     "history": "^5.3.0",
-    "kysely": "^0.27.6",
-    "kysely-tributary": "file:../../../kysely-tributary",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router": "^7.0.0",

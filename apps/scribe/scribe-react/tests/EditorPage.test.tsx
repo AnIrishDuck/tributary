@@ -3,8 +3,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream } from './test-utils'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
-import { Kysely } from 'kysely'
-import { KyselyTributary } from 'kysely-tributary'
 import { routes } from '../src/route'
 
 describe('EditorPage', () => {
@@ -87,10 +85,8 @@ describe('EditorPage', () => {
         const base64Part = parts[1]
         const stream = await client.get('scribe', base64Part)
         if (stream) {
-          const { dialect } = new KyselyTributary(stream)
-          const db = new Kysely<any>({ dialect })
-          const blocks = await db.selectFrom('block').selectAll().execute()
-          expect(blocks.length).toBeGreaterThan(0)
+          const blocks = await stream.query('SELECT * FROM block')
+          expect(blocks.rows.length).toBeGreaterThan(0)
         }
       }
     }, { timeout: 5000 })

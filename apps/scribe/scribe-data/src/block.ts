@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream } from 'tributary-client'
-import { BlockRow, BlockDBRow, PGliteResult } from './types'
+import { Block, PGliteResult } from './types'
 
 interface BlockQueryResult {
   version_uuid: string;
@@ -22,10 +22,10 @@ export async function createBlock(
     inserter: string
     prior_version_uuid?: string | null
   }
-): Promise<BlockRow> {
+): Promise<Block> {
   const now = new Date()
   
-  const newBlock: BlockRow = {
+  const newBlock: Block = {
     block_uuid: blockData.block_uuid || uuidv4(),
     block_type: blockData.block_type,
     version_uuid: uuidv4(),
@@ -59,7 +59,7 @@ export async function createBlock(
     throw new Error('Failed to retrieve inserted block')
   }
   
-  return result.rows[0] as BlockRow
+  return result.rows[0] as Block
 }
 
 /**
@@ -78,7 +78,7 @@ export async function createBlockVersion(
     body: string
     inserter: string
   }
-): Promise<BlockRow> {
+): Promise<Block> {
   // Get the latest version of this block to set as prior_version_uuid
   const result = await db.query(
     `SELECT version_uuid FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
@@ -107,7 +107,7 @@ export async function createBlockVersion(
 export async function getBlockByUuid(
   db: TributaryStream,
   block_uuid: string
-): Promise<BlockRow | null> {
+): Promise<Block | null> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
@@ -117,7 +117,7 @@ export async function getBlockByUuid(
     return null
   }
   
-  return result.rows[0] as BlockRow
+  return result.rows[0] as Block
 }
 
 /**
@@ -130,13 +130,13 @@ export async function getBlockByUuid(
 export async function getBlockVersions(
   db: TributaryStream,
   block_uuid: string
-): Promise<BlockRow[]> {
+): Promise<Block[]> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
     [block_uuid]
   )
   
-  return (result.rows || []) as BlockRow[]
+  return (result.rows || []) as Block[]
 }
 
 /**
@@ -149,7 +149,7 @@ export async function getBlockVersions(
 export async function getLatestBlockVersion(
   db: TributaryStream,
   block_uuid: string
-): Promise<BlockRow | null> {
+): Promise<Block | null> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
@@ -159,5 +159,5 @@ export async function getLatestBlockVersion(
     return null
   }
   
-  return result.rows[0] as BlockRow
+  return result.rows[0] as Block
 }

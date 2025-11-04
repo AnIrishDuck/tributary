@@ -1,6 +1,4 @@
 import { TributaryStream } from 'tributary-client'
-import { Kysely } from 'kysely'
-import { KyselyTributary } from 'kysely-tributary'
 import * as scribeData from 'scribe-data'
 
 export async function saveBlock(
@@ -8,12 +6,8 @@ export async function saveBlock(
   content: string,
   inserter: string = 'web-ui'
 ) {
-  // Create Tributary dialect for synced operations
-  const { dialect } = new KyselyTributary(stream)
-  const syncedDb = new Kysely<any>({ dialect })
-  
-  // Create a new block
-  const block = await scribeData.createBlock(syncedDb, {
+  // Create a new block using the scribe-data functions
+  const block = await scribeData.createBlock(stream, {
     block_type: 'scribe/markdown',
     body: content,
     inserter
@@ -23,8 +17,7 @@ export async function saveBlock(
   await stream.sync()
   
   // After sync, create a local database and then run indexing on it
-  const { dialect: localDialect } = new KyselyTributary(stream.local())
-  const localDb = new Kysely<any>({ dialect: localDialect })
+  const localDb = stream.local()
   
   // Run indexing on the local database
   const { indexSlugs } = await import('scribe-data')
