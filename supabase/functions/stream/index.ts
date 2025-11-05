@@ -9,6 +9,4 @@ const db = new Database();
 // Create the route handler with the database
 const handler = createRouteHandler(db);
 
-// Export the handler for Supabase Edge Functions
-// Supabase Edge Functions automatically wrap this in their own server
-export default handler;
+Deno.serve(handler);

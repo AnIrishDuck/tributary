@@ -32,7 +32,7 @@ export class Database {
     // Always connect using DATABASE_URL as SUPABASE_URL
     // In local development, this will be set to the local Supabase instance
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_KEY') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     
     let clientOptions = {};
     
