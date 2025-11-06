@@ -23,22 +23,27 @@ keyCmd
   .command('generate')
   .description('Generate a new key pair')
   .argument('<app-id>', 'Application identifier')
-  .action(async (appId) => {
+  .option('--quiet', 'Suppress output except for the stream ID')
+  .action(async (appId: string, options: any) => {
     try {
       info(`Generating new key pair for app: ${appId}`);
       const keyPair = generateKeyPair();
       
       // Get database path from global options or use default
-      const options = program.opts();
-      const { client, db, server } = await getClient(options);
+      const globalOptions = program.opts();
+      const { client, db, server } = await getClient(globalOptions);
       
       // Save the key pair to database using the actual stream ID
       const streamId = await saveKeyPair(client, appId, keyPair);
       
-      info(`Key pair generated and saved successfully for app '${appId}' with stream ID '${streamId}'.`);
-      info(`Stream ID: ${streamId}`);
+      if (!options.quiet) {
+        info(`Key pair generated and saved successfully for app '${appId}' with stream ID '${streamId}'.`);
+        info(`Stream ID: ${streamId}`);
+      } else {
+        console.log(streamId);
+      }
     } catch (error) {
-      errorLog('Error:', (error as Error).message);
+      errorLog('Error:', (error as Error).stack || (error as Error).message);
       process.exit(1);
     }
   });
@@ -47,7 +52,7 @@ keyCmd
   .command('list')
   .description('List all available keys for an app')
   .argument('<app-id>', 'Application identifier')
-  .action(async (appId) => {
+  .action(async (appId: string) => {
     try {
       // Get database path from global options or use default
       const options = program.opts();
@@ -59,15 +64,18 @@ keyCmd
         info('  No keys found.');
       } else {
         // Filter keys that belong to this app
-        const appKeys = keys.filter(key => {
+        const appKeys = [];
+        for (const key of keys) {
           // Try to get the stream for this key and check if it belongs to the app
           try {
-            const stream = client.get(appId, key);
-            return stream !== undefined;
+            const stream = await client.get(appId, key);
+            if (stream !== undefined) {
+              appKeys.push(key);
+            }
           } catch (e) {
-            return false;
+            // Ignore errors and continue
           }
-        });
+        }
         
         if (appKeys.length === 0) {
           info('  No keys found for this app.');
@@ -85,7 +93,7 @@ keyCmd
   .command('show')
   .description('Show details of a specific key')
   .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
-  .action(async (appStreamId) => {
+  .action(async (appStreamId: string) => {
     try {
       // Parse the app-id/stream-id format
       const parts = appStreamId.split('/');
@@ -112,7 +120,7 @@ keyCmd
   .command('export')
   .description('Export a key as base64 encoded string')
   .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
-  .action(async (appStreamId) => {
+  .action(async (appStreamId: string) => {
     try {
       // Parse the app-id/stream-id format
       const parts = appStreamId.split('/');
@@ -139,7 +147,7 @@ keyCmd
   .command('import')
   .description('Import a key from base64 encoded string via stdin')
   .argument('<app-id>', 'Application identifier')
-  .action(async (appId) => {
+  .action(async (appId: string) => {
     try {
       // Get database path from global options or use default
       const options = program.opts();
@@ -183,7 +191,7 @@ program
   .argument('[sql]', 'SQL command to execute')
   .option('-d, --db <path>', 'Local database file path for persistence')
   .option('-n, --no-sync', 'Disable automatic sync with server before executing command')
-  .action(async (appStreamId, sql, options) => {
+  .action(async (appStreamId: string, sql: string | undefined, options: any) => {
     try {
       // Parse the app-id/stream-id format
       const parts = appStreamId.split('/');
@@ -193,9 +201,9 @@ program
       }
       const [appId, streamId] = parts;
       
-      const result = await executeSQL(appId, streamId, sql, {
+      const result = await executeSQL(appId, streamId, sql || '', {
         localDb: options.db,
-        sync: options.sync // This will be true by default, false if --no-sync is specified
+        sync: options.sync // Commander.js sets this to false when --no-sync is used
       });
       info('Result:', result);
     } catch (error) {

@@ -28,10 +28,7 @@ rm -f "$DB_FILE_1" "$DB_FILE_2"
 
 # Create new key for this test
 echo "Creating new key..."
-GENERATE_OUTPUT=$(node dist/index.js key generate $APP_ID)
-
-# Extract the stream ID from the output (this is a simplified approach)
-STREAM_ID=$(echo "$GENERATE_OUTPUT" | grep "Stream ID:" | awk '{print $3}')
+STREAM_ID=$(node dist/index.js key generate $APP_ID --quiet 2>/dev/null | tail -1)
 
 # Check if key creation was successful
 if [ -z "$STREAM_ID" ]; then
@@ -41,15 +38,11 @@ fi
 
 echo "Key created successfully with stream ID: $STREAM_ID"
 
-# List keys to confirm it was created
-echo "Listing available keys:"
-node dist/index.js key list
-
 # Test 1: Insert data from DB 1
 echo ""
 echo "=== Test 1: Inserting data from DB 1 ==="
 node dist/index.js psql "$APP_ID/$STREAM_ID" "CREATE TABLE IF NOT EXISTS simple_test (id INTEGER PRIMARY KEY, message TEXT)" \
-    --db $DB_FILE_1
+    --db $DB_FILE_1 --no-sync
 
 if [ $? -ne 0 ]; then
     echo "Failed to create table in DB 1"
@@ -57,7 +50,7 @@ if [ $? -ne 0 ]; then
 fi
 
 node dist/index.js psql "$APP_ID/$STREAM_ID" "INSERT INTO simple_test VALUES (1, 'Hello from DB 1')" \
-    --db $DB_FILE_1
+    --db $DB_FILE_1 --no-sync
 
 if [ $? -ne 0 ]; then
     echo "Failed to insert data from DB 1"
@@ -71,7 +64,7 @@ echo ""
 echo "=== Test 2: Reading data from DB 2 ==="
 # First ensure DB 2 has the table structure
 node dist/index.js psql "$APP_ID/$STREAM_ID" "CREATE TABLE IF NOT EXISTS simple_test (id INTEGER PRIMARY KEY, message TEXT)" \
-    --db $DB_FILE_2
+    --db $DB_FILE_2 --no-sync
 
 if [ $? -ne 0 ]; then
     echo "Failed to create table in DB 2"
@@ -81,7 +74,7 @@ fi
 # Now read the data
 echo "Reading data from DB 2:"
 node dist/index.js psql "$APP_ID/$STREAM_ID" "SELECT * FROM simple_test" \
-    --db $DB_FILE_2
+    --db $DB_FILE_2 --no-sync
 
 if [ $? -ne 0 ]; then
     echo "Failed to read data from DB 2"

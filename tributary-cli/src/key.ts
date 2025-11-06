@@ -1,4 +1,4 @@
-import * as nacl from 'tweetnacl';
+import nacl from 'tweetnacl';
 import { TributaryClient } from 'tributary-client';
 import * as base64url from 'urlsafe-base64';
 

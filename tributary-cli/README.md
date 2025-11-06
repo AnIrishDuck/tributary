@@ -6,6 +6,10 @@ those for all cli parameters.
 This command serves as a test wrapper for the core functionality of
 `tributary-client`.
 
+# Environment Variables
+
+- `TRIBUTARY_URL` - The URL of the Tributary server to connect to. Defaults to `http://tributary:8080`.
+
 # key
 
 tributary-cli exposes a basic interface for key management:
