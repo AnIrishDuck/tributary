@@ -1,5 +1,8 @@
 use crate::models::SignatureVerificationRequest;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{
+    engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 
@@ -21,14 +24,16 @@ impl std::fmt::Display for CryptoError {
 impl std::error::Error for CryptoError {}
 
 pub fn verify_signature(request: &SignatureVerificationRequest) -> Result<bool, CryptoError> {
-    // Decode the public key from base64 (URL_SAFE only)
-    let pubkey_bytes = general_purpose::URL_SAFE
+    // Try to decode the public key from base64, first with padding, then without
+    let pubkey_bytes = URL_SAFE
         .decode(&request.pubkey)
+        .or_else(|_| URL_SAFE_NO_PAD.decode(&request.pubkey))
         .map_err(CryptoError::Base64DecodeError)?;
 
-    // Decode the signature from base64 (URL_SAFE only)
-    let signature_bytes = general_purpose::URL_SAFE
+    // Try to decode the signature from base64, first with padding, then without
+    let signature_bytes = URL_SAFE
         .decode(&request.signature)
+        .or_else(|_| URL_SAFE_NO_PAD.decode(&request.signature))
         .map_err(CryptoError::Base64DecodeError)?;
 
     // Convert to ed25519 verifying key
@@ -67,6 +72,7 @@ pub fn compute_chain_hash(prior_hash: &str, body_data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::info;
 
     #[test]
     fn test_hash_compatibility_with_client() {
@@ -110,5 +116,83 @@ mod tests {
             chain_hash,
             "c6a7678f0c10c4ef797589575b0c8ffc108ee965cf1c06fef71cec3edc867b91"
         );
+    }
+
+    #[test]
+    fn test_base64_padding_difference() {
+        // Test data that matches what we saw from the client
+        let test_data = [1u8, 2, 3, 4, 5];
+
+        // Encode with padded version (what server currently uses)
+        let padded = URL_SAFE.encode(&test_data);
+        info!("Padded: {}", padded);
+
+        // Encode with unpadded version (what client produces)
+        let unpadded = URL_SAFE_NO_PAD.encode(&test_data);
+        info!("Unpadded: {}", unpadded);
+
+        // This should demonstrate the issue - server can't decode unpadded base64 from client
+        assert!(URL_SAFE.decode(&unpadded).is_err());
+        assert!(URL_SAFE_NO_PAD.decode(&unpadded).is_ok());
+    }
+
+    #[test]
+    fn test_verify_signature_with_padding_variants() {
+        use crate::models::SignatureVerificationRequest;
+        use ed25519_dalek::{Signer, SigningKey};
+        use rand::rngs::OsRng;
+
+        // Generate a key pair for testing
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let verifying_key = signing_key.verifying_key();
+
+        // Data to sign
+        let data = b"test data for signature";
+
+        // Sign the data
+        let signature = signing_key.sign(data);
+
+        // Encode keys and signature in both formats
+        let pubkey_padded = URL_SAFE.encode(verifying_key.as_bytes());
+        let pubkey_unpadded = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
+        let signature_padded = URL_SAFE.encode(signature.to_bytes());
+        let signature_unpadded = URL_SAFE_NO_PAD.encode(signature.to_bytes());
+
+        info!("Pubkey padded: {}", pubkey_padded);
+        info!("Pubkey unpadded: {}", pubkey_unpadded);
+        info!("Signature padded: {}", signature_padded);
+        info!("Signature unpadded: {}", signature_unpadded);
+
+        // Test verification with padded pubkey and signature
+        let request_padded = SignatureVerificationRequest {
+            pubkey: pubkey_padded.clone(),
+            signature: signature_padded.clone(),
+            data: data.to_vec(),
+        };
+        assert!(verify_signature(&request_padded).unwrap());
+
+        // Test verification with unpadded pubkey and signature (this was failing before)
+        let request_unpadded = SignatureVerificationRequest {
+            pubkey: pubkey_unpadded.clone(),
+            signature: signature_unpadded.clone(),
+            data: data.to_vec(),
+        };
+        assert!(verify_signature(&request_unpadded).unwrap());
+
+        // Test verification with mixed padding
+        let request_mixed1 = SignatureVerificationRequest {
+            pubkey: pubkey_padded.clone(),
+            signature: signature_unpadded.clone(),
+            data: data.to_vec(),
+        };
+        assert!(verify_signature(&request_mixed1).unwrap());
+
+        let request_mixed2 = SignatureVerificationRequest {
+            pubkey: pubkey_unpadded.clone(),
+            signature: signature_padded.clone(),
+            data: data.to_vec(),
+        };
+        assert!(verify_signature(&request_mixed2).unwrap());
     }
 }
