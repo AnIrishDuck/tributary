@@ -1,16 +1,16 @@
 // Basic tests for the new tributary-client multi-stream API
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, TributaryServer, FakeServer } from '../src/index';
+import { TributaryClient, TributaryServer, createTestServer } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
 describe('TributaryClient - Multi-stream API', () => {
-  let fakeServer: FakeServer;
+  let testServer: any;
   let privateKeyBase64: string;
   let publicKeyBase64: string;
 
   beforeEach(() => {
-    fakeServer = new FakeServer();
+    testServer = createTestServer();
     const keyPair = nacl.sign.keyPair();
     privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
     publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey));
@@ -18,7 +18,7 @@ describe('TributaryClient - Multi-stream API', () => {
 
   it('should create a TributaryClient instance', () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     expect(client).toBeInstanceOf(TributaryClient);
@@ -26,7 +26,7 @@ describe('TributaryClient - Multi-stream API', () => {
 
   it('should add a write key and create a stream', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     const stream = await client.addWriteKey('scribe', privateKeyBase64);
@@ -37,7 +37,7 @@ describe('TributaryClient - Multi-stream API', () => {
 
   it('should list streams', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Initially no streams
@@ -55,7 +55,7 @@ describe('TributaryClient - Multi-stream API', () => {
 
   it('should get a stream by ID', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream
@@ -68,7 +68,7 @@ describe('TributaryClient - Multi-stream API', () => {
 
   it('should perform database operations on a stream', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     const stream = await client.addWriteKey('scribe', privateKeyBase64);

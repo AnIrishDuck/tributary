@@ -4,6 +4,7 @@ export { TributaryStream } from './tributaryStream';
 export { TributaryLocal } from './tributaryLocal';
 export { TributaryServer } from './tributaryServer';
 export { FakeServer } from './fakeServer';
+export { createTestServer } from './testUtils';
 export type { Server } from './server';
 export { computeHash } from './hashUtils';
 export {

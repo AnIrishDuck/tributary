@@ -1,7 +1,6 @@
 // Test for the local() method in TributaryStream
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient } from '../src/tributaryClient';
-import { FakeServer } from '../src/fakeServer';
+import { TributaryClient, createTestServer } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -10,7 +9,7 @@ describe('TributaryStream - local() Method', () => {
   let stream: any;
 
   beforeEach(async () => {
-    const server = new FakeServer();
+    const server = createTestServer();
     client = new TributaryClient({ server });
     
     // Generate a key pair for testing

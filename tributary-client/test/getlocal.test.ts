@@ -1,7 +1,6 @@
 // Test for the getLocal() method in TributaryClient and TributaryLocal functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, TributaryLocal } from '../src/index';
-import { FakeServer } from '../src/fakeServer';
+import { TributaryClient, TributaryLocal, createTestServer } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -11,7 +10,7 @@ describe('TributaryClient - getLocal() Method', () => {
   let streamId: string;
 
   beforeEach(async () => {
-    const server = new FakeServer();
+    const server = createTestServer();
     client = new TributaryClient({ server });
     
     // Generate a key pair for testing
@@ -57,7 +56,7 @@ describe('TributaryLocal Class', () => {
   let localInstance: TributaryLocal;
 
   beforeEach(async () => {
-    const server = new FakeServer();
+    const server = createTestServer();
     client = new TributaryClient({ server });
     
     // Generate a key pair for testing

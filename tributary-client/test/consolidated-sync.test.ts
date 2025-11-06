@@ -1,18 +1,18 @@
 // Consolidated Sync Test converted to unit test
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TributaryClient, FakeServer } from '../src/index';
+import { TributaryClient, createTestServer } from '../src/index';
 import { PGlite } from '@electric-sql/pglite';
 import * as nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
 describe('Consolidated Sync Test', () => {
-  let fakeServer: FakeServer;
+  let testServer: any;
   let testKeyPair: any;
   let testPrivateKeyBase64: string;
   let collectionId: string;
 
   beforeEach(() => {
-    fakeServer = new FakeServer();
+    testServer = createTestServer();
     testKeyPair = nacl.sign.keyPair();
     testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
     collectionId = 'consolidated_test_' + Date.now(); // Use underscore instead of dash
@@ -25,7 +25,7 @@ describe('Consolidated Sync Test', () => {
 
     // Create first client
     const client1 = new TributaryClient({
-      server: fakeServer,
+      server: testServer,
       db: db1
     });
     
@@ -34,7 +34,7 @@ describe('Consolidated Sync Test', () => {
 
     // Create second client
     const client2 = new TributaryClient({
-      server: fakeServer,
+      server: testServer,
       db: db2
     });
     

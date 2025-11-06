@@ -1,14 +1,14 @@
 // Basic tests for tributary-client
 import { describe, it, expect } from 'vitest';
-import { TributaryClient, TributaryServer, FakeServer } from '../src/index';
+import { TributaryClient, TributaryServer, FakeServer, createTestServer } from '../src/index';
 
 describe('TributaryClient', () => {
   it('should create a TributaryClient instance', () => {
-    const fakeServer = new FakeServer();
+    const testServer = createTestServer();
     const privateKey = new Uint8Array(64); // Dummy private key
     
     const client = new TributaryClient({
-      server: fakeServer,
+      server: testServer,
       privateKey: privateKey,
       collectionId: 'test-collection'
     });

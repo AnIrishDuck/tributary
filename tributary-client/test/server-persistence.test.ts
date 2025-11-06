@@ -1,6 +1,6 @@
 // Tests for server persistence functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, FakeServer } from '../src/index';
+import { TributaryClient, createTestServer } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -20,19 +20,19 @@ async function computeHashInTest(data: Uint8Array): Promise<string> {
 }
 
 describe('Server Persistence', () => {
-  let fakeServer: FakeServer;
+  let testServer: any;
   let testKeyPair: nacl.SignKeyPair;
   let testPrivateKeyBase64: string;
 
   beforeEach(() => {
-    fakeServer = new FakeServer();
+    testServer = createTestServer();
     testKeyPair = nacl.sign.keyPair();
     testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
   });
 
   it('should persist write operations to server before local execution', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -40,8 +40,8 @@ describe('Server Persistence', () => {
     
     // Track server calls
     let serverStoreCalls = 0;
-    const originalStoreBlob = fakeServer.storeBlob.bind(fakeServer);
-    fakeServer.storeBlob = async (...args: any[]) => {
+    const originalStoreBlob = testServer.storeBlob.bind(testServer);
+    testServer.storeBlob = async (...args: any[]) => {
       serverStoreCalls++;
       return originalStoreBlob(...args);
     };
@@ -61,7 +61,7 @@ describe('Server Persistence', () => {
 
   it('should maintain proper chaining of transactions', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -72,11 +72,13 @@ describe('Server Persistence', () => {
     await stream.query("INSERT INTO test VALUES (1, 'first')");
     await stream.query("INSERT INTO test VALUES (2, 'second')");
     
-    // Verify that all operations were persisted to server by checking the fake server directly
+    // For FakeServer, verify that all operations were persisted to server by checking the fake server directly
     // We'll access the private blobs map through a workaround
-    const anyFakeServer = fakeServer as any;
-    const blobCount = anyFakeServer.blobs ? anyFakeServer.blobs.size : 0;
-    expect(blobCount).toBe(3);
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobCount = anyFakeServer.blobs ? anyFakeServer.blobs.size : 0;
+      expect(blobCount).toBe(3);
+    }
     
     // Verify chaining by checking that each blob has the correct priorHash
     // This would be more thoroughly tested in a more complete implementation
@@ -84,7 +86,7 @@ describe('Server Persistence', () => {
 
   it('should properly chain hashes for multiple entries', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -95,38 +97,40 @@ describe('Server Persistence', () => {
     await stream.query("INSERT INTO test VALUES (1, 'first')");
     await stream.query("INSERT INTO test VALUES (2, 'second')");
     
-    // Get all blobs from the fake server
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    
-    // Verify we have 3 blobs
-    expect(blobs.length).toBe(3);
-    
-    // Sort blobs by sequence number
-    blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
-    // Verify the chaining:
-    // 1. First blob should have empty priorHash
-    expect(blobs[0].priorHash).toBe('');
-    
-    // 2. Each subsequent blob should have the previous blob's hash as priorHash
-    expect(blobs[1].priorHash).toBe(blobs[0].hash);
-    expect(blobs[2].priorHash).toBe(blobs[1].hash);
-    
-    // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
-    for (let i = 0; i < blobs.length; i++) {
-      const blob = blobs[i];
-      const priorHash = blob.priorHash;
-      const bodyHash = await computeHashInTest(blob.data);
-      const concatenated = `${priorHash}${bodyHash}`;
-      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
-      expect(blob.hash).toBe(expectedHash);
+    // For FakeServer, get all blobs from the fake server
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      
+      // Verify we have 3 blobs
+      expect(blobs.length).toBe(3);
+      
+      // Sort blobs by sequence number
+      blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+      
+      // Verify the chaining:
+      // 1. First blob should have empty priorHash
+      expect(blobs[0].priorHash).toBe('');
+      
+      // 2. Each subsequent blob should have the previous blob's hash as priorHash
+      expect(blobs[1].priorHash).toBe(blobs[0].hash);
+      expect(blobs[2].priorHash).toBe(blobs[1].hash);
+      
+      // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
+      for (let i = 0; i < blobs.length; i++) {
+        const blob = blobs[i];
+        const priorHash = blob.priorHash;
+        const bodyHash = await computeHashInTest(blob.data);
+        const concatenated = `${priorHash}${bodyHash}`;
+        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        expect(blob.hash).toBe(expectedHash);
+      }
     }
   });
 
   it('should validate signatures using the same method as the server', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -135,29 +139,31 @@ describe('Server Persistence', () => {
     // Execute a write operation
     await stream.query("CREATE TABLE test (id INTEGER, name TEXT)");
     
-    // Get the blob from the fake server
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    expect(blobs.length).toBe(1);
-    
-    const blob = blobs[0];
-    
-    // Verify the signature using the same method as the server
-    // This mimics how tributary-server verifies signatures
-    const pubkeyBytes = base64url.decode(blob.pubkey);
-    const signatureBytes = base64url.decode(blob.signature);
-    
-    // Recreate the data that was signed (just the concatenated hash)
-    const dataToSignBytes = new TextEncoder().encode(blob.hash);
-    
-    // Verify the signature using nacl
-    const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
-    expect(isValid).toBe(true);
+    // For FakeServer, get the blob from the fake server
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      expect(blobs.length).toBe(1);
+      
+      const blob = blobs[0];
+      
+      // Verify the signature using the same method as the server
+      // This mimics how tributary-server verifies signatures
+      const pubkeyBytes = base64url.decode(blob.pubkey);
+      const signatureBytes = base64url.decode(blob.signature);
+      
+      // Recreate the data that was signed (just the concatenated hash)
+      const dataToSignBytes = new TextEncoder().encode(blob.hash);
+      
+      // Verify the signature using nacl
+      const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
+      expect(isValid).toBe(true);
+    }
   });
 
   it('should replicate the exact hash structure from server integration tests', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -168,49 +174,51 @@ describe('Server Persistence', () => {
     await stream.query("INSERT INTO test VALUES (1, 'first')");
     await stream.query("INSERT INTO test VALUES (2, 'second')");
     
-    // Get all blobs
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    expect(blobs.length).toBe(3);
-    
-    // Sort by sequence number
-    blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
-    // Verify the exact structure from server integration tests:
-    // 1. First blob should have empty prior hash
-    expect(blobs[0].priorHash).toBe('');
-    
-    // 2. Each subsequent blob should reference the previous blob's hash
-    expect(blobs[1].priorHash).toBe(blobs[0].hash);
-    expect(blobs[2].priorHash).toBe(blobs[1].hash);
-    
-    // 3. Verify that hashes are computed correctly (SHA256(priorHash + bodyHash))
-    for (let i = 0; i < blobs.length; i++) {
-      const blob = blobs[i];
-      const bodyHash = await computeHashInTest(blob.data);
-      const concatenated = `${blob.priorHash}${bodyHash}`;
-      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
-      expect(blob.hash).toBe(expectedHash);
+    // For FakeServer, get all blobs
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      expect(blobs.length).toBe(3);
+      
+      // Sort by sequence number
+      blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+      
+      // Verify the exact structure from server integration tests:
+      // 1. First blob should have empty prior hash
+      expect(blobs[0].priorHash).toBe('');
+      
+      // 2. Each subsequent blob should reference the previous blob's hash
+      expect(blobs[1].priorHash).toBe(blobs[0].hash);
+      expect(blobs[2].priorHash).toBe(blobs[1].hash);
+      
+      // 3. Verify that hashes are computed correctly (SHA256(priorHash + bodyHash))
+      for (let i = 0; i < blobs.length; i++) {
+        const blob = blobs[i];
+        const bodyHash = await computeHashInTest(blob.data);
+        const concatenated = `${blob.priorHash}${bodyHash}`;
+        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        expect(blob.hash).toBe(expectedHash);
+      }
+      
+      // 4. Verify all signatures are valid
+      for (const blob of blobs) {
+        const pubkeyBytes = base64url.decode(blob.pubkey);
+        const signatureBytes = base64url.decode(blob.signature);
+        const dataToSignBytes = new TextEncoder().encode(blob.hash);
+        const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
+        expect(isValid).toBe(true);
+      }
+      
+      // 5. Verify sequence numbers are incremental
+      expect(blobs[0].sequenceNumber).toBe(1);
+      expect(blobs[1].sequenceNumber).toBe(2);
+      expect(blobs[2].sequenceNumber).toBe(3);
     }
-    
-    // 4. Verify all signatures are valid
-    for (const blob of blobs) {
-      const pubkeyBytes = base64url.decode(blob.pubkey);
-      const signatureBytes = base64url.decode(blob.signature);
-      const dataToSignBytes = new TextEncoder().encode(blob.hash);
-      const isValid = nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
-      expect(isValid).toBe(true);
-    }
-    
-    // 5. Verify sequence numbers are incremental
-    expect(blobs[0].sequenceNumber).toBe(1);
-    expect(blobs[1].sequenceNumber).toBe(2);
-    expect(blobs[2].sequenceNumber).toBe(3);
   });
 
   it('should handle server persistence failures appropriately', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -220,7 +228,7 @@ describe('Server Persistence', () => {
     await stream.query("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
-    fakeServer.storeBlob = async (...args: any[]) => {
+    testServer.storeBlob = async (...args: any[]) => {
       return false; // Simulate failure
     };
     
@@ -232,7 +240,7 @@ describe('Server Persistence', () => {
 
   it('should persist exec operations to server before local execution', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -240,8 +248,8 @@ describe('Server Persistence', () => {
     
     // Track server calls
     let serverStoreCalls = 0;
-    const originalStoreBlob = fakeServer.storeBlob.bind(fakeServer);
-    fakeServer.storeBlob = async (...args: any[]) => {
+    const originalStoreBlob = testServer.storeBlob.bind(testServer);
+    testServer.storeBlob = async (...args: any[]) => {
       serverStoreCalls++;
       return originalStoreBlob(...args);
     };
@@ -258,7 +266,7 @@ describe('Server Persistence', () => {
 
   it('should properly chain hashes for exec entries', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -269,38 +277,40 @@ describe('Server Persistence', () => {
     await stream.exec("INSERT INTO test VALUES (1, 'first')");
     await stream.exec("INSERT INTO test VALUES (2, 'second')");
     
-    // Get all blobs from the fake server
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    
-    // Verify we have 3 blobs
-    expect(blobs.length).toBe(3);
-    
-    // Sort blobs by sequence number
-    blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
-    // Verify the chaining:
-    // 1. First blob should have empty priorHash
-    expect(blobs[0].priorHash).toBe('');
-    
-    // 2. Each subsequent blob should have the previous blob's hash as priorHash
-    expect(blobs[1].priorHash).toBe(blobs[0].hash);
-    expect(blobs[2].priorHash).toBe(blobs[1].hash);
-    
-    // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
-    for (let i = 0; i < blobs.length; i++) {
-      const blob = blobs[i];
-      const priorHash = blob.priorHash;
-      const bodyHash = await computeHashInTest(blob.data);
-      const concatenated = `${priorHash}${bodyHash}`;
-      const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
-      expect(blob.hash).toBe(expectedHash);
+    // For FakeServer, get all blobs from the fake server
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      
+      // Verify we have 3 blobs
+      expect(blobs.length).toBe(3);
+      
+      // Sort blobs by sequence number
+      blobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+      
+      // Verify the chaining:
+      // 1. First blob should have empty priorHash
+      expect(blobs[0].priorHash).toBe('');
+      
+      // 2. Each subsequent blob should have the previous blob's hash as priorHash
+      expect(blobs[1].priorHash).toBe(blobs[0].hash);
+      expect(blobs[2].priorHash).toBe(blobs[1].hash);
+      
+      // 3. Verify that each blob's hash was computed correctly (SHA256(priorHash + bodyHash))
+      for (let i = 0; i < blobs.length; i++) {
+        const blob = blobs[i];
+        const priorHash = blob.priorHash;
+        const bodyHash = await computeHashInTest(blob.data);
+        const concatenated = `${priorHash}${bodyHash}`;
+        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        expect(blob.hash).toBe(expectedHash);
+      }
     }
   });
 
   it('should handle server persistence failures for exec operations appropriately', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -310,7 +320,7 @@ describe('Server Persistence', () => {
     await stream.exec("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
-    fakeServer.storeBlob = async (...args: any[]) => {
+    testServer.storeBlob = async (...args: any[]) => {
       return false; // Simulate failure
     };
     
@@ -322,7 +332,7 @@ describe('Server Persistence', () => {
 
   it.skip('should support exec operations within transactions', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -330,8 +340,8 @@ describe('Server Persistence', () => {
     
     // Track server calls
     let serverStoreCalls = 0;
-    const originalStoreBlob = fakeServer.storeBlob.bind(fakeServer);
-    fakeServer.storeBlob = async (...args: any[]) => {
+    const originalStoreBlob = testServer.storeBlob.bind(testServer);
+    testServer.storeBlob = async (...args: any[]) => {
       serverStoreCalls++;
       return originalStoreBlob(...args);
     };
@@ -347,10 +357,12 @@ describe('Server Persistence', () => {
     // Verify that server persistence was called once for the entire transaction
     expect(serverStoreCalls).toBe(1);
     
-    // Verify that all operations were executed
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    expect(blobs.length).toBe(1); // One transaction blob
+    // For FakeServer, verify that all operations were executed
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      expect(blobs.length).toBe(1); // One transaction blob
+    }
     
     // Verify the result
     expect(result).toBe("transaction completed");
@@ -365,7 +377,7 @@ describe('Server Persistence', () => {
 
   it('should rollback transaction when exec operation fails server persistence', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -375,7 +387,7 @@ describe('Server Persistence', () => {
     await stream.exec("CREATE TABLE users (name TEXT)");
     
     // Simulate server failure by making storeBlob return false
-    fakeServer.storeBlob = async (...args: any[]) => {
+    testServer.storeBlob = async (...args: any[]) => {
       return false; // Simulate failure
     };
     

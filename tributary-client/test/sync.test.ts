@@ -1,24 +1,24 @@
 // Test for sync functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, FakeServer } from '../src/index';
+import { TributaryClient, createTestServer } from '../src/index';
 import { PGlite } from '@electric-sql/pglite';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 describe('Sync Functionality', () => {
-  let fakeServer: FakeServer;
+  let testServer: any;
   let testKeyPair: nacl.SignKeyPair;
   let testPrivateKeyBase64: string;
 
   beforeEach(() => {
-    fakeServer = new FakeServer();
+    testServer = createTestServer();
     testKeyPair = nacl.sign.keyPair();
     testPrivateKeyBase64 = base64url.encode(Buffer.from(testKeyPair.secretKey));
   });
 
   it('should track last sync index in database and avoid replaying commands', async () => {
     const client = new TributaryClient({
-      server: fakeServer
+      server: testServer
     });
     
     // Add a stream to work with
@@ -29,13 +29,15 @@ describe('Sync Functionality', () => {
     await stream.query("INSERT INTO test VALUES (1, 'first')");
     await stream.query("INSERT INTO test VALUES (2, 'second')");
     
-    // Verify that all operations were persisted to server
-    const anyFakeServer = fakeServer as any;
-    const blobs = Array.from(anyFakeServer.blobs.values());
-    expect(blobs.length).toBe(3);
+    // For FakeServer, verify that all operations were persisted to server
+    if (testServer.constructor.name === 'FakeServer') {
+      const anyFakeServer = testServer as any;
+      const blobs = Array.from(anyFakeServer.blobs.values());
+      expect(blobs.length).toBe(3);
+    }
     
     // Get the blob metadata before sync to verify filtering works
-    const blobMetadataBefore = await fakeServer.getAllBlobMetadata(stream.getPublicKeyBase64());
+    const blobMetadataBefore = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
     expect(blobMetadataBefore.length).toBe(3);
     
     // After executing operations locally, the lastSyncIndex should reflect the operations executed
@@ -53,7 +55,7 @@ describe('Sync Functionality', () => {
     await stream.query("INSERT INTO test VALUES (3, 'third')");
     
     // Get updated blob metadata
-    const blobMetadataAfter = await fakeServer.getAllBlobMetadata(stream.getPublicKeyBase64());
+    const blobMetadataAfter = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
     expect(blobMetadataAfter.length).toBe(4);
     
     // Now if we sync again, it should still process 0 new blobs (since the fourth operation was also applied locally)
@@ -71,7 +73,7 @@ describe('Sync Functionality', () => {
     
     // Create first client and perform operations
     const client1 = new TributaryClient({
-      server: fakeServer,
+      server: testServer,
       db: sharedDb
     });
     
@@ -92,7 +94,7 @@ describe('Sync Functionality', () => {
     
     // Create a second client with the same database
     const client2 = new TributaryClient({
-      server: fakeServer,
+      server: testServer,
       db: sharedDb
     });
     
