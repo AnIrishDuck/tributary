@@ -11,7 +11,7 @@ export async function createTestClientWithStream(): Promise<{
   streamId: string,
   prefix: string
 }> {
-  // Create test client (this uses FakeServer internally)
+  // Create test client (this uses createTestServer internally)
   const { createTestTributaryClient } = await import('../src/context/tributaryContext')
   const { client } = createTestTributaryClient()
   

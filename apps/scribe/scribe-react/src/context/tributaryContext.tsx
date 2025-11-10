@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode } from 'react'
-import { TributaryClient, FakeServer } from 'tributary-client'
+import { TributaryClient, createTestServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 
 // Define the context type
@@ -37,7 +37,7 @@ export const useTributary = () => {
 
 // Helper function to create a test client for testing
 export const createTestTributaryClient = () => {
-  const server = new FakeServer()
+  const server = createTestServer()
   const pglite = new PGlite('memory://')
   const client = new TributaryClient({ server, db: pglite })
   return { client, server }
