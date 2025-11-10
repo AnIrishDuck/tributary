@@ -7,9 +7,11 @@ import * as base64url from 'urlsafe-base64';
 
 export class TributaryServer implements Server {
   private baseUrl: string;
+  private authKey?: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, authKey?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash if present
+    this.authKey = authKey;
   }
 
   async storeBlob(
@@ -24,13 +26,20 @@ export class TributaryServer implements Server {
     // We don't send the ID in the URL anymore, just the pubkey
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}`;
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'X-Tributary-Hash': hash, // Send the concatenated hash
+      'X-Tributary-Authorization': signature
+    };
+    
+    // Add auth header if authKey is provided
+    if (this.authKey) {
+      headers['Authorization'] = `Bearer ${this.authKey}`;
+    }
+    
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-Tributary-Hash': hash, // Send the concatenated hash
-        'X-Tributary-Authorization': signature
-      },
+      headers,
       body: data as any
     });
 
@@ -60,7 +69,14 @@ export class TributaryServer implements Server {
   } | null> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
     
-    const response = await fetch(url);
+    const headers: Record<string, string> = {};
+    
+    // Add auth header if authKey is provided
+    if (this.authKey) {
+      headers['Authorization'] = `Bearer ${this.authKey}`;
+    }
+    
+    const response = await fetch(url, { headers });
     
     if (response.ok) {
       const blob = await response.json();
@@ -98,8 +114,15 @@ export class TributaryServer implements Server {
   } | null> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/latest`;
     
+    const headers: Record<string, string> = {};
+    
+    // Add auth header if authKey is provided
+    if (this.authKey) {
+      headers['Authorization'] = `Bearer ${this.authKey}`;
+    }
+    
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { headers });
       
       if (response.ok) {
         const blob = await response.json();
@@ -164,7 +187,14 @@ export class TributaryServer implements Server {
         const blobId = `${pubkey}:${seq}`;
         const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(blobId)}`;
         
-        const response = await fetch(url);
+        const headers: Record<string, string> = {};
+        
+        // Add auth header if authKey is provided
+        if (this.authKey) {
+          headers['Authorization'] = `Bearer ${this.authKey}`;
+        }
+        
+        const response = await fetch(url, { headers });
         
         if (response.ok) {
           const blob = await response.json();

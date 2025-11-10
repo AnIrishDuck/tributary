@@ -3,7 +3,7 @@ use crate::db::Database;
 use crate::models::{Blob, SignatureVerificationRequest};
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header::HeaderValue, HeaderMap, StatusCode},
     response::{Json, Response},
 };
 use chrono::Utc;

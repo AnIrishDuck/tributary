@@ -11,10 +11,11 @@ import { TributaryServer } from '../src/tributaryServer';
  */
 export function createTestServer(): Server {
   const testUrl = process.env.TRIBUTARY_TEST_URL;
+  const testKey = process.env.TRIBUTARY_TEST_KEY;
   
   if (testUrl) {
     // Return a real TributaryServer when TRIBUTARY_TEST_URL is set
-    return new TributaryServer(testUrl);
+    return new TributaryServer(testUrl, testKey);
   } else {
     // Return a FakeServer by default
     return new FakeServer();
