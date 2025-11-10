@@ -11,20 +11,9 @@ export const createRouteHandler = (db: Database) => {
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(part => part !== '');
     
-    // In Supabase Edge Functions, the path structure is:
-    // /functions/v1/stream/[pubkey]/[endpoint]
-    // So we need to find where 'stream' is in the path and parse from there
-    let startIndex = pathParts.indexOf('stream');
-    if (startIndex === -1) {
-      // Fallback for different path structures
-      startIndex = 0;
-    } else {
-      // Move past the 'stream' part
-      startIndex += 1;
-    }
-    
-    // Special case for health endpoint (no pubkey needed)
-    if (req.method === 'GET' && pathParts.includes('health')) {
+    // Early check for health endpoint (no pubkey needed)
+    // Handle both GET and POST for maximum compatibility
+    if (pathParts.includes('health')) {
       return new Response(
         JSON.stringify({
           status: 'healthy',
@@ -36,6 +25,18 @@ export const createRouteHandler = (db: Database) => {
           headers: { 'Content-Type': 'application/json' }
         }
       );
+    }
+    
+    // In Supabase Edge Functions, the path structure is:
+    // /functions/v1/stream/[pubkey]/[endpoint]
+    // So we need to find where 'stream' is in the path and parse from there
+    let startIndex = pathParts.indexOf('stream');
+    if (startIndex === -1) {
+      // Fallback for different path structures
+      startIndex = 0;
+    } else {
+      // Move past the 'stream' part
+      startIndex += 1;
     }
     
     // If we don't have enough path parts, return 404

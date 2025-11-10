@@ -185,3 +185,59 @@ Deno.test('Route testing: Error cases', async () => {
     throw error;
   }
 });
+
+Deno.test('Route testing: Date handling in latest endpoint', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db);
+  
+  // Generate test key pair
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+  const testPubkey = encodedPubkey; // Use just the base64 pubkey
+  
+  try {
+    // Add a blob to the database
+    const testData = new TextEncoder().encode('Test data for date handling regression test');
+    const chainHash = await computeChainHash('', testData);
+    
+    // Generate signature for the chain hash
+    const hashBytes = new TextEncoder().encode(chainHash);
+    const signature = generateTestSignature(hashBytes, keyPair);
+    
+    // Store a blob via the route handler
+    const storeRequest = createFakeRequest(createEncodedPath(testPubkey), {
+      method: 'POST',
+      headers: {
+        'X-Tributary-Hash': chainHash,
+        'X-Tributary-Authorization': signature
+      },
+      body: testData
+    });
+    
+    const storeResponse = await handler(storeRequest);
+    assertEquals(storeResponse.status, 200);
+    
+    // Test the latest endpoint - this should work correctly with proper Date handling
+    const latestRequest = createFakeRequest(createEncodedPath(testPubkey, 'latest'));
+    const latestResponse = await handler(latestRequest);
+    
+    // This should succeed (status 200) instead of failing with 500
+    assertEquals(latestResponse.status, 200);
+    
+    // Parse the response to make sure it's valid JSON
+    const latestResponseBody = await latestResponse.json();
+    console.log('Latest endpoint response:', latestResponseBody);
+    
+    // Verify that created_at is properly formatted as an ISO string
+    assert(typeof latestResponseBody.created_at === 'string');
+    // Try to create a Date from it to ensure it's a valid ISO string
+    const date = new Date(latestResponseBody.created_at);
+    assert(!isNaN(date.getTime()), 'created_at should be a valid ISO date string');
+    
+    console.log('SUCCESS: Date handling regression test passed - latest endpoint works correctly!');
+    assertEquals(true, true);
+  } catch (error) {
+    console.error('Regression test failed with unexpected error:', error);
+    throw error;
+  }
+});

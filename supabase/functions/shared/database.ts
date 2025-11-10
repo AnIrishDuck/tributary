@@ -25,6 +25,23 @@ function uint8ArrayToHexString(uint8Array: Uint8Array): string {
     .join('');
 }
 
+// Helper function to process database response data
+function processDatabaseResponse(data: any): any {
+  if (!data) return data;
+  
+  // Convert hex string back to Uint8Array
+  if (data && typeof data.data === 'string') {
+    data.data = hexStringToUint8Array(data.data);
+  }
+  
+  // Convert created_at string to Date object if needed
+  if (data && typeof data.created_at === 'string') {
+    data.created_at = new Date(data.created_at);
+  }
+  
+  return data;
+}
+
 export class Database {
   private client: any;
 
@@ -96,12 +113,7 @@ export class Database {
       return null;
     }
 
-    // Convert hex string back to Uint8Array
-    if (data && typeof data.data === 'string') {
-      data.data = hexStringToUint8Array(data.data);
-    }
-
-    return data as Blob;
+    return processDatabaseResponse(data) as Blob;
   }
 
   // Get blob metadata from the database
@@ -122,12 +134,7 @@ export class Database {
       return null;
     }
 
-    // Convert hex string back to Uint8Array
-    if (data && typeof data.data === 'string') {
-      data.data = hexStringToUint8Array(data.data);
-    }
-
-    return data as BlobMetadata;
+    return processDatabaseResponse(data) as BlobMetadata;
   }
 
   // Get the latest blob for a pubkey
@@ -149,12 +156,7 @@ export class Database {
       return null;
     }
 
-    // Convert hex string back to Uint8Array
-    if (data && typeof data.data === 'string') {
-      data.data = hexStringToUint8Array(data.data);
-    }
-
-    return data as BlobMetadata;
+    return processDatabaseResponse(data) as BlobMetadata;
   }
 
   // Get collection info
