@@ -12,8 +12,9 @@ Here's an example directory layout:
     - 8f21-gumbo.md
     - 431c-gumbo.md
     - beef-stew.md
-  - db
-    - (local PGLite database files - automatically created by default, or can be specified explicitly)
+  - .scribe
+    - config.json - contains the stream id
+    - GOOSE: update the sync code to generate and use this file
   - indexed
     - READ-ONLY.md - a small document warning the user that files and
       directories in here will not be synced and may be modified or removed at
