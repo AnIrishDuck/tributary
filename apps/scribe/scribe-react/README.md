@@ -19,7 +19,7 @@ The minimum viable product consists of several user stories:
   - This redirects to the "new block" route, the editor is react-codemirror.
   - There is an "Add" button that adds the block, syncs, then redirects to the
     slug of the newly created document.
-- [ ] The user can see html-rendered versions of previously created slugs.
+- [x] The user can see html-rendered versions of previously created slugs.
   - Use micromark to render the block markdown as html.
   - No need to implement slug linking yet.
 - [ ] The user can list blocks within the stream

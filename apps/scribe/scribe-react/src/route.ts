@@ -1,6 +1,7 @@
 import { RouteObject } from 'react-router'
 import NewStreamPage from './pages/NewStreamPage'
 import EditorPage from './pages/EditorPage'
+import BlockViewPage from './pages/BlockViewPage'
 import HomePage from './pages/HomePage'
 import React from 'react'
 
@@ -31,11 +32,16 @@ export const routes: RouteObject[] = [
     ErrorBoundary: NewDocumentError
   },
   {
-    path: '/pk/:prefix/:slug',
+    path: '/pk/:prefix/:slug/edit',
     Component: EditorPage,
     loader: async ({ params }) => {
       return { isNew: false }
     },
+    ErrorBoundary: DocumentError
+  },
+  {
+    path: '/pk/:prefix/:slug',
+    Component: BlockViewPage,
     ErrorBoundary: DocumentError
   }
 ]
