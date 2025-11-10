@@ -4,6 +4,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream } from './test-utils'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
+import { getBlockCount } from 'scribe-data/src/block'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -85,8 +86,9 @@ describe('EditorPage', () => {
         const base64Part = parts[1]
         const stream = await client.get('scribe', base64Part)
         if (stream) {
-          const blocks = await stream.query('SELECT * FROM block')
-          expect(blocks.rows.length).toBeGreaterThan(0)
+          // Use the appropriate operation from the scribe-data block module
+          const count = await getBlockCount(stream)
+          expect(count).toBeGreaterThan(0)
         }
       }
     }, { timeout: 5000 })

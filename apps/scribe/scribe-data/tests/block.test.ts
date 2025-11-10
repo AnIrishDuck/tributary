@@ -8,7 +8,8 @@ import {
   createBlockVersion, 
   getBlockByUuid, 
   getBlockVersions, 
-  getLatestBlockVersion 
+  getLatestBlockVersion,
+  getBlockCount
 } from '../src/block.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -221,5 +222,41 @@ describe('Block Operations', () => {
     const latestVersion = await getLatestBlockVersion(syncedDb, nonExistentUuid)
     
     expect(latestVersion).toBeNull()
+  })
+
+  test('should count blocks correctly', async () => {
+    // Initially should be 0 blocks
+    let count = await getBlockCount(syncedDb)
+    expect(count).toBe(0)
+
+    // Create first block
+    const block1 = await createBlock(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Block 1\n\nFirst block.',
+      inserter: 'test-user'
+    })
+    
+    count = await getBlockCount(syncedDb)
+    expect(count).toBe(1)
+
+    // Create second block
+    const block2 = await createBlock(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Block 2\n\nSecond block.',
+      inserter: 'test-user'
+    })
+    
+    count = await getBlockCount(syncedDb)
+    expect(count).toBe(2)
+
+    // Create a new version of the first block (should still be 2 total blocks)
+    const version2 = await createBlockVersion(syncedDb, block1.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Block 1 Updated\n\nFirst block updated.',
+      inserter: 'test-user'
+    })
+    
+    count = await getBlockCount(syncedDb)
+    expect(count).toBe(3) // 2 original blocks + 1 new version
   })
 })

@@ -161,3 +161,24 @@ export async function getLatestBlockVersion(
   
   return result.rows[0] as Block
 }
+
+/**
+ * Get the count of all blocks in the database
+ * 
+ * @param db The TributaryStream database instance
+ * @returns The number of blocks in the database
+ */
+export async function getBlockCount(
+  db: TributaryStream
+): Promise<number> {
+  const result = await db.query(
+    `SELECT COUNT(*) as count FROM block`,
+    []
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return 0
+  }
+  
+  return parseInt(result.rows[0].count)
+}
