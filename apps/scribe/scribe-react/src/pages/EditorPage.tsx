@@ -6,7 +6,8 @@ import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
-import { BlockSlug } from 'scribe-data'
+import { BlockSlug, AuthoritativeVersion, Block } from 'scribe-data'
+import { getBlockBySlug, getAuthoritativeVersionByBlockUuid, getBlockByVersion } from 'scribe-data'
 
 const EditorPage: React.FC = () => {
   const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
@@ -23,12 +24,53 @@ const EditorPage: React.FC = () => {
 
   // If editing an existing document, we would load it here
   useEffect(() => {
-    if (slug && slug !== 'new') {
-      // In a real implementation, we would load the existing document here
-      // For now, we'll just set some placeholder content
-      setContent(`# ${slug}\n\nLoading existing content...`)
+    const loadDocumentForEditing = async () => {
+      if (!isNewDocument && slug && slug !== 'new' && client && prefix) {
+        try {
+          // Extract streamId from prefix (format: base64url-public-key)
+          const streamId = prefix
+          
+          // Get the stream
+          const stream = await client.get('scribe', streamId)
+          
+          if (!stream) {
+            throw new Error('Failed to get stream')
+          }
+          
+          // Create local database for querying
+          const localDb = stream.local()
+          
+          // Get the block slug info
+          const blockSlugInfo = await getBlockBySlug(localDb, slug) as BlockSlug | null
+          
+          if (!blockSlugInfo) {
+            throw new Error('Document not found')
+          }
+          
+          // Get the authoritative version
+          const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
+          
+          if (!authoritativeVersion) {
+            throw new Error('Document version not found')
+          }
+          
+          // Get the actual block content using scribe-data functions
+          const block = await getBlockByVersion(localDb, blockSlugInfo.block_uuid, authoritativeVersion.version_uuid)
+          
+          if (!block) {
+            throw new Error('Document content not found')
+          }
+          
+          setContent(block.body)
+        } catch (err: any) {
+          setError('Failed to load document: ' + (err.message || 'Unknown error'))
+          console.error('Error loading document:', err)
+        }
+      }
     }
-  }, [slug])
+
+    loadDocumentForEditing()
+  }, [isNewDocument, slug, client, prefix])
 
   const onSaveBlock = async () => {
     if (!client) {

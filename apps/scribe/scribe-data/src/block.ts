@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { TributaryStream } from 'tributary-client'
+import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Block, PGliteResult } from './types'
 
 interface BlockQueryResult {
@@ -180,5 +180,53 @@ export async function getBlockCount(
     return 0
   }
   
-  return parseInt(result.rows[0].count)
+  return parseInt((result.rows[0] as any).count)
+}
+
+/**
+ * Get the count of versions for a specific block UUID
+ * 
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param block_uuid The UUID of the block to count versions for
+ * @returns The number of versions for the specified block
+ */
+export async function getBlockVersionCount(
+  db: TributaryStream | TributaryLocal,
+  block_uuid: string
+): Promise<number> {
+  const result = await db.query(
+    `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
+    [block_uuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return 0
+  }
+  
+  return parseInt((result.rows[0] as any).count)
+}
+
+/**
+ * Get a block by its version UUID
+ * 
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param block_uuid The UUID of the block
+ * @param version_uuid The UUID of the version to retrieve
+ * @returns The block record or null if not found
+ */
+export async function getBlockByVersion(
+  db: TributaryStream | TributaryLocal,
+  block_uuid: string,
+  version_uuid: string
+): Promise<Block | null> {
+  const result = await db.query(
+    `SELECT * FROM block WHERE block_uuid = $1 AND version_uuid = $2`,
+    [block_uuid, version_uuid]
+  )
+  
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+  
+  return result.rows[0] as Block
 }

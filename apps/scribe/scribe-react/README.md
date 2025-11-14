@@ -22,15 +22,15 @@ The minimum viable product consists of several user stories:
 - [x] The user can see html-rendered versions of previously created slugs.
   - Use micromark to render the block markdown as html.
   - No need to implement slug linking yet.
-- [ ] The user can list blocks within the stream
-  - Update the root listing page to render a list of all blocks by title,
-    linked to the appropriate slug routes
-- [ ] The user can edit an existing block within the stream
+- [x] The user can edit an existing block within the stream
   - Update the editor page to take an optional existing block uuid
   - Fetch the authoritative version of that block and prepopulate the editor
     with that content.
   - The "Add" button is now "Update". It creates a new version of the block
     referencing the prior version id.
+- [ ] The user can list blocks within the stream
+  - Update the root listing page to render a list of all blocks by title
+    (authoritative versions), linked to the appropriate slug routes
 - [ ] A new user with a fresh database can import a key and list blocks previously
   added to that stream.
 

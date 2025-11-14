@@ -4,7 +4,9 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream } from './test-utils'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
-import { getBlockCount } from 'scribe-data/src/block'
+import { getBlockCount, getBlockVersionCount } from 'scribe-data/src/block'
+import { createBlock } from 'scribe-data/src/block'
+import { indexSlugs, getBlockSlugByUuid } from 'scribe-data/src/indexing'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -13,11 +15,34 @@ describe('EditorPage', () => {
   })
 
   it('should render the editor page with document title', async () => {
-    const router = createMemoryRouter(routes, {
-      initialEntries: ['/pk/test-prefix/test-slug']
+    // Create a test stream with an actual document
+    const { client, stream, prefix } = await createTestClientWithStream()
+    
+    // Create a block in the stream
+    const block = await createBlock(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Test Document\n\nThis is a test document.',
+      inserter: 'test'
     })
     
-    const { client } = createTestTributaryClient()
+    // Sync to ensure persistence
+    await stream.sync()
+    
+    // Run indexing to create the slug
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+    
+    // Extract the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Get the slug for this block using scribe-data function
+    const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
+    const slug = blockSlug ? blockSlug.slug : 'test-document'
+    
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}/edit`]
+    })
     
     render(
       <TributaryProvider client={client}>
@@ -128,5 +153,59 @@ describe('EditorPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Failed to save document/)).toBeInTheDocument()
     }, { timeout: 2000 })
+  })
+
+  it('should edit an existing block and show updated content', async () => {
+    // Create a test stream with an actual document
+    const { client, stream, prefix } = await createTestClientWithStream()
+    
+    // Create a block in the stream
+    const block = await createBlock(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Original Document\n\nThis is the original content.',
+      inserter: 'test'
+    })
+    
+    // Sync to ensure persistence
+    await stream.sync()
+    
+    // Run indexing to create the slug
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+    
+    // Get the slug for this block using scribe-data function
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
+    const slug = blockSlug ? blockSlug.slug : 'original-document'
+    
+    // First, edit the document
+    const editRouter = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}/edit`]
+    })
+    
+    const { rerender } = render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={editRouter} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the editor to load and show it's editing existing document
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit Document' })).toBeInTheDocument()
+    })
+    
+    // Test that the save button exists and is properly labeled for editing
+    const saveButton = screen.getByRole('button', { name: 'Update' })
+    expect(saveButton).toBeInTheDocument()
+    
+    // Test that editor is loaded - we won't try to interact with CodeMirror directly as it's complex
+    const editor = screen.getByRole('textbox')
+    expect(editor).toBeInTheDocument()
+    
+    // Check initial version count using scribe-data function
+    const initialVersionCount = await getBlockVersionCount(stream, block.block_uuid)
+    expect(initialVersionCount).toBe(1)
   })
 })

@@ -3,6 +3,7 @@ import NewStreamPage from './pages/NewStreamPage'
 import EditorPage from './pages/EditorPage'
 import BlockViewPage from './pages/BlockViewPage'
 import HomePage from './pages/HomePage'
+import BlockListPage from './pages/BlockListPage'
 import React from 'react'
 
 // Error components for routes
@@ -30,6 +31,11 @@ export const routes: RouteObject[] = [
       return { isNew: true }
     },
     ErrorBoundary: NewDocumentError
+  },
+  {
+    path: '/pk/:prefix/',
+    Component: BlockListPage,
+    ErrorBoundary: DocumentError
   },
   {
     path: '/pk/:prefix/:slug/edit',
