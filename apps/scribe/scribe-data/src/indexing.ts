@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { Block, BlockSlug, AuthoritativeVersion, BlockTag, PGliteResult } from './types'
+import { Block, BlockSlug, AuthoritativeVersion, BlockTag, PGliteResult, BlockSlugRow } from './types'
 
 // TODO: Transactions don't really work in the current implementation.
 // We're using individual queries instead of transactions to avoid correctness issues.
@@ -544,4 +544,22 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
   
   // Extract just the tag strings from the database rows
   return (result.rows || []).map((row: any) => row.tag)
+}
+
+/**
+ * Get all blocks with their titles and slugs
+ * @param db The TributaryLocal database instance
+ * @returns Array of blocks with titles and slugs
+ */
+export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockSlugRow[]> {
+  const result = await db.query(
+    `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, bs.slug, bs.title, bs.indexed_at
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
+     ORDER BY bs.title ASC`,
+    []
+  )
+  
+  return (result.rows || []) as BlockSlugRow[]
 }

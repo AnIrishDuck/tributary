@@ -184,6 +184,46 @@ export async function getBlockCount(
 }
 
 /**
+ * Get all blocks in the database
+ * 
+ * @param db The TributaryStream database instance
+ * @returns Array of all block records
+ */
+export async function getAllBlocks(
+  db: TributaryStream
+): Promise<Block[]> {
+  const result = await db.query(
+    `SELECT * FROM block ORDER BY insert_datetime`,
+    []
+  )
+  
+  return (result.rows || []) as Block[]
+}
+
+/**
+ * Get all authoritative (latest) blocks in the database
+ * 
+ * @param db The TributaryStream database instance
+ * @returns Array of all authoritative block records
+ */
+export async function getAllAuthoritativeBlocks(
+  db: TributaryStream
+): Promise<Block[]> {
+  const result = await db.query(`
+    SELECT b.* 
+    FROM block b
+    INNER JOIN (
+      SELECT block_uuid, MAX(insert_datetime) as max_datetime
+      FROM block
+      GROUP BY block_uuid
+    ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
+    ORDER BY b.insert_datetime
+  `, [])
+  
+  return (result.rows || []) as Block[]
+}
+
+/**
  * Get the count of versions for a specific block UUID
  * 
  * @param db The TributaryStream or TributaryLocal database instance

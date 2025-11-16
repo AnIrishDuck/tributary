@@ -1,5 +1,7 @@
 import { RouteObject } from 'react-router'
 import NewStreamPage from './pages/NewStreamPage'
+import ImportStreamPage from './pages/ImportStreamPage'
+import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
 import EditorPage from './pages/EditorPage'
 import BlockViewPage from './pages/BlockViewPage'
 import HomePage from './pages/HomePage'
@@ -23,6 +25,16 @@ export const routes: RouteObject[] = [
   {
     path: '/new',
     Component: NewStreamPage,
+  },
+  {
+    path: '/import',
+    Component: ImportStreamPage,
+  },
+  {
+    // Route for granting write access via encoded private key
+    path: '/pk/:prefix/grant/write/:encodedPrivateKey',
+    Component: GrantWriteAccessPage,
+    ErrorBoundary: DocumentError
   },
   {
     path: '/pk/:prefix/new',

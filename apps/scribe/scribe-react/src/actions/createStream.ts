@@ -19,6 +19,7 @@ export async function createStream(client: TributaryClient) {
   // Create prefix from public key
   const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
   const prefix = `pk/${publicKeyBase64}`
+  const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey))
   
-  return { stream, prefix, streamId: publicKeyBase64 }
+  return { stream, prefix, streamId: publicKeyBase64, privateKeyBase64 }
 }

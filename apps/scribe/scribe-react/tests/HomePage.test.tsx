@@ -15,7 +15,7 @@ describe('HomePage', () => {
     expect(screen.getByText('Scribe - Encrypted Document Editor')).toBeInTheDocument()
     expect(screen.getByText('Welcome to Scribe')).toBeInTheDocument()
     expect(screen.getByText('Get Started')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Create New Document' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create New Stream' })).toBeInTheDocument()
   })
 
   // Skip navigation test for now as it's failing due to router mocking issues
