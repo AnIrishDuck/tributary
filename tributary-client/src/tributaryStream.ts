@@ -446,7 +446,8 @@ export class TributaryStream {
               } else {
                 // Execute all other operations including INSERT
                 try {
-                  await this.pglite.exec(transactionEntry.query);
+                  // Use query instead of exec to properly handle parameters
+                  await this.pglite.query(transactionEntry.query, transactionEntry.params || []);
                 } catch (execError) {
                   // Throw errors during sync rather than just warning
                   // Synced SQL expressions should never fail (otherwise they would've failed locally first)
