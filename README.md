@@ -26,7 +26,7 @@ This project is organized into several components:
 
 ## Tech Stack
 
-- We write the very minimal backend in rust.
+- We write the very minimal backend on top of supabase.
 - The core frontend database is pglite.
 - For everything frontend, we default to typescript and vite. We use vitest for
   testing.

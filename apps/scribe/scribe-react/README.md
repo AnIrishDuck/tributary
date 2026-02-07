@@ -28,7 +28,7 @@ The minimum viable product consists of several user stories:
     with that content.
   - The "Add" button is now "Update". It creates a new version of the block
     referencing the prior version id.
-- [ ] The user can list blocks within the stream
+- [x] The user can list blocks within the stream
   - Update the root listing page to render a list of all blocks by title
     (authoritative versions), linked to the appropriate slug routes
 - [ ] A new user with a fresh database can import a key and list blocks previously
