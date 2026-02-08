@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, useLoaderData } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { saveBlock } from '../actions/saveBlock'
 import * as base64url from 'urlsafe-base64'
@@ -15,12 +15,14 @@ const EditorPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
-  const loaderData = useLoaderData() as { isNew: boolean }
   
   // Extract the streamId and optional slug id from params
   const { prefix, slug } = useParams()
 
-  const isNewDocument = loaderData.isNew
+  // Determine if this is a new document:
+  // - For /pk/:prefix/new route, slug is undefined
+  // - For /pk/:prefix/:slug/edit route, slug is the document slug
+  const isNewDocument = !slug || slug === 'new'
 
   // If editing an existing document, we would load it here
   useEffect(() => {

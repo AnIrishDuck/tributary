@@ -39,9 +39,6 @@ export const routes: RouteObject[] = [
   {
     path: '/pk/:prefix/new',
     Component: EditorPage,
-    loader: async ({ params }) => {
-      return { isNew: true }
-    },
     ErrorBoundary: NewDocumentError
   },
   {
@@ -52,9 +49,6 @@ export const routes: RouteObject[] = [
   {
     path: '/pk/:prefix/:slug/edit',
     Component: EditorPage,
-    loader: async ({ params }) => {
-      return { isNew: false }
-    },
     ErrorBoundary: DocumentError
   },
   {
