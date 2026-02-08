@@ -2,38 +2,36 @@
 // This module handles signature verification and hashing using Web Crypto API and tweetnacl
 
 import nacl from 'tweetnacl';
-import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
+import util from 'tweetnacl-util';
+import { encodeBase64Url, decodeBase64Url } from 'jsr:@std/encoding';
 
 /**
- * Verify an Ed25519 signature
- * @param pubkey Base64 encoded public key
- * @param signature Base64 encoded signature
- * @param data Data that was signed
- * @returns Boolean indicating if signature is valid
+ * Decode URL-safe base64 string using Deno std/encoding library
+ * @param encoded URL-safe base64 encoded string
+ * @returns Decoded Uint8Array
  */
+export function decodeUrlBase64(encoded: string): Uint8Array {
+  return decodeBase64Url(encoded);
+}
+
+/**
+ * Encode Uint8Array to URL-safe base64 string using Deno std/encoding library
+ * @param data Data to encode
+ * @returns URL-safe base64 encoded string
+ */
+export function encodeUrlBase64(data: Uint8Array): string {
+  return encodeBase64Url(data);
+}
+
 export async function verifySignature(
   pubkey: string,
   signature: string,
   data: Uint8Array
 ): Promise<boolean> {
   try {
-    // Decode the public key from base64 (try URL_SAFE first, then STANDARD)
-    let publicKeyBytes: Uint8Array;
-    try {
-      publicKeyBytes = decodeBase64(pubkey);
-    } catch {
-      // If URL_SAFE fails, try STANDARD
-      publicKeyBytes = decodeBase64(pubkey);
-    }
-
-    // Decode the signature from base64 (try URL_SAFE first, then STANDARD)
-    let signatureBytes: Uint8Array;
-    try {
-      signatureBytes = decodeBase64(signature);
-    } catch {
-      // If URL_SAFE fails, try STANDARD
-      signatureBytes = decodeBase64(signature);
-    }
+    // Always decode the public key and signature using URL-safe base64
+    const publicKeyBytes = decodeUrlBase64(pubkey);
+    const signatureBytes = decodeUrlBase64(signature);
 
     // Verify the signature
     return nacl.sign.detached.verify(data, signatureBytes, publicKeyBytes);
@@ -49,7 +47,9 @@ export async function verifySignature(
  * @returns Hex encoded hash
  */
 export async function computeHash(data: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  // Create a new ArrayBuffer from the Uint8Array to avoid type issues
+  const buffer = new Uint8Array(data).buffer;
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   const hashArray = new Uint8Array(hashBuffer);
   return Array.from(hashArray)
     .map(b => b.toString(16).padStart(2, '0'))
