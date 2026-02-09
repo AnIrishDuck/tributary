@@ -4,9 +4,37 @@
 import { Database } from './database.ts';
 import { verifySignature, computeChainHash, computeHash, decodeUrlBase64, encodeUrlBase64 } from './crypto.ts';
 
+// CORS headers for all responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Tributary-Hash, X-Tributary-Authorization, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
+// Helper to create response with CORS headers
+function createResponse(body: string, status: number, additionalHeaders: Record<string, string> = {}): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      ...corsHeaders,
+      ...additionalHeaders
+    }
+  });
+}
+
 // Route handler function that processes HTTP requests
 export const createRouteHandler = (db: Database) => {
   return async (req: Request): Promise<Response> => {
+    // Handle CORS preflight
+    console.log(req.method)
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders
+      });
+    }
+    
     // Parse the URL to determine which endpoint is being called
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(part => part !== '');
@@ -14,16 +42,14 @@ export const createRouteHandler = (db: Database) => {
     // Early check for health endpoint (no pubkey needed)
     // Handle both GET and POST for maximum compatibility
     if (pathParts.includes('health')) {
-      return new Response(
+      return createResponse(
         JSON.stringify({
           status: 'healthy',
           service: 'tributary-fn',
           timestamp: new Date().toISOString()
         }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        200,
+        { 'Content-Type': 'application/json' }
       );
     }
     
@@ -41,12 +67,10 @@ export const createRouteHandler = (db: Database) => {
     
     // If we don't have enough path parts, return 404
     if (pathParts.length <= startIndex) {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Not found' }),
-        { 
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        404,
+        { 'Content-Type': 'application/json' }
       );
     }
     
@@ -76,12 +100,10 @@ export const createRouteHandler = (db: Database) => {
       // GET requests
       if (pathParts.length === startIndex + 1) {
         // Only pubkey provided - not a valid GET pattern
-        return new Response(
+        return createResponse(
           JSON.stringify({ error: 'Not found' }),
-          { 
-            status: 404,
-            headers: { 'Content-Type': 'application/json' }
-          }
+          404,
+          { 'Content-Type': 'application/json' }
         );
       } else if (pathParts.length >= startIndex + 2) {
         // GET /{pubkey}/{endpoint}
