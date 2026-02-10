@@ -3,7 +3,7 @@ import { RouterProvider, createHashRouter } from 'react-router'
 import { routes } from './route'
 import { TributaryProvider } from './context/tributaryContext'
 import { TributaryClient, TributaryServer } from 'tributary-client'
-import { PGlite } from '@electric-sql/pglite'
+import { getPGlite } from './db/persistence'
 import { CONFIG } from './config'
 
 // Singleton to prevent multiple PGlite instances (WASM can only load once)
@@ -20,8 +20,8 @@ async function createClient() {
   clientPromise = (async () => {
     const server = new TributaryServer(CONFIG.API_URL, CONFIG.API_KEY)
     
-    // Use memory database for dev (IndexedDB has WASM bundling issues with Vite)
-    const pglite = new PGlite('memory://')
+    // Use IndexedDB for persistence
+    const pglite = getPGlite(CONFIG.DB_NAME)
     
     return new TributaryClient({ server, db: pglite })
   })()
