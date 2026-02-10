@@ -37,7 +37,7 @@ describe('BlockListPage', () => {
     }, { timeout: 3000 })
     
     // Check that the empty state is displayed
-    expect(screen.getByText('No documents found.')).toBeInTheDocument()
+    expect(screen.getByText('No documents found')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create your first document' })).toBeInTheDocument()
   })
 
@@ -78,9 +78,9 @@ describe('BlockListPage', () => {
       expect(screen.getByText('Documents')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Check that we have the correct number of blocks
-    const listItems = screen.getAllByRole('listitem')
-    expect(listItems).toHaveLength(4)
+    // Check that we have the correct number of blocks (links in the grid)
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(4)
     
     // Check that all titles are displayed
     expect(screen.getByText('First Document')).toBeInTheDocument()
@@ -95,7 +95,7 @@ describe('BlockListPage', () => {
     expect(screen.getByText('another-document')).toBeInTheDocument()
     
     // Check that the "New Document" button is present
-    expect(screen.getByRole('button', { name: '+ New Document' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New Document' })).toBeInTheDocument()
   })
 
   it('should handle blocks with no titles', async () => {
@@ -129,7 +129,6 @@ describe('BlockListPage', () => {
     // Check that the untitled document is displayed
     expect(screen.getByText('Untitled')).toBeInTheDocument()
   })
-})
 
   it('should render BlockListPage at /pk/:prefix/ route and load without errors', async () => {
     // This test verifies that the route /pk/:prefix/ actually renders and works
@@ -162,3 +161,115 @@ describe('BlockListPage', () => {
     const errorEl = screen.queryByText(/Error loading blocks/)
     expect(errorEl).toBeNull()
   })
+
+  it('should navigate correctly to document without double hash in URL', async () => {
+    // Create a test client with a stream
+    const { client, stream, prefix } = await createTestClientWithStream()
+    
+    // Extract just the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Create a test document
+    const content = '# New Document\n\nThis is a test document.'
+    await saveBlock(stream, content)
+    
+    // Navigate to the block list page
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+    
+    const { container } = render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the component to finish loading
+    await waitFor(() => {
+      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('new-document')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    
+    // Find the link to the document by selecting all links and finding the one with the title
+    const links = screen.getAllByRole('link')
+    const documentLink = links.find(link => link.textContent?.includes('New Document'))
+    expect(documentLink).toBeInTheDocument()
+    
+    // Check the href attribute - it should NOT contain a double hash (/#/)
+    const href = documentLink?.getAttribute('href') || ''
+    
+    // The bug: href will contain /#/ which causes double hash navigation
+    // For example: #/pk/{prefix}/#/pk/{prefix}/{slug}
+    // After fix: href should just be the path without any # prefix (in memory router)
+    // In real app with hash router, the # would be added automatically
+    expect(href).not.toMatch(/\/#\//)
+    
+    // The href should be in the correct format (without leading #, as that's handled by hash router)
+    expect(href).toBe(`/pk/${base64Part}/new-document`)
+  })
+
+  it('should render document content when navigating to document view page', async () => {
+    // Create a test client with a stream
+    const { client, stream, prefix } = await createTestClientWithStream()
+    
+    // Extract just the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Create a test document with unique content
+    const content = '# Test Document\n\nThis is the document content that should be visible after navigation.'
+    await saveBlock(stream, content)
+    
+    // First, verify the link exists on the block list page
+    const listRouter = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+    
+    const { unmount } = render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={listRouter} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the block list page to load
+    await waitFor(() => {
+      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('test-document')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    
+    // Find the link to the document
+    const links = screen.getAllByRole('link')
+    const documentLink = links.find(link => link.textContent?.includes('Test Document'))
+    expect(documentLink).toBeInTheDocument()
+    
+    // Verify the link has the correct href (without double hash)
+    const href = documentLink?.getAttribute('href') || ''
+    expect(href).toBe(`/pk/${base64Part}/test-document`)
+    
+    // Clean up the first render
+    unmount()
+    
+    // Now render the BlockViewPage directly to verify navigation would work
+    // This tests that the page renders correctly with the document content
+    const viewRouter = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/test-document`]
+    })
+    
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={viewRouter} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the document view page to load and display the content
+    await waitFor(() => {
+      // There are multiple "Test Document" h1 elements (header and content), use getAllByText
+      const headings = screen.getAllByText('Test Document')
+      expect(headings.length).toBeGreaterThan(0)
+      
+      // Content is in HTML rendered by micromark, use a flexible matcher
+      expect(screen.getByText(/This is the document content that should be visible after navigation/)).toBeInTheDocument()
+    }, { timeout: 3000 })
+  })
+})

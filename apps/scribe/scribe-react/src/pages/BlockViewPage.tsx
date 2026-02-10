@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import * as base64url from 'urlsafe-base64'
 import { micromark } from 'micromark'
+import { PencilIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -108,11 +109,20 @@ const BlockViewPage: React.FC = () => {
     }
   }
 
+  const handleBack = () => {
+    if (prefix) {
+      navigate(`/pk/${prefix}/`)
+    } else {
+      navigate('/')
+    }
+  }
+
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="mx-auto w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600">Loading document...</p>
         </div>
       </div>
     )
@@ -120,45 +130,83 @@ const BlockViewPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="max-w-3xl mx-auto px-4">
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+            <div className="flex items-start">
+              <svg className="w-6 h-6 text-red-500 mt-1 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <h3 className="text-lg font-medium text-red-900">Error loading document</h3>
+                <p className="text-red-700 mt-1 text-sm">{error}</p>
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={handleBack}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+          >
+            <ArrowLeftIcon className="w-4 h-4 mr-2" />
+            Back to Home
+          </button>
         </div>
-        <button 
-          onClick={() => prefix ? navigate(`/pk/${prefix}/`) : navigate('/')}
-          className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Back to Home
-        </button>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">{title}</h1>
-        <div className="space-x-2">
-          <button 
-            onClick={handleEdit}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Edit
-          </button>
-          <button 
-            onClick={handleNewDocument}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-          >
-            New Document
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 py-8 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <button 
+                onClick={handleBack}
+                className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors inline-flex items-center font-medium mb-3"
+              >
+                <ArrowLeftIcon className="w-4 h-4 mr-1.5" />
+                Back to Documents
+              </button>
+              <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+              <p className="text-sm text-gray-500 mt-2">
+                {new Date().toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}
+              </p>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <button 
+                onClick={handleEdit}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <PencilIcon className="w-4 h-4 mr-2" />
+                Edit
+              </button>
+              
+              <button 
+                onClick={handleNewDocument}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <PlusIcon className="w-4 h-4 mr-2" />
+                New Document
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div 
-          className="prose max-w-none prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:mb-4 prose-ul:list-disc prose-ol:list-decimal prose-li:mb-1 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-800 prose-pre:text-white prose-pre:p-4 prose-pre:overflow-x-auto prose-a:text-blue-600 prose-a:hover:underline"
-          dangerouslySetInnerHTML={{ __html: micromark(content) }}
-        />
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden p-8 md:p-12">
+          <div 
+            className="prose prose-lg max-w-none"
+            dangerouslySetInnerHTML={{ __html: micromark(content) }}
+          />
+        </div>
       </div>
     </div>
   )

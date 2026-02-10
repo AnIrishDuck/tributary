@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { createStream } from '../actions/createStream'
+import { ShieldCheckIcon } from '@heroicons/react/24/outline'
 
 const NewStreamPage: React.FC = () => {
   const navigate = useNavigate()
@@ -35,61 +36,121 @@ const NewStreamPage: React.FC = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
-        <h1 className="text-2xl font-bold mb-6 text-center">Create New Scribe Stream</h1>
-        
-        <div className="mb-6">
-          <p className="text-gray-700 mb-4">
-            Create a new encrypted document stream. This will generate a new key pair 
-            for end-to-end encryption of your documents.
-          </p>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
-            <h3 className="font-bold text-blue-800 mb-2">Security Note</h3>
-            <p className="text-blue-700 text-sm">
-              Your documents are encrypted locally before being synced. The server 
-              cannot read your content.
+    <div className="min-h-screen bg-gray-50 py-12">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 py-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Scribe Stream</h1>
+            <p className="text-gray-600">
+              Generate a new encrypted document stream with secure keys
             </p>
           </div>
         </div>
-        
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-2">
+            {/* Left side - Information */}
+            <div className="p-8 lg:p-10">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Stream Information</h2>
+              
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">About This Stream</h3>
+                  <p className="text-gray-600 leading-relaxed">
+                    Create a new encrypted document stream. This will generate a new key pair 
+                    for end-to-end encryption of your documents.
+                  </p>
+                </div>
+                
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-6">
+                  <h3 className="font-semibold text-blue-900 mb-4 flex items-center">
+                    <ShieldCheckIcon className="w-5 h-5 mr-2" />
+                    Security Features
+                  </h3>
+                  <ul className="space-y-3">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm text-blue-800">End-to-end encryption with local key generation</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm text-blue-800">Server never has access to your unencrypted content</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm text-blue-800">Secure key management with base64url encoding</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 animate-fade-in">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 text-red-600 mt-0.5 mr-2.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="font-semibold text-red-900">Error</p>
+                        <p className="text-sm text-red-700 mt-1">{error}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Right side - Action */}
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-8 lg:p-10 flex flex-col justify-center">
+              <h3 className="text-2xl font-bold mb-6">Ready to create?</h3>
+              <p className="text-blue-100 text-lg mb-8 leading-relaxed">
+                Click the button below to generate a new encrypted stream with secure keys. Your data will be protected from the moment it's created.
+              </p>
+              
+              <button
+                onClick={onCreateStream}
+                disabled={isLoading}
+                className={`w-full bg-white text-blue-700 hover:bg-blue-50 font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${
+                  isLoading ? 'cursor-wait' : ''
+                }`}
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-6 w-6 text-blue-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Creating...
+                  </span>
+                ) : (
+                  'Create New Stream'
+                )}
+              </button>
+              
+              <div className="mt-8 pt-8 border-t border-blue-500/30">
+                <p className="text-sm text-blue-100">
+                  Already have a stream?{' '}
+                  <Link
+                    to="/import"
+                    className="text-white font-semibold hover:underline inline-flex items-center"
+                  >
+                    Import existing key
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                </p>
+              </div>
+            </div>
           </div>
-        )}
-        
-        <button
-          onClick={onCreateStream}
-          disabled={isLoading}
-          className={`w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded focus:outline-none focus:shadow-outline ${
-            isLoading ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-        >
-          {isLoading ? (
-            <span className="flex items-center justify-center">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Creating Stream...
-            </span>
-          ) : (
-            'Create New Stream'
-          )}
-        </button>
-        
-        <div className="mt-6 text-center">
-          <p className="text-gray-600 text-sm">
-            Already have a stream?{' '}
-            <button 
-              onClick={() => navigate('/')}
-              className="text-blue-500 hover:text-blue-700 font-medium"
-            >
-              Import existing key
-            </button>
-          </p>
         </div>
       </div>
     </div>

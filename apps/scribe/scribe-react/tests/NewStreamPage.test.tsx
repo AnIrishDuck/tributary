@@ -36,7 +36,8 @@ describe('NewStreamPage', () => {
     )
     
     expect(screen.getByText('Create New Scribe Stream')).toBeInTheDocument()
-    expect(screen.getByText(/end-to-end encryption/i)).toBeInTheDocument()
+    // Use getAllByText to handle multiple matching elements
+    expect(screen.getAllByText(/end-to-end encryption/i).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Create New Stream' })).toBeInTheDocument()
   })
 
@@ -57,7 +58,7 @@ describe('NewStreamPage', () => {
     fireEvent.click(button)
     
     // Check that loading state is displayed immediately
-    expect(screen.getByText('Creating Stream...')).toBeInTheDocument()
+    expect(screen.getByText('Creating...')).toBeInTheDocument()
     // Button should be disabled during loading
     expect(button).toBeDisabled()
   })
@@ -80,7 +81,7 @@ describe('NewStreamPage', () => {
     
     // Wait for loading state to appear
     await waitFor(() => {
-      expect(screen.getByText('Creating Stream...')).toBeInTheDocument()
+      expect(screen.getByText('Creating...')).toBeInTheDocument()
     }, { timeout: 1000 })
     
     // Button should be disabled during loading

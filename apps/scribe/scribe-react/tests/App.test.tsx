@@ -14,6 +14,9 @@ describe('App', () => {
     render(<RouterProvider router={router} />)
     
     // Should render the HomePage by default
-    expect(screen.getByText('Scribe - Encrypted Document Editor')).toBeInTheDocument()
+    // Text is split across multiple span elements, so use a function matcher
+    expect(screen.getByText((content, element) => {
+      return element?.tagName === 'H1' && element.textContent === 'Scribe Encrypted Document Editor'
+    })).toBeInTheDocument()
   })
 })

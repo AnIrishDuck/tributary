@@ -86,7 +86,7 @@ describe('EditorPage', () => {
       initialEntries: [`/pk/${base64Part}/new`]
     })
     
-    render(
+    const { unmount } = render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
@@ -97,7 +97,7 @@ describe('EditorPage', () => {
       expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
     })
     
-    const saveButton = screen.getByRole('button', { name: 'Add' })
+    const saveButton = screen.getByRole('button', { name: 'Add Document' })
     fireEvent.click(saveButton)
     
     // Check that loading state is displayed immediately
@@ -117,12 +117,18 @@ describe('EditorPage', () => {
         }
       }
     }, { timeout: 5000 })
+    
+    // Wait a bit for any navigation to settle before unmounting
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Unmount to prevent navigation from triggering AbortSignal errors
+    unmount()
   })
 
   it('should handle save errors gracefully', async () => {
     const { client, prefix } = await createTestClientWithStream()
     
-    // Mock the list method to throw an error
+    // Mock the get method to throw an error
     if (client) {
       vi.spyOn(client, 'get').mockRejectedValue(new Error('Stream error'))
     }
@@ -135,7 +141,7 @@ describe('EditorPage', () => {
       initialEntries: [`/pk/${base64Part}/new`]
     })
     
-    render(
+    const { unmount } = render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
@@ -146,13 +152,17 @@ describe('EditorPage', () => {
       expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
     })
     
-    const saveButton = screen.getByRole('button', { name: 'Add' })
+    const saveButton = screen.getByRole('button', { name: 'Add Document' })
     fireEvent.click(saveButton)
     
     // Wait for error message to appear
     await waitFor(() => {
       expect(screen.getByText(/Failed to save document/)).toBeInTheDocument()
     }, { timeout: 2000 })
+    
+    // Restore the spy and unmount to prevent navigation issues
+    vi.restoreAllMocks()
+    unmount()
   })
 
   it('should edit an existing block and show updated content', async () => {
@@ -197,7 +207,7 @@ describe('EditorPage', () => {
     })
     
     // Test that the save button exists and is properly labeled for editing
-    const saveButton = screen.getByRole('button', { name: 'Update' })
+    const saveButton = screen.getByRole('button', { name: 'Update Document' })
     expect(saveButton).toBeInTheDocument()
     
     // Test that editor is loaded - we won't try to interact with CodeMirror directly as it's complex
