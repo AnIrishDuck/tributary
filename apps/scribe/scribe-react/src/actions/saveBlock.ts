@@ -4,14 +4,26 @@ import * as scribeData from 'scribe-data'
 export async function saveBlock(
   stream: TributaryStream,
   content: string,
-  inserter: string = 'web-ui'
+  inserter: string = 'web-ui',
+  blockUuid?: string
 ) {
-  // Create a new block using the scribe-data functions
-  const block = await scribeData.createBlock(stream, {
-    block_type: 'scribe/markdown',
-    body: content,
-    inserter
-  })
+  let block: any
+  
+  if (blockUuid) {
+    // Update existing block by creating a new version
+    block = await scribeData.createBlockVersion(stream, blockUuid, {
+      block_type: 'scribe/markdown',
+      body: content,
+      inserter
+    })
+  } else {
+    // Create a new block using the scribe-data functions
+    block = await scribeData.createBlock(stream, {
+      block_type: 'scribe/markdown',
+      body: content,
+      inserter
+    })
+  }
   
   // Sync to ensure persistence
   await stream.sync()

@@ -13,6 +13,7 @@ const EditorPage: React.FC = () => {
   const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const navigate = useNavigate()
   const { client } = useTributary()
   
@@ -48,6 +49,9 @@ const EditorPage: React.FC = () => {
           if (!blockSlugInfo) {
             throw new Error('Document not found')
           }
+          
+          // Store the block UUID for updates
+          setBlockUuid(blockSlugInfo.block_uuid)
           
           // Get the authoritative version
           const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
@@ -99,7 +103,7 @@ const EditorPage: React.FC = () => {
         throw new Error('Failed to get stream')
       }
       
-      const { block, blockSlug } = await saveBlock(stream, content) as { block: any, blockSlug: BlockSlug | null }
+      const { block, blockSlug } = await saveBlock(stream, content, 'web-ui', blockUuid)
       
       // After saving, navigate to the document view using the slug
       if (prefix) {
