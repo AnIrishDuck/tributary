@@ -209,3 +209,33 @@ describe('EditorPage', () => {
     expect(initialVersionCount).toBe(1)
   })
 })
+
+  it('should render EditorPage at /pk/:prefix/new route and load without errors', async () => {
+    // This test verifies that the route /pk/:prefix/new actually renders and works
+    
+    const { client, prefix } = await createTestClientWithStream()
+    
+    // Extract just the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Create router and render the EditorPage at its route
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/new`]
+    })
+    
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the page to fully load - check for "New Document" heading
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+    
+    // Verify NO errors
+    const errorEl = screen.queryByText(/Error|error/)
+    expect(errorEl).toBeNull()
+  })

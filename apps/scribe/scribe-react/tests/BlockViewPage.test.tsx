@@ -87,3 +87,41 @@ describe('BlockViewPage', () => {
     expect(screen.getByRole('button', { name: 'New Document' })).toBeInTheDocument()
   })
 })
+
+  it('should render BlockViewPage at /pk/:prefix/:slug route and load without errors', async () => {
+    // This test verifies that the route /pk/:prefix/:slug actually renders and works
+    // by creating a stream with a block, then directly rendering the BlockViewPage
+    
+    const { client, stream, prefix } = await createTestClientWithStream()
+    
+    // Extract just the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Create a test block
+    const testContent = '# Test Document\n\nTest content.'
+    const { blockSlug } = await saveBlock(stream, testContent)
+    
+    expect(blockSlug).toBeDefined()
+    const slug = blockSlug!.slug
+    
+    // Create router and render the BlockViewPage at its route
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}`]
+    })
+    
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the page to fully load - check for Edit button which means page loaded
+    await waitFor(() => {
+      expect(screen.getByText('Edit')).toBeInTheDocument()
+    }, { timeout: 5000 })
+    
+    // Verify NO errors
+    const errorEl = screen.queryByText(/Error|error/)
+    expect(errorEl).toBeNull()
+  })

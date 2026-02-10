@@ -26,13 +26,13 @@ const HomePage: React.FC = () => {
           </p>
           <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4">
             <Link
-              to="#new"
+              to="/new"
               className="bg-blue-500 hover:bg-blue-700 text-white text-center font-bold py-2 px-4 rounded"
             >
               Create New Stream
             </Link>
             <Link
-              to="#import"
+              to="/import"
               className="bg-green-500 hover:bg-green-700 text-white text-center font-bold py-2 px-4 rounded"
             >
               Import Existing Stream

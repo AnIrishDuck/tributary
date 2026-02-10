@@ -21,9 +21,11 @@ const NewStreamPage: React.FC = () => {
     try {
       const { prefix } = await createStream(client)
       
-      // Navigate to the new stream (URL-encode the prefix to handle slashes)
-      const encodedPrefix = encodeURIComponent(prefix)
-      navigate(`/${encodedPrefix}/`)
+      // Navigate to the new stream
+      // The prefix is already formatted as "pk/<key>" where key is base64url encoded
+      // (already URL-safe, no encoding needed). We must NOT encode the entire prefix
+      // because that would turn "/pk/" into "/pk%2F" which breaks route matching.
+      navigate(`/${prefix}/`)
     } catch (err: any) {
       setError('Failed to create new stream. Please try again.')
       console.error('Error creating new stream:', err)

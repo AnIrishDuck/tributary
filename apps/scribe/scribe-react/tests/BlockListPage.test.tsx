@@ -130,3 +130,35 @@ describe('BlockListPage', () => {
     expect(screen.getByText('Untitled')).toBeInTheDocument()
   })
 })
+
+  it('should render BlockListPage at /pk/:prefix/ route and load without errors', async () => {
+    // This test verifies that the route /pk/:prefix/ actually renders and works
+    // by creating a stream and then directly rendering the BlockListPage at its route
+    
+    const { client, prefix } = await createTestClientWithStream()
+    
+    // Extract just the base64 part for the route parameter
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+    
+    // Create router and render the BlockListPage at its route
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+    
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+    
+    // Wait for the page to fully load
+    await waitFor(() => {
+      // Should show "Documents" heading (BlockListPage content)
+      expect(screen.getByText('Documents')).toBeInTheDocument()
+    }, { timeout: 5000 })
+    
+    // Verify NO "Error loading blocks" error
+    const errorEl = screen.queryByText(/Error loading blocks/)
+    expect(errorEl).toBeNull()
+  })
