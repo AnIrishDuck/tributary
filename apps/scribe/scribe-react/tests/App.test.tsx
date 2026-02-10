@@ -14,9 +14,7 @@ describe('App', () => {
     render(<RouterProvider router={router} />)
     
     // Should render the HomePage by default
-    // Text is split across multiple span elements, so use a function matcher
-    expect(screen.getByText((content, element) => {
-      return element?.tagName === 'H1' && element.textContent === 'Scribe Encrypted Document Editor'
-    })).toBeInTheDocument()
+    // Check for the empty state heading
+    expect(screen.getByRole('heading', { name: /no streams yet/i })).toBeInTheDocument()
   })
 })
