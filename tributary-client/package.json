@@ -1,9 +1,16 @@
 {
   "name": "tributary-client",
+  "type": "module",
   "version": "1.0.0",
   "description": "Core TypeScript client library that wraps PGLite and ensures server persistence.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

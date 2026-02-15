@@ -1,9 +1,9 @@
 // Main TributaryClient class that manages multiple streams
 import { PGlite } from '@electric-sql/pglite';
-import { Server } from './server';
-import { TributaryStream } from './tributaryStream';
-import { TributaryLocal } from './tributaryLocal';
-import { logger, warn, error, info, debug } from './logger';
+import { Server } from './server.js';
+import { TributaryStream } from './tributaryStream.js';
+import { TributaryLocal } from './tributaryLocal.js';
+import { logger, warn, error, info, debug } from './logger.js';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -35,8 +35,8 @@ export class TributaryClient {
       this.initialized = this.initialized.then(async () => {
         try {
           this.defaultStream = await this.addWriteKey(appId, options.privateKey!);
-        } catch (error) {
-          warn('Could not create default stream:', error as Error);
+        } catch (err) {
+          warn('Could not create default stream:', err as Error);
         }
       });
     }
@@ -60,8 +60,8 @@ export class TributaryClient {
           last_sync_index INTEGER
         )`
       );
-    } catch (error: unknown) {
-      warn('Could not initialize tributary schema:', error as Error);
+    } catch (err: unknown) {
+      warn('Could not initialize tributary schema:', err as Error);
     }
   }
 
@@ -73,7 +73,7 @@ export class TributaryClient {
    */
   private async generateSchemaId(publicKey: Uint8Array): Promise<string> {
     // Import computeHash function
-    const { computeHash } = await import('./hashUtils');
+    const { computeHash } = await import('./hashUtils.js');
     
     // First check if we already have a stream with this exact public key
     try {
@@ -86,9 +86,9 @@ export class TributaryClient {
         // Found existing stream with same public key, return its schema ID
         return result.rows[0].schema_id;
       }
-    } catch (error) {
+    } catch (err) {
       // If there's an error querying, continue with generated schema ID
-      warn('Error checking for existing stream with same public key:', error as Error);
+      warn('Error checking for existing stream with same public key:', err as Error);
     }
     
     // Generate initial schema ID from public key
@@ -111,7 +111,7 @@ export class TributaryClient {
         if (result.rows[0].count === 0) {
           break; // Found a unique schema ID
         }
-      } catch (error) {
+      } catch (err) {
         // If there's an error querying, assume the schema ID is free
         break;
       }
@@ -219,8 +219,8 @@ export class TributaryClient {
       );
       
       return result.rows.map((row: any) => row.id);
-    } catch (error: unknown) {
-      warn('Could not list streams:', error as Error);
+    } catch (err: unknown) {
+      warn('Could not list streams:', err as Error);
       return [];
     }
   }
@@ -294,9 +294,9 @@ export class TributaryClient {
       } else {
         debug('No stream found in database for ID:', id);
       }
-    } catch (error: unknown) {
-      debug('Error retrieving stream:', error);
-      warn('Could not retrieve stream:', error as Error);
+    } catch (err: unknown) {
+      debug("Error retrieving stream:", err)
+      warn('Could not retrieve stream:', err as Error);
     }
     
     return undefined;

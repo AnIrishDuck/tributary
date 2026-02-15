@@ -1,15 +1,15 @@
 // Main entry point for tributary-client
-export { TributaryClient } from './tributaryClient';
-export { TributaryStream } from './tributaryStream';
-export { TributaryLocal } from './tributaryLocal';
-export { TributaryServer } from './tributaryServer';
-export { FakeServer } from './fakeServer';
-export { createTestServer } from './testUtils';
-export type { Server } from './server';
-export { computeHash } from './hashUtils';
+export { TributaryClient } from './tributaryClient.js';
+export { TributaryStream } from './tributaryStream.js';
+export { TributaryLocal } from './tributaryLocal.js';
+export { TributaryServer } from './tributaryServer.js';
+export { FakeServer } from './fakeServer.js';
+export { createTestServer } from './testUtils.js';
+export type { Server } from './server.js';
+export { computeHash } from './hashUtils.js';
 export {
   createNodeFileReader,
   createBrowserFileReader,
   createDragAndDropFileReader,
   createStringFileReader
-} from './fileUtils';
+} from './fileUtils.js';

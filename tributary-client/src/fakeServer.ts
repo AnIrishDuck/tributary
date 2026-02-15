@@ -1,7 +1,7 @@
 // Fake implementation of Server interface for testing
 // This implementation MUST implement the same hash and signature validations as tributary-server
-import { Server } from './server';
-import { computeHash } from './hashUtils';
+import { Server } from './server.js';
+import { computeHash } from './hashUtils.js';
 
 // Import base64url functions
 import * as base64url from 'urlsafe-base64';

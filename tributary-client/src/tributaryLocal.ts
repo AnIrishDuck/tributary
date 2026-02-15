@@ -1,6 +1,6 @@
 // TributaryLocal class for local (non-synced) database operations
 import { PGlite } from '@electric-sql/pglite';
-import { logger, debug } from './logger';
+import { logger, debug } from './logger.js';
 
 export class TributaryLocal {
   private pglite: PGlite;

@@ -2,10 +2,10 @@
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
-import { Server } from './server';
-import { TributaryLocal } from './tributaryLocal';
-import { logger, warn, error, info, debug } from './logger';
-import { computeHash } from './hashUtils';
+import { Server } from './server.js';
+import { TributaryLocal } from './tributaryLocal.js';
+import { logger, warn, error, info, debug } from './logger.js';
+import { computeHash } from './hashUtils.js';
 
 // Type definitions for our transaction log
 interface TransactionLogEntry {
@@ -638,7 +638,7 @@ export class TributaryStream {
   private async deriveEncryptionKey(): Promise<Uint8Array> {
     // Derive the encryption key by hashing the private key
     // This ensures we don't give away the private write key when sharing read access
-    const { computeHashBytes } = await import('./hashUtils');
+    const { computeHashBytes } = await import('./hashUtils.js');
     const hashBytes = await computeHashBytes(this.privateKey.slice(0, 32)); // Hash the actual private scalar
     
     // Return the first 32 bytes as our encryption key

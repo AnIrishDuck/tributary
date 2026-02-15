@@ -1,6 +1,6 @@
 // Implementation of Server interface that communicates with tributary-server
-import { Server } from './server';
-import { warn } from './logger';
+import { Server } from './server.js';
+import { warn } from './logger.js';
 
 // Import base64url functions
 import * as base64url from 'urlsafe-base64';

@@ -54,7 +54,7 @@ describe('Consolidated Sync Test', () => {
     await stream2.exec("CREATE TABLE IF NOT EXISTS sync_test (id INTEGER PRIMARY KEY, message TEXT, source TEXT, timestamp TEXT)");
     
     // Sync DB2 to get DB1's data
-    await stream2.sync();
+    await stream2.sync(10000);
     
     // Query data in DB2 (should see DB1's message after sync)
     const db2QueryResult = await stream2.query("SELECT * FROM sync_test ORDER BY id");
@@ -75,7 +75,7 @@ describe('Consolidated Sync Test', () => {
 
     console.log('=== Test Phase 5: Verify DB1 can read DB2\'s data ===');
     // Sync DB1 to get DB2's data
-    await stream1.sync();
+    await stream1.sync(10000);
     
     // Query data in DB1 (should see both messages after sync)
     const db1QueryResult = await stream1.query("SELECT * FROM sync_test ORDER BY id");

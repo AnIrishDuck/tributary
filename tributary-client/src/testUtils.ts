@@ -1,9 +1,9 @@
 // Utility function for creating test servers
 // This function returns either a FakeServer or a real TributaryServer
 // based on the TRIBUTARY_TEST_URL environment variable
-import { Server } from '../src/server';
-import { FakeServer } from '../src/fakeServer';
-import { TributaryServer } from '../src/tributaryServer';
+import { Server } from './server.js';
+import { FakeServer } from './fakeServer.js';
+import { TributaryServer } from './tributaryServer.js';
 
 /**
  * Creates a test server instance for use in tests

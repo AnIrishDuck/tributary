@@ -38,14 +38,14 @@ describe('Sync Functionality', () => {
     
     // Get the blob metadata before sync to verify filtering works
     const blobMetadataBefore = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
-    expect(blobMetadataBefore.length).toBe(3);
+    expect(blobMetadataBefore.blobs.length).toBe(3);
     
     // After executing operations locally, the lastSyncIndex should reflect the operations executed
     const initialLastSyncIndex = (stream as any).lastSyncIndex;
     expect(initialLastSyncIndex).toBe(3); // 3 operations executed locally
     
     // Sync the client - should process 0 blobs since they were already applied locally
-    await stream.sync();
+    await stream.sync(10000);
     
     // Check that last sync index remains the same (no new blobs processed)
     const streamAny = stream as any;
@@ -56,11 +56,11 @@ describe('Sync Functionality', () => {
     
     // Get updated blob metadata
     const blobMetadataAfter = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
-    expect(blobMetadataAfter.length).toBe(4);
+    expect(blobMetadataAfter.blobs.length).toBe(4);
     
     // Now if we sync again, it should still process 0 new blobs (since the fourth operation was also applied locally)
     const syncIndexBeforeSecondSync = streamAny.lastSyncIndex;
-    await stream.sync();
+    await stream.sync(10000);
     const syncIndexAfterSecondSync = streamAny.lastSyncIndex;
     
     // Should remain at 4 (no new blobs processed during sync)
@@ -86,7 +86,7 @@ describe('Sync Functionality', () => {
     await stream1.query("INSERT INTO items VALUES (2, 'item2')");
     
     // Sync the first client
-    await stream1.sync();
+    await stream1.sync(10000);
     
     // Check initial count
     let result = await stream1.query("SELECT COUNT(*) as count FROM items");
@@ -102,7 +102,7 @@ describe('Sync Functionality', () => {
     const stream2 = await client2.addWriteKey('test', testPrivateKeyBase64);
     
     // Sync the second client - this should NOT duplicate the data
-    await stream2.sync();
+    await stream2.sync(10000);
     
     // Count should still be 2
     result = await stream2.query("SELECT COUNT(*) as count FROM items");
@@ -112,17 +112,66 @@ describe('Sync Functionality', () => {
     await stream2.query("INSERT INTO items VALUES (3, 'item3')");
     
     // Sync again
-    await stream2.sync();
+    await stream2.sync(10000);
     
     // Now we should have 3 items
     result = await stream2.query("SELECT COUNT(*) as count FROM items");
     expect(result.rows[0].count).toBe(3);
     
     // Sync first client again
-    await stream1.sync();
+    await stream1.sync(10000);
     
     // First client should also see 3 items
     result = await stream1.query("SELECT COUNT(*) as count FROM items");
     expect(result.rows[0].count).toBe(3);
+  });
+
+  it('should return true when fully synced and false when more blobs available', async () => {
+    // Create two separate streams
+    const freshDb1 = new PGlite();
+    const freshDb2 = new PGlite();
+    
+    const freshClient1 = new TributaryClient({
+      server: testServer,
+      db: freshDb1
+    });
+    
+    const freshClient2 = new TributaryClient({
+      server: testServer,
+      db: freshDb2
+    });
+    
+    const stream1 = await freshClient1.addWriteKey('test', testPrivateKeyBase64);
+    
+    // Stream 1 creates 3 blobs on the server
+    await stream1.query("CREATE TABLE test_table (id INTEGER)");
+    await stream1.query("INSERT INTO test_table VALUES (1)");
+    await stream1.query("INSERT INTO test_table VALUES (2)");
+    
+    // Verify server has 3 blobs
+    const blobMetadata = await testServer.getAllBlobMetadata(stream1.getPublicKeyBase64());
+    expect(blobMetadata.blobs.length).toBe(3);
+    
+    // Stream 2 (fresh) hasn't synced yet, so its lastSyncIndex = 0
+    const stream2 = await freshClient2.addWriteKey('test', testPrivateKeyBase64);
+    
+    // First sync with max=2 should return false (not fully synced, more blobs available)
+    const result1 = await stream2.sync(2);
+    expect(result1).toBe(false);
+    
+    // Check that we synced exactly 2 blobs
+    const stream2Any = stream2 as any;
+    expect(stream2Any.lastSyncIndex).toBe(2);
+    
+    // Sync again with max=100 should return true (now fully synced)
+    const result2 = await stream2.sync(100);
+    expect(result2).toBe(true);
+    
+    // Now we should have synced all 3 blobs
+    expect(stream2Any.lastSyncIndex).toBe(3);
+    
+    // Sync once more should return true (still fully synced)
+    const result3 = await stream2.sync(100);
+    expect(result3).toBe(true);
   });
 });
