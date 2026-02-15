@@ -1,5 +1,4 @@
-import { Kysely } from 'kysely';
-import { Database } from '@tributary/scribe-data/dist/types.js';
+import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client';
 import { 
   getAllBlockSlugs, 
   getBlocksByTag, 
@@ -15,7 +14,6 @@ import {
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { TributaryClient } from 'tributary-client';
 
 /**
  * Validate that the local directory structure is correct for syncing
@@ -77,13 +75,13 @@ export async function validateDirectoryStructure(directory: string): Promise<voi
  * 5. Writes out indexed files (tags, links) to the indexed/ directory
  * 6. Ensures slug filenames match the computed slug names
  * 
- * @param db The Kysely database instance (wrapped with TributaryClient for block operations)
+ * @param stream The TributaryStream instance for synced operations
  * @param client The TributaryClient instance for explicit sync operations
  * @param directory The local directory to sync with
  * @param options Sync options
  */
 export async function sync(
-  db: Kysely<Database>,
+  stream: TributaryStream,
   client: TributaryClient,
   directory: string,
   options: {
@@ -99,28 +97,31 @@ export async function sync(
   // 1. Sync with server first to get latest changes
   if (!dryRun) {
     console.log('Syncing with server...');
-    await client.sync();
+    await stream.sync(1000);
     console.log('Server sync completed');
   }
   
+  // Get local database for index operations
+  const localDb = stream.local();
+  
   // 2. Read local files and update database
-  await syncLocalFilesToDatabase(db, path.join(directory, 'slugs'), { dryRun });
+  await syncLocalFilesToDatabase(stream, localDb, path.join(directory, 'slugs'), { dryRun });
   
   // 3. Re-index any newly added/updated blocks
-  const reindexResult = await indexSlugs(db, { limit });
+  const reindexResult = await indexSlugs(localDb, { limit });
   console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
   if (reindexResult.hasMore) {
     console.log(`Has more to index: ${reindexResult.hasMore}`);
   }
   
   // 4. Update slugs directory with current database state
-  await syncSlugsDirectory(db, path.join(directory, 'slugs'), { dryRun });
+  await syncSlugsDirectory(stream, localDb, path.join(directory, 'slugs'), { dryRun });
 
   // 5. Generate tag index files
-  await syncTagIndexFiles(db, path.join(directory, 'indexed', 'tags'), { dryRun });
+  await syncTagIndexFiles(localDb, path.join(directory, 'indexed', 'tags'), { dryRun });
 
   // 6. Generate link target files
-  await syncLinkTargetFiles(db, path.join(directory, 'indexed', 'links'), { dryRun });
+  await syncLinkTargetFiles(localDb, path.join(directory, 'indexed', 'links'), { dryRun });
   
   // 7. Update READ-ONLY warning file
   if (!dryRun) {
@@ -138,12 +139,14 @@ Do not manually edit or add files here.
 /**
  * Sync the slugs directory with the current database state
  * 
- * @param db The Kysely database instance
+ * @param stream The TributaryStream instance
+ * @param localDb The TributaryLocal instance
  * @param slugsDir The slugs directory path
  * @param options Sync options
  */
 async function syncSlugsDirectory(
-  db: Kysely<Database>,
+  stream: TributaryStream,
+  localDb: TributaryLocal,
   slugsDir: string,
   options: {
     dryRun?: boolean;
@@ -152,18 +155,12 @@ async function syncSlugsDirectory(
   const { dryRun = false } = options;
   
   // Get all current slugs from the database
-  const blockSlugs = await getAllBlockSlugs(db);
+  const blockSlugs = await getAllBlockSlugs(localDb);
   
   // Get all current files in the slugs directory
   const existingFiles = fs.existsSync(slugsDir) 
     ? (await fs.promises.readdir(slugsDir)).filter(file => file.endsWith('.md'))
     : [];
-  
-  // Map slugs to their corresponding block UUIDs
-  const slugToBlockUuid = new Map<string, string>();
-  for (const slug of blockSlugs) {
-    slugToBlockUuid.set(slug.slug, slug.block_uuid);
-  }
   
   // Create a map of slug -> file names for deduplication
   const slugToFileMap = new Map<string, string>();
@@ -175,27 +172,28 @@ async function syncSlugsDirectory(
   
   // Process each block slug
   for (const blockSlug of blockSlugs) {
-    const slug = blockSlug.slug;
-    const blockUuid = blockSlug.block_uuid;
+    const slug = (blockSlug as any).slug;
+    const blockUuid = (blockSlug as any).block_uuid;
     
     // Get the authoritative version of the block
-    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(db, blockUuid);
+    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockUuid);
     if (!authoritativeVersion) {
       console.warn(`No authoritative version found for block ${blockUuid}`);
       continue;
     }
     
     // Get the block content
-    const block = await db
-      .selectFrom('block')
-      .selectAll()
-      .where('version_uuid', '=', authoritativeVersion.version_uuid)
-      .executeTakeFirst();
+    const blockResult = await stream.query(
+      `SELECT * FROM block WHERE version_uuid = $1`,
+      [(authoritativeVersion as any).version_uuid]
+    );
     
-    if (!block) {
-      console.warn(`Block not found for version ${authoritativeVersion.version_uuid}`);
+    if (!blockResult.rows || blockResult.rows.length === 0) {
+      console.warn(`Block not found for version ${(authoritativeVersion as any).version_uuid}`);
       continue;
     }
+    
+    const block = blockResult.rows[0] as any;
     
     // Determine the correct filename based on the slug
     const expectedFilename = `${slug}.md`;
@@ -215,7 +213,6 @@ async function syncSlugsDirectory(
           
           // Update file timestamps to match block datetime
           const blockDate = new Date(block.insert_datetime);
-          const time = blockDate.getTime() / 1000;
           await fs.promises.utimes(
             path.join(slugsDir, expectedFilename),
             blockDate,
@@ -249,7 +246,7 @@ async function syncSlugsDirectory(
   }
   
   // Remove files that no longer correspond to any slug
-  const currentSlugs = new Set(blockSlugs.map(s => s.slug));
+  const currentSlugs = new Set(blockSlugs.map((s: any) => s.slug));
   for (const file of existingFiles) {
     const slug = file.slice(0, -3);
     if (!currentSlugs.has(slug)) {
@@ -263,12 +260,12 @@ async function syncSlugsDirectory(
 /**
  * Generate tag index files in the tags directory
  * 
- * @param db The Kysely database instance
+ * @param localDb The TributaryLocal instance
  * @param tagsDir The tags directory path
  * @param options Sync options
  */
 async function syncTagIndexFiles(
-  db: Kysely<Database>,
+  localDb: TributaryLocal,
   tagsDir: string,
   options: {
     dryRun?: boolean;
@@ -277,23 +274,23 @@ async function syncTagIndexFiles(
   const { dryRun = false } = options;
   
   // Get all unique tags
-  const tags = await getAllTags(db);
+  const tags = await getAllTags(localDb);
   
   // Process each tag
   for (const tag of tags) {
     // Get all blocks with this tag
-    const blocksWithTag = await getBlocksByTag(db, tag.tag);
+    const blocksWithTag = await getBlocksByTag(localDb, tag);
     
     // Get slugs for these blocks
     const slugs = [];
-    for (const block of blocksWithTag) {
-      const blockSlug = await db
-        .selectFrom('block_slug')
-        .select(['slug', 'title'])
-        .where('block_uuid', '=', block.block_uuid)
-        .executeTakeFirst();
+    for (const blockUuid of blocksWithTag) {
+      const result = await localDb.query(
+        `SELECT slug, title FROM block_slug WHERE block_uuid = $1`,
+        [blockUuid]
+      );
       
-      if (blockSlug) {
+      if (result.rows && result.rows.length > 0) {
+        const blockSlug = result.rows[0] as any;
         slugs.push({
           slug: blockSlug.slug,
           title: blockSlug.title
@@ -302,9 +299,9 @@ async function syncTagIndexFiles(
     }
     
     // Generate markdown content for the tag index
-    let content = `# Tag: ${tag.tag}
+    let content = `# Tag: ${tag}
 
-Documents tagged with \`#${tag.tag}\`:
+Documents tagged with \`#${tag}\`:
 
 `;
     
@@ -314,7 +311,7 @@ Documents tagged with \`#${tag.tag}\`:
     
     // Write the tag index file
     if (!dryRun) {
-      const tagFile = path.join(tagsDir, `${tag.tag}.md`);
+      const tagFile = path.join(tagsDir, `${tag}.md`);
       await fs.promises.writeFile(tagFile, content, 'utf8');
     }
   }
@@ -324,7 +321,7 @@ Documents tagged with \`#${tag.tag}\`:
     const existingTagFiles = (await fs.promises.readdir(tagsDir))
       .filter(file => file.endsWith('.md'));
     
-    const currentTags = new Set(tags.map(t => `${t.tag}.md`));
+    const currentTags = new Set(tags.map(t => `${t}.md`));
     for (const file of existingTagFiles) {
       if (!currentTags.has(file)) {
         if (!dryRun) {
@@ -338,12 +335,12 @@ Documents tagged with \`#${tag.tag}\`:
 /**
  * Generate link target files in the links directory for disambiguation
  * 
- * @param db The Kysely database instance
+ * @param localDb The TributaryLocal instance
  * @param linksDir The links directory path
  * @param options Sync options
  */
 async function syncLinkTargetFiles(
-  db: Kysely<Database>,
+  localDb: TributaryLocal,
   linksDir: string,
   options: {
     dryRun?: boolean;
@@ -355,10 +352,11 @@ async function syncLinkTargetFiles(
   // Group slugs by their base name (without UUID prefix)
   const slugGroups = new Map<string, Array<{ slug: string; title: string; block_uuid: string }>>();
   
-  const allSlugs = await getAllBlockSlugs(db);
+  const allSlugs = await getAllBlockSlugs(localDb);
   for (const blockSlug of allSlugs) {
+    const bs = blockSlug as any;
     // Extract base name by removing UUID prefix if present
-    let baseName = blockSlug.slug;
+    let baseName = bs.slug;
     if (baseName.includes('-')) {
       const parts = baseName.split('-');
       // If first part looks like a UUID fragment, remove it
@@ -371,9 +369,9 @@ async function syncLinkTargetFiles(
       slugGroups.set(baseName, []);
     }
     slugGroups.get(baseName)!.push({
-      slug: blockSlug.slug,
-      title: blockSlug.title,
-      block_uuid: blockSlug.block_uuid
+      slug: bs.slug,
+      title: bs.title,
+      block_uuid: bs.block_uuid
     });
   }
   
@@ -429,12 +427,14 @@ There are multiple documents with similar names. Please select the correct one:
  * 2. Updates existing blocks when file content has changed
  * 3. Handles slug-based matching of files to blocks
  * 
- * @param db The Kysely database instance
+ * @param stream The TributaryStream instance
+ * @param localDb The TributaryLocal instance
  * @param slugsDir The slugs directory path
  * @param options Sync options
  */
 async function syncLocalFilesToDatabase(
-  db: Kysely<Database>,
+  stream: TributaryStream,
+  localDb: TributaryLocal,
   slugsDir: string,
   options: {
     dryRun?: boolean;
@@ -459,46 +459,49 @@ async function syncLocalFilesToDatabase(
     // Read file content
     const content = await fs.promises.readFile(filePath, 'utf8');
     
-    // Extract title from content to determine slug
-    const title = extractTitleFromMarkdown(content);
-    const baseSlug = title ? titleToSlug(title) : null;
-    
     // Extract the slug from the filename (without .md extension)
     const fileSlug = file.slice(0, -3);
     
     // Try to find an existing block that matches this slug
-    const existingBlockSlug = await getBlockBySlug(db, fileSlug);
+    const existingBlockSlug = await getBlockBySlug(localDb, fileSlug);
     
     if (existingBlockSlug) {
+      const ebs = existingBlockSlug as any;
       // File corresponds to an existing block, check if content has changed
-      const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(db, existingBlockSlug.block_uuid);
+      const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, ebs.block_uuid);
       
       if (authoritativeVersion) {
+        const av = authoritativeVersion as any;
         // Get the current version of the block
-        const currentBlock = await db
-          .selectFrom('block')
-          .selectAll()
-          .where('version_uuid', '=', authoritativeVersion.version_uuid)
-          .executeTakeFirst();
+        const currentBlockResult = await stream.query(
+          `SELECT * FROM block WHERE version_uuid = $1`,
+          [av.version_uuid]
+        );
         
-        if (currentBlock && currentBlock.body !== content) {
-          // Content has changed, create a new version
-          if (!dryRun) {
-            const now = new Date().toISOString();
-            const newVersion = {
-              block_uuid: existingBlockSlug.block_uuid,
-              block_type: 'scribe/markdown',
-              version_uuid: uuidv4(),
-              prior_version_uuid: authoritativeVersion.version_uuid,
-              insert_datetime: now,
-              inserter: 'scribe-cli-sync',
-              body: content
-            };
-            
-            await db.insertInto('block').values(newVersion).execute();
-            console.log(`Updated block ${existingBlockSlug.block_uuid} with new version`);
-          } else {
-            console.log(`Would update block ${existingBlockSlug.block_uuid} with new version (dry run)`);
+        if (currentBlockResult.rows && currentBlockResult.rows.length > 0) {
+          const currentBlock = currentBlockResult.rows[0] as any;
+          
+          if (currentBlock.body !== content) {
+            // Content has changed, create a new version
+            if (!dryRun) {
+              const now = new Date().toISOString();
+              await stream.exec(
+                `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                  ebs.block_uuid,
+                  'scribe/markdown',
+                  uuidv4(),
+                  av.version_uuid,
+                  now,
+                  'scribe-cli-sync',
+                  content
+                ]
+              );
+              console.log(`Updated block ${ebs.block_uuid} with new version`);
+            } else {
+              console.log(`Would update block ${ebs.block_uuid} with new version (dry run)`);
+            }
           }
         }
       } else {
@@ -509,17 +512,19 @@ async function syncLocalFilesToDatabase(
       // File doesn't correspond to an existing block, create a new block
       if (!dryRun) {
         const now = new Date().toISOString();
-        const newBlock = {
-          block_uuid: uuidv4(),
-          block_type: 'scribe/markdown',
-          version_uuid: uuidv4(),
-          prior_version_uuid: null,
-          insert_datetime: now,
-          inserter: 'scribe-cli-sync',
-          body: content
-        };
-        
-        await db.insertInto('block').values(newBlock).execute();
+        await stream.exec(
+          `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            uuidv4(),
+            'scribe/markdown',
+            uuidv4(),
+            null,
+            now,
+            'scribe-cli-sync',
+            content
+          ]
+        );
         console.log(`Created new block for file: ${file}`);
       } else {
         console.log(`Would create new block for file: ${file} (dry run)`);

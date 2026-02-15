@@ -1,8 +1,6 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import { Kysely } from 'kysely';
-import { KyselyTributary } from 'kysely-tributary';
 import { TributaryClient, TributaryServer } from 'tributary-client';
 import { indexSlugs } from '@tributary/scribe-data';
 import { up } from '@tributary/scribe-data/dist/migrations.js';
@@ -23,9 +21,9 @@ function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } {
 }
 
 /**
- * Create a database connection using Tributary with a real server
+ * Create a TributaryClient and stream for the given directory and keys
  */
-async function createDB(directory: string, readKeyPath?: string, writeKeyPath?: string, dbPath?: string) {
+async function createClient(directory: string, readKeyPath?: string, writeKeyPath?: string, dbPath?: string) {
   // Read keys from files
   let readKeyBase64: string | undefined;
   let writeKeyBase64: string | undefined;
@@ -39,7 +37,7 @@ async function createDB(directory: string, readKeyPath?: string, writeKeyPath?: 
   }
   
   // Use db/ directory within the checkout if dbPath is not explicitly provided
-  let pglitePath: string | undefined;
+  let pglitePath: string;
   if (dbPath) {
     pglitePath = dbPath;
   } else {
@@ -48,16 +46,22 @@ async function createDB(directory: string, readKeyPath?: string, writeKeyPath?: 
   }
   
   // Ensure the database directory exists
-  if (pglitePath) {
-    await fs.promises.mkdir(pglitePath, { recursive: true });
-  }
+  await fs.promises.mkdir(pglitePath, { recursive: true });
   
-  // Create PGlite instance with optional persistent storage
-  const pglite = pglitePath ? new PGlite(pglitePath) : new PGlite();
+  // Create PGlite instance with persistent storage
+  const pglite = new PGlite(pglitePath);
   
-  // Create TributaryClient with proper server interface
-  // For now we'll use a write key if available, otherwise a read key
-  let privateKeyArray: Uint8Array | undefined;
+  // Create server instance pointing to the tributary server
+  const server = new TributaryServer('http://tributary:8080');
+  
+  // Create TributaryClient
+  const client = new TributaryClient({
+    server,
+    db: pglite as any  // Type cast to avoid PGlite version mismatch
+  });
+  
+  // Determine which key to use
+  let privateKeyArray: Uint8Array;
   
   if (writeKeyBase64) {
     privateKeyArray = Uint8Array.from(Buffer.from(writeKeyBase64, 'base64'));
@@ -69,24 +73,10 @@ async function createDB(directory: string, readKeyPath?: string, writeKeyPath?: 
     privateKeyArray = keyPair.secretKey;
   }
   
-  // Create server instance pointing to the local tributary server
-  const server = new TributaryServer('http://tributary:8080');
+  // Add the write key to get or create the stream
+  const stream = await client.addWriteKey('scribe', privateKeyArray);
   
-  // Use a unique collection ID for testing to avoid conflicts with existing data
-  const collectionId = `scribe-test-${Date.now()}`;
-  
-  const client = new TributaryClient({
-    server,
-    privateKey: privateKeyArray,
-    collectionId: collectionId,
-    db: pglite
-  });
-  
-  // Create Kysely instance with Tributary dialect
-  const { dialect } = new KyselyTributary(client);
-  const db = new Kysely<any>({ dialect });
-  
-  return { db, client };
+  return { client, stream };
 }
 
 const program = new Command();
@@ -107,12 +97,12 @@ program
   .option('-l, --limit <number>', 'Maximum number of blocks to process in this run', '100')
   .action(async (directory, options) => {
     try {
-      // Create database connection
-      const { db, client } = await createDB(directory, options.readKey, options.writeKey, options.db);
+      // Create client and stream
+      const { client, stream } = await createClient(directory, options.readKey, options.writeKey, options.db);
       
       // Run migrations to ensure tables exist
       try {
-        await up(db);
+        await up(stream, stream.local());
       } catch (error: any) {
         // Ignore "already exists" errors as tables may already exist from previous syncs
         if (!error.message.includes('already exists')) {
@@ -126,14 +116,12 @@ program
       const limit = parseInt(options.limit);
       
       // Now sync the local directory with the database
-      await sync(db, client, directory, { dryRun: options.dryRun, limit });
+      await sync(stream, client, directory, { dryRun: options.dryRun, limit });
       
       console.log(`Synced with directory: ${directory}`);
       if (options.dryRun) {
         console.log('Dry run completed - no changes made');
       }
-      
-      await db.destroy();
     } catch (error) {
       console.error('Error:', (error as Error).message);
       process.exit(1);
@@ -187,12 +175,12 @@ Do not manually edit or add files here.
 `;
       await fs.promises.writeFile(path.join(indexedDir, 'READ-ONLY.md'), readOnlyContent);
       
-      // Create database connection (only need write key for init)
-      const { db, client } = await createDB(directory, undefined, options.writeKey, options.db);
+      // Create client and stream
+      const { client, stream } = await createClient(directory, undefined, options.writeKey, options.db);
       
       // Run migrations to create tables
       try {
-        await up(db);
+        await up(stream, stream.local());
         console.log('Database tables created successfully');
       } catch (error: any) {
         // Ignore "already exists" errors as tables may already exist from previous syncs
@@ -208,14 +196,17 @@ Do not manually edit or add files here.
       if (!options.empty) {
         // Insert a seed "howto" block
         const now = new Date();
-        const howtoBlock = {
-          block_uuid: uuidv4(),
-          block_type: 'scribe/markdown',
-          version_uuid: uuidv4(),
-          prior_version_uuid: null,
-          insert_datetime: now.toISOString(),
-          inserter: 'scribe-cli',
-          body: `# Scribe Howto
+        await stream.exec(
+          `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            uuidv4(),
+            'scribe/markdown',
+            uuidv4(),
+            null,
+            now.toISOString(),
+            'scribe-cli',
+            `# Scribe Howto
 
 Welcome to Scribe! This is a sample document to help you get started.
 
@@ -243,9 +234,8 @@ For example: [#example](#example) [#getting-started](#getting-started)
 
 Use \`scribe sync <directory>\` to synchronize your local directory with the Tributary collection.
 `
-        };
-        
-        await db.insertInto('block').values(howtoBlock).execute();
+          ]
+        );
         console.log('Seed "howto" document created successfully');
       } else {
         console.log('Database initialized with no seed document (empty initialization)');
@@ -260,8 +250,6 @@ Use \`scribe sync <directory>\` to synchronize your local directory with the Tri
       console.log(`      READ-ONLY.md`);
       console.log(`      tags/`);
       console.log(`      links/`);
-      
-      await db.destroy();
     } catch (error) {
       console.error('Error:', (error as Error).message);
       process.exit(1);

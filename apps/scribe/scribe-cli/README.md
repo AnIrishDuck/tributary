@@ -4,10 +4,22 @@ CLI for Tributary Scribe app - a markdown document editor, indexer, and linker.
 
 The scribe-cli provides command-line access to scribe functionality including bidirectional synchronization between local directories and Tributary collections.
 
-## Installation
+## Installation & Usage
+
+This CLI runs TypeScript directly using `tsx`. To use it:
 
 ```bash
-npm install -g @tributary/scribe-cli
+# Install dependencies
+npm install
+
+# Run commands using npm script
+npm start -- --help
+
+# Or run directly (requires executable permission)
+./src/index.ts --help
+
+# Or use npx
+npx tsx src/index.ts --help
 ```
 
 ## Commands
@@ -61,27 +73,27 @@ The init command creates the necessary database tables and adds a helpful "howto
 
 Initialize database and create seed document:
 ```bash
-scribe init --write-key write.key ./my-notes
+./src/index.ts init --write-key write.key ./my-notes
 ```
 
 Initialize database with no seed document:
 ```bash
-scribe init --write-key write.key --empty ./my-notes
+./src/index.ts init --write-key write.key --empty ./my-notes
 ```
 
 Sync documents with a local directory:
 ```bash
-scribe sync --read-key read.key --write-key write.key ./my-notes
+./src/index.ts sync --read-key read.key --write-key write.key ./my-notes
 ```
 
 Preview sync changes without making them:
 ```bash
-scribe sync --read-key read.key --write-key write.key --dry-run ./my-notes
+./src/index.ts sync --read-key read.key --write-key write.key --dry-run ./my-notes
 ```
 
 Sync with a limited batch size:
 ```bash
-scribe sync --read-key read.key --write-key write.key --limit 50 ./my-notes
+./src/index.ts sync --read-key read.key --write-key write.key --limit 50 ./my-notes
 ```
 
 ## Implementation Details
