@@ -146,31 +146,17 @@ export class TributaryServer implements Server {
       throw new Error(`Failed to retrieve latest blob metadata: ${(error as Error).message}`);
     }
   }
-  
+
   /**
    * Get all blob metadata for a given public key, ordered by sequence number
-   * This is a simplified implementation that assumes sequential numbering starts at 1
+   * This uses the new /all endpoint with pagination support
    */
   async getAllBlobMetadata(
-    pubkey: string
-  ): Promise<Array<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  }>> {
-    // First get the latest blob to determine the highest sequence number
-    const latestBlob = await this.getLatestBlobMetadata(pubkey);
-    
-    if (!latestBlob) {
-      return [];
-    }
-    
-    const maxSequenceNumber = latestBlob.sequenceNumber;
-    const blobMetadataList: Array<{
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
       id: string;
       pubkey: string;
       hash: string;
@@ -178,45 +164,55 @@ export class TributaryServer implements Server {
       signature: string;
       sequenceNumber: number;
       createdAt: Date;
-    }> = [];
+    }>;
+    totalCount: number;
+  }> {
+    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/all`;
     
-    // Try to fetch each blob from 1 to maxSequenceNumber
-    // This assumes sequential numbering with no gaps
-    for (let seq = 1; seq <= maxSequenceNumber; seq++) {
-      try {
-        const blobId = `${pubkey}:${seq}`;
-        const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(blobId)}`;
-        
-        const headers: Record<string, string> = {};
-        
-        // Add auth header if authKey is provided
-        if (this.authKey) {
-          headers['Authorization'] = `Bearer ${this.authKey}`;
-        }
-        
-        const response = await fetch(url, { headers });
-        
-        if (response.ok) {
-          const blob = await response.json();
-          
-          blobMetadataList.push({
-            id: blob.id,
-            pubkey: blob.pubkey,
-            hash: blob.hash,
-            priorHash: blob.prior_hash,
-            signature: blob.signature,
-            sequenceNumber: blob.sequence_number,
-            createdAt: new Date(blob.created_at)
-          });
-        }
-        // If 404, just continue (blob doesn't exist or numbering isn't sequential)
-      } catch (error) {
-        // Continue with next sequence number on error
-        warn(`Failed to fetch blob ${seq}:`, (error as Error).message);
-      }
+    const params = new URLSearchParams();
+    if (startSequence !== undefined) {
+      params.set('start_sequence', startSequence.toString());
+    }
+    if (max !== undefined) {
+      params.set('max', max.toString());
     }
     
-    // Sort by sequence number to ensure proper order
-    return blobMetadataList.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    const urlString = params.toString() 
+      ? `${url}?${params.toString()}`
+      : url;
+    
+    const headers: Record<string, string> = {};
+    
+    // Add auth header if authKey is provided
+    if (this.authKey) {
+      headers['Authorization'] = `Bearer ${this.authKey}`;
+    }
+    
+    try {
+      const response = await fetch(urlString, { headers });
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        const blobs = result.blobs.map((blob: any) => ({
+          id: blob.id,
+          pubkey: blob.pubkey,
+          hash: blob.hash,
+          priorHash: blob.prior_hash,
+          signature: blob.signature,
+          sequenceNumber: blob.sequence_number,
+          createdAt: new Date(blob.created_at)
+        }));
+        
+        return {
+          blobs,
+          totalCount: result.total_count
+        };
+      } else {
+        throw new Error(`Failed to retrieve blob metadata: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to retrieve blob metadata: ${(error as Error).message}`);
+    }
   }
 }

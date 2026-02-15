@@ -26,7 +26,7 @@ describe('EditorPage', () => {
     })
     
     // Sync to ensure persistence
-    await stream.sync()
+    await stream.sync(1000)
     
     // Run indexing to create the slug
     const localDb = stream.local()
@@ -177,7 +177,7 @@ describe('EditorPage', () => {
     })
     
     // Sync to ensure persistence
-    await stream.sync()
+    await stream.sync(1000)
     
     // Run indexing to create the slug
     const localDb = stream.local()

@@ -12,10 +12,13 @@ export class TributaryClient {
   private server: Server;
   private streams: Map<string, TributaryStream> = new Map();
   private initialized: Promise<void>;
+  private defaultStream: TributaryStream | null = null;
 
   constructor(options: {
     server: Server;
     db?: PGlite; // Optional existing PGlite instance
+    privateKey?: string | Uint8Array; // Optional private key for default stream
+    collectionId?: string; // Optional collection ID for stream
   }) {
     this.server = options.server;
     // Use provided DB or create a new one
@@ -23,6 +26,20 @@ export class TributaryClient {
     
     // Initialize the tributary schema
     this.initialized = this.initializeTributarySchema();
+    
+    // If privateKey is provided, create a default stream
+    if (options.privateKey) {
+      // Use collectionId or default to 'default'
+      const appId = options.collectionId || 'default';
+      // Delay stream creation until after initialization
+      this.initialized = this.initialized.then(async () => {
+        try {
+          this.defaultStream = await this.addWriteKey(appId, options.privateKey!);
+        } catch (error) {
+          warn('Could not create default stream:', error as Error);
+        }
+      });
+    }
   }
 
   /**

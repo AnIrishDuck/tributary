@@ -77,3 +77,63 @@ Deno.test('Database operations work with real connection', async () => {
   }
 });
 
+Deno.test('Database getAllBlobMetadataPaginated with pagination', async () => {
+  const db = new Database(true);
+  
+  // Create unique pubkey for this test
+  const testPubkey = 'test-pubkey-pagination-' + Date.now();
+  
+  // Store 5 test blobs
+  for (let i = 1; i <= 5; i++) {
+    const testBlob: any = {
+      id: `${testPubkey}:${i}`,
+      pubkey: testPubkey,
+      data: new Uint8Array([i, i, i]),
+      hash: `test-hash-${i}`,
+      prior_hash: i === 1 ? '' : `test-hash-${i-1}`,
+      signature: `test-signature-${i}`,
+      sequence_number: i,
+      created_at: new Date()
+    };
+    
+    const result = await db.storeBlob(testBlob);
+    assert(result, `Failed to store blob ${i}`);
+  }
+  
+  console.log('Stored 5 blobs for pagination test');
+  
+  // Test 1: Get all blobs (no filter, no max)
+  console.log('Test 1: Get all blobs');
+  let result = await db.getAllBlobMetadataPaginated(testPubkey);
+  console.log(`Result: ${result.blobs.length} blobs, total_count: ${result.total_count}`);
+  assertEquals(result.blobs.length, 5);
+  assertEquals(result.total_count, 5);
+  
+  // Test 2: Get blobs with startSequence=1, max=2 (should get blobs 2,3 - AFTER sequence 1)
+  console.log('Test 2: Get blobs with startSequence=1, max=2');
+  result = await db.getAllBlobMetadataPaginated(testPubkey, 1, 2);
+  console.log(`Result: ${result.blobs.length} blobs, sequences: [${result.blobs.map(b => b.sequence_number).join(', ')}]`);
+  assertEquals(result.blobs.length, 2, 'Should get exactly 2 blobs');
+  assertEquals(result.total_count, 5, 'Total count should be 5');
+  assertEquals(result.blobs[0].sequence_number, 2, 'First blob should be sequence 2 (AFTER 1)');
+  assertEquals(result.blobs[1].sequence_number, 3, 'Second blob should be sequence 3');
+  
+  // Test 3: Get blobs with startSequence=3, max=10 (should get blobs 4,5 - AFTER sequence 3)
+  console.log('Test 3: Get blobs with startSequence=3, max=10');
+  result = await db.getAllBlobMetadataPaginated(testPubkey, 3, 10);
+  console.log(`Result: ${result.blobs.length} blobs, sequences: [${result.blobs.map(b => b.sequence_number).join(', ')}]`);
+  assertEquals(result.blobs.length, 2, 'Should get exactly 2 blobs (AFTER 3)');
+  assertEquals(result.total_count, 5, 'Total count should be 5');
+  assertEquals(result.blobs[0].sequence_number, 4, 'First blob should be sequence 4 (AFTER 3)');
+  assertEquals(result.blobs[1].sequence_number, 5, 'Second blob should be sequence 5');
+  
+  // Test 4: Get blobs with startSequence=6 (should get 0 blobs since max sequence is 5)
+  console.log('Test 4: Get blobs with startSequence=6');
+  result = await db.getAllBlobMetadataPaginated(testPubkey, 6, 10);
+  console.log(`Result: ${result.blobs.length} blobs`);
+  assertEquals(result.blobs.length, 0, 'Should get 0 blobs when startSequence is beyond available data');
+  assertEquals(result.total_count, 5, 'Total count should still be 5');
+  
+  console.log('Database getAllBlobMetadataPaginated test passed successfully');
+});
+

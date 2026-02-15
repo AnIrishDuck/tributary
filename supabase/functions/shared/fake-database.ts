@@ -131,4 +131,53 @@ export class FakeDatabase {
     }
     return result;
   }
+
+  // Get blob metadata with pagination
+  async getAllBlobMetadataPaginated(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{ blobs: BlobMetadata[]; total_count: number }> {
+    // First count ALL blobs for this pubkey
+    let totalCount = 0;
+    for (const blob of this.blobs.values()) {
+      if (blob.pubkey === pubkey) {
+        totalCount++;
+      }
+    }
+    
+    const blobsForPubkey: BlobMetadata[] = [];
+    
+    for (const blob of this.blobs.values()) {
+      if (blob.pubkey === pubkey) {
+        // Filter by sequence number if startSequence is provided
+        if (startSequence !== undefined && blob.sequence_number <= startSequence) {
+          continue;
+        }
+        blobsForPubkey.push({
+          id: blob.id,
+          pubkey: blob.pubkey,
+          hash: blob.hash,
+          prior_hash: blob.prior_hash,
+          signature: blob.signature,
+          sequence_number: blob.sequence_number,
+          created_at: blob.created_at,
+          data: new Uint8Array(blob.data)
+        });
+      }
+    }
+
+    // Sort by sequence number
+    blobsForPubkey.sort((a, b) => a.sequence_number - b.sequence_number);
+
+    // Apply limit if max is provided
+    const paginatedBlobs = max !== undefined 
+      ? blobsForPubkey.slice(0, max)
+      : blobsForPubkey;
+
+    return {
+      blobs: paginatedBlobs,
+      total_count: totalCount
+    };
+  }
 }

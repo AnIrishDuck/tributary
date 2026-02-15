@@ -22,6 +22,11 @@ export interface BlobMetadata {
   data: Uint8Array;
 }
 
+export interface BlobMetadataWithCount {
+  blobs: BlobMetadata[];
+  total_count: number;
+}
+
 export interface CollectionInfo {
   blob_count: number;
   first_blob_timestamp: Date | null;

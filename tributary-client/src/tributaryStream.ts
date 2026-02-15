@@ -370,8 +370,10 @@ export class TributaryStream {
 
   /**
    * Sync with server - retrieve and apply remote changes
+   * @param max Maximum number of blobs to fetch in this sync
+   * @returns true if all blobs have been synced, false if there are more blobs to fetch
    */
-  async sync() {
+  async sync(max: number): Promise<boolean> {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -384,20 +386,54 @@ export class TributaryStream {
     
     // Log start sequence number and hash when sync begins
     const initialLastSyncIndex = this.lastSyncIndex;
-    info(`SYNC START: Last sync index = ${initialLastSyncIndex}`);
+    info(`SYNC START: Last sync index = ${initialLastSyncIndex}, max blobs = ${max}`);
     
-    // Get all blob metadata from server, ordered by sequence number
-    const blobMetadataList = await this.server.getAllBlobMetadata(this.getPublicKeyBase64());
+    // Get paginated blob metadata from server
+    // Fetch blobs with sequence_number > lastSyncIndex, limited by max
+    const result = await this.server.getAllBlobMetadata(
+      this.getPublicKeyBase64(),
+      this.lastSyncIndex,
+      max
+    );
     
-    // Filter out blobs that have already been synced
-    const newBlobs = blobMetadataList.filter(blob => blob.sequenceNumber > this.lastSyncIndex);
+    info(`SYNC START: Server returned ${result.blobs.length} blobs, total_count = ${result.totalCount}`);
     
-    info(`SYNC START: Found ${newBlobs.length} new blobs to process (from sequence ${this.lastSyncIndex + 1} onwards)`);
+    // Track the previous blob's hash for chain verification
+    let expectedPriorHash = '';
+    if (result.blobs.length > 0 && result.blobs[0].sequenceNumber > 1) {
+      // We're not starting from the beginning, so we need to get the hash of the blob
+      // that comes before the first one we're syncing
+      const prevSequence = result.blobs[0].sequenceNumber - 1;
+      if (prevSequence === this.lastSyncIndex) {
+        // We just synced this blob, try to get it from server
+        const prevBlobMeta = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+        if (prevBlobMeta && prevBlobMeta.sequenceNumber >= prevSequence) {
+          // Get the specific blob at prevSequence
+          const prevBlob = await this.server.retrieveBlob(this.getPublicKeyBase64(), `${this.getPublicKeyBase64()}:${prevSequence}`);
+          if (prevBlob) {
+            expectedPriorHash = prevBlob.hash;
+          }
+        }
+      }
+    }
     
-    // Process each new blob in sequence order
-    for (const blobMetadata of newBlobs) {
+    // Process each blob in sequence order
+    for (let i = 0; i < result.blobs.length; i++) {
+      const blobMetadata = result.blobs[i];
       try {
         info(`SYNC PROCESSING: Retrieving blob ${blobMetadata.id} with sequence ${blobMetadata.sequenceNumber} and hash ${blobMetadata.hash}`);
+        
+        // Verify hash chain integrity
+        if (i === 0 && expectedPriorHash !== '' && blobMetadata.priorHash !== expectedPriorHash) {
+          error(`HASH CHAIN BROKEN: Blob ${blobMetadata.id} has priorHash=${blobMetadata.priorHash} but expected ${expectedPriorHash}`);
+          throw new Error(`Hash chain integrity violation at blob ${blobMetadata.id}: expected priorHash=${expectedPriorHash}, got ${blobMetadata.priorHash}`);
+        } else if (i > 0) {
+          const prevBlob = result.blobs[i - 1];
+          if (blobMetadata.priorHash !== prevBlob.hash) {
+            error(`HASH CHAIN BROKEN: Blob ${blobMetadata.id} has priorHash=${blobMetadata.priorHash} but previous blob has hash=${prevBlob.hash}`);
+            throw new Error(`Hash chain integrity violation at blob ${blobMetadata.id}: expected priorHash=${prevBlob.hash}, got ${blobMetadata.priorHash}`);
+          }
+        }
         
         // Retrieve the actual blob data
         const blob = await this.server.retrieveBlob(this.getPublicKeyBase64(), blobMetadata.id);
@@ -485,6 +521,17 @@ export class TributaryStream {
     
     // Save the last sync index for future sessions
     await this.saveLastSyncIndex();
+    
+    
+    // Save the last sync index for future sessions
+    await this.saveLastSyncIndex();
+    
+    // Return true if we've synced all blobs on the server
+    // Compare our lastSyncIndex with the server's total blob count
+    // If lastSyncIndex >= totalCount, we're fully synced
+    const isFullySynced = this.lastSyncIndex >= result.totalCount;
+    info(`SYNC COMPLETE: isFullySynced = ${isFullySynced} (lastSyncIndex=${this.lastSyncIndex}, total_count=${result.totalCount}, fetched ${result.blobs.length})`);
+    return isFullySynced;
   }
 
   /**
@@ -527,7 +574,7 @@ export class TributaryStream {
     const hash = await this.computeChainHash(priorHash, bodyHash);
     debug('ensureServerPersistence: Computed hash:', hash);
     
-    // Create the data to be signed (just the hash)
+    // Compute the data that should be signed (just the hash)
     const dataToSignBytes = new TextEncoder().encode(hash);
     debug('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
     debug('ensureServerPersistence: Data to sign:', hash);

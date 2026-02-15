@@ -283,3 +283,115 @@ Deno.test('Route handler with fake database: Error cases', async () => {
     throw error;
   }
 });
+
+Deno.test('FakeDatabase getAllBlobMetadataPaginated with pagination', async () => {
+  const db = new FakeDatabase();
+  
+  // Generate test key pair
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+  
+  // Create 5 blobs
+  const testData1 = new TextEncoder().encode('Blob 1');
+  const hash1 = await computeChainHash('', testData1);
+  const sig1 = generateTestSignature(new TextEncoder().encode(hash1), keyPair);
+  
+  const testData2 = new TextEncoder().encode('Blob 2');
+  const hash2 = await computeChainHash(hash1, testData2);
+  const sig2 = generateTestSignature(new TextEncoder().encode(hash2), keyPair);
+  
+  const testData3 = new TextEncoder().encode('Blob 3');
+  const hash3 = await computeChainHash(hash2, testData3);
+  const sig3 = generateTestSignature(new TextEncoder().encode(hash3), keyPair);
+  
+  const testData4 = new TextEncoder().encode('Blob 4');
+  const hash4 = await computeChainHash(hash3, testData4);
+  const sig4 = generateTestSignature(new TextEncoder().encode(hash4), keyPair);
+  
+  const testData5 = new TextEncoder().encode('Blob 5');
+  const hash5 = await computeChainHash(hash4, testData5);
+  const sig5 = generateTestSignature(new TextEncoder().encode(hash5), keyPair);
+  
+  // Store 5 blobs
+  await db.storeBlob({
+    id: `${encodedPubkey}:1`,
+    pubkey: encodedPubkey,
+    data: testData1,
+    hash: hash1,
+    prior_hash: '',
+    signature: sig1,
+    sequence_number: 1,
+    created_at: new Date()
+  });
+  
+  await db.storeBlob({
+    id: `${encodedPubkey}:2`,
+    pubkey: encodedPubkey,
+    data: testData2,
+    hash: hash2,
+    prior_hash: hash1,
+    signature: sig2,
+    sequence_number: 2,
+    created_at: new Date()
+  });
+  
+  await db.storeBlob({
+    id: `${encodedPubkey}:3`,
+    pubkey: encodedPubkey,
+    data: testData3,
+    hash: hash3,
+    prior_hash: hash2,
+    signature: sig3,
+    sequence_number: 3,
+    created_at: new Date()
+  });
+  
+  await db.storeBlob({
+    id: `${encodedPubkey}:4`,
+    pubkey: encodedPubkey,
+    data: testData4,
+    hash: hash4,
+    prior_hash: hash3,
+    signature: sig4,
+    sequence_number: 4,
+    created_at: new Date()
+  });
+  
+  await db.storeBlob({
+    id: `${encodedPubkey}:5`,
+    pubkey: encodedPubkey,
+    data: testData5,
+    hash: hash5,
+    prior_hash: hash4,
+    signature: sig5,
+    sequence_number: 5,
+    created_at: new Date()
+  });
+  
+  // Test 1: Get all blobs (no filter, no max)
+  let result = await db.getAllBlobMetadataPaginated(encodedPubkey);
+  assertEquals(result.blobs.length, 5);
+  assertEquals(result.total_count, 5);
+  
+  // Test 2: Get blobs with start_sequence=0, max=2 (should get 2 blobs, total=5)
+  result = await db.getAllBlobMetadataPaginated(encodedPubkey, 0, 2);
+  assertEquals(result.blobs.length, 2);
+  assertEquals(result.total_count, 5); // Total should still be 5, not filtered
+  assertEquals(result.blobs[0].sequence_number, 1);
+  assertEquals(result.blobs[1].sequence_number, 2);
+  
+  // Test 3: Get blobs with start_sequence=2, max=10 (should get 3 blobs: 3,4,5, total=5)
+  result = await db.getAllBlobMetadataPaginated(encodedPubkey, 2, 10);
+  assertEquals(result.blobs.length, 3);
+  assertEquals(result.total_count, 5);
+  assertEquals(result.blobs[0].sequence_number, 3);
+  assertEquals(result.blobs[1].sequence_number, 4);
+  assertEquals(result.blobs[2].sequence_number, 5);
+  
+  // Test 4: Get blobs with start_sequence=5 (should get 0 blobs, total=5)
+  result = await db.getAllBlobMetadataPaginated(encodedPubkey, 5, 10);
+  assertEquals(result.blobs.length, 0);
+  assertEquals(result.total_count, 5);
+  
+  console.log('FakeDatabase getAllBlobMetadataPaginated test passed successfully');
+});

@@ -186,4 +186,53 @@ export class Database {
       last_blob_timestamp
     };
   }
+
+  // Get blob metadata with pagination
+  async getAllBlobMetadataPaginated(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{ blobs: BlobMetadata[]; total_count: number }> {
+    let query = this.client
+      .from('blobs')
+      .select('id, pubkey, hash, prior_hash, signature, sequence_number, created_at, data')
+      .eq('pubkey', pubkey)
+      .order('sequence_number', { ascending: true });
+
+    // Filter by sequence number if startSequence is provided
+    // Note: We use > (not >=) because startSequence represents the last blob
+    // that was already processed, and we want to fetch blobs AFTER that one
+    if (startSequence !== undefined) {
+      query = query.gt('sequence_number', startSequence);
+    }
+
+    // Apply limit if max is provided
+    if (max !== undefined) {
+      query = query.limit(max);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Database error in getAllBlobMetadataPaginated:', error);
+      return { blobs: [], total_count: 0 };
+    }
+
+    // Get total count
+    const { count, error: countError } = await this.client
+      .from('blobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('pubkey', pubkey);
+
+    if (countError) {
+      console.error('Database error getting total count:', countError);
+    }
+
+    const blobs = (data || []).map(processDatabaseResponse) as BlobMetadata[];
+
+    return {
+      blobs,
+      total_count: count !== null ? count : 0
+    };
+  }
 }

@@ -113,6 +113,8 @@ export const createRouteHandler = (db: Database) => {
         
         if (endpoint === 'info') {
           return handleInfo(req, encodedPubkey, db);
+        } else if (endpoint === 'all') {
+          return handleAllMetadata(req, encodedPubkey, db);
         } else if (endpoint === 'latest') {
           return handleLatest(req, encodedPubkey, db);
         } else {
@@ -392,6 +394,51 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database): 
     }
   } catch (error) {
     console.error('Error in upload function:', error);
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+// GET /{encoded-pubkey}/all?start_sequence=X&max=Y
+// Get all blob metadata for a tributary stream with pagination
+async function handleAllMetadata(req: Request, encodedPubkey: string, db: Database): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    const startSequence = url.searchParams.get('start_sequence');
+    const max = url.searchParams.get('max');
+    
+    const startSeq = startSequence !== null ? parseInt(startSequence, 10) : undefined;
+    const maxCount = max !== null ? parseInt(max, 10) : undefined;
+    
+    // Get paginated blob metadata from the database
+    const result = await db.getAllBlobMetadataPaginated(encodedPubkey, startSeq, maxCount);
+    
+    return new Response(
+      JSON.stringify({
+        blobs: result.blobs.map(blob => ({
+          id: blob.id,
+          pubkey: blob.pubkey,
+          hash: blob.hash,
+          prior_hash: blob.prior_hash,
+          signature: blob.signature,
+          sequence_number: blob.sequence_number,
+          created_at: blob.created_at.toISOString(),
+          data: Array.from(blob.data)
+        })),
+        total_count: result.total_count
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    console.error('Error in all metadata function:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { 

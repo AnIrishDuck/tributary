@@ -61,17 +61,24 @@ export interface Server {
   /**
    * Get all blob metadata for a given public key, ordered by sequence number
    * @param pubkey Base64 encoded public key
-   * @returns Promise resolving to array of blob metadata ordered by sequence number
+   * @param startSequence Optional sequence number to fetch blobs before
+   * @param max Optional maximum number of blobs to return
+   * @returns Promise resolving to object with blobs array and total count
    */
   getAllBlobMetadata(
-    pubkey: string
-  ): Promise<Array<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  }>>;
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      id: string;
+      pubkey: string;
+      hash: string;
+      priorHash: string;
+      signature: string;
+      sequenceNumber: number;
+      createdAt: Date;
+    }>;
+    totalCount: number;
+  }>;
 }

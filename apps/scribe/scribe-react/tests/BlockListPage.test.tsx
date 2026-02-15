@@ -38,7 +38,7 @@ describe('BlockListPage', () => {
     
     // Check that the empty state is displayed
     expect(screen.getByText('No documents found')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Create your first document' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create first document' })).toBeInTheDocument()
   })
 
   it('should display a list of blocks after saving several documents', async () => {
@@ -94,8 +94,8 @@ describe('BlockListPage', () => {
     expect(screen.getByText('third-document')).toBeInTheDocument()
     expect(screen.getByText('another-document')).toBeInTheDocument()
     
-    // Check that the "New Document" button is present
-    expect(screen.getByRole('button', { name: 'New Document' })).toBeInTheDocument()
+    // Check that the "Create New Document" button is present
+    expect(screen.getByRole('button', { name: 'Create New Document' })).toBeInTheDocument()
   })
 
   it('should handle blocks with no titles', async () => {

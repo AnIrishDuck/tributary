@@ -26,7 +26,8 @@ export async function saveBlock(
   }
   
   // Sync to ensure persistence
-  await stream.sync()
+  // Using max of 1000 blobs to prevent memory issues
+  await stream.sync(1000)
   
   // After sync, create a local database and then run indexing on it
   const localDb = stream.local()

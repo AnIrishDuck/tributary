@@ -82,7 +82,7 @@ describe('GrantWriteAccessPage', () => {
     })
     
     // Sync to ensure the blocks are persisted in the server
-    await sourceStream.sync()
+    await sourceStream.sync(1000)
     
     // Verify the block exists in the source stream
     const sourceBlocks = await sourceLocalDb.query('SELECT * FROM block')

@@ -65,8 +65,8 @@ describe('BlockViewPage', () => {
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Check that the title is displayed (there are two instances - one in header, one in content)
-    expect(screen.getAllByText('Test Document')).toHaveLength(2)
+    // Check that the title is displayed (the title comes from markdown rendering, so only 1 instance)
+    expect(screen.getAllByText('Test Document')).toHaveLength(1)
     
     // Check that the rendered HTML content is present by looking at the DOM directly
     // The markdown content should be rendered inside the prose div
@@ -84,7 +84,7 @@ describe('BlockViewPage', () => {
     expect(boldElement?.textContent).toBe('test')
     
     // Check for the new document button
-    expect(screen.getByRole('button', { name: 'New Document' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
   })
 })
 

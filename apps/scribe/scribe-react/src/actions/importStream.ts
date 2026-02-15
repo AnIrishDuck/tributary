@@ -16,7 +16,8 @@ export async function importStream(client: TributaryClient, privateKeyBase64: st
   const stream = await client.addWriteKey('scribe', privateKey)
 
   // Sync first to get all existing data from the server
-  await stream.sync()
+  // Using max of 1000 blobs to prevent memory issues
+  await stream.sync(1000)
 
   // Get the local database instance
   const localDb = stream.local()

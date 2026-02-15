@@ -179,22 +179,48 @@ export class FakeServer implements Server {
   }
   
   async getAllBlobMetadata(
-    pubkey: string
-  ): Promise<Array<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  }>> {
-    // Filter blobs by pubkey and sort by sequence number
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      id: string;
+      pubkey: string;
+      hash: string;
+      priorHash: string;
+      signature: string;
+      sequenceNumber: number;
+      createdAt: Date;
+    }>;
+    totalCount: number;
+  }> {
+    // Filter blobs by pubkey
     const blobs = Array.from(this.blobs.values())
-      .filter(blob => blob.pubkey === pubkey)
-      .sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+      .filter(blob => blob.pubkey === pubkey);
+    
+    // Filter by sequence number if startSequence is provided
+    // Note: We use > (not >=) because startSequence represents the last blob
+    // that was already processed, and we want to fetch blobs AFTER that one
+    let filteredBlobs = blobs;
+    if (startSequence !== undefined) {
+      filteredBlobs = filteredBlobs.filter(blob => blob.sequenceNumber > startSequence);
+    }
+    
+    // Sort by sequence number
+    filteredBlobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    
+    // Apply limit if max is provided
+    let paginatedBlobs = filteredBlobs;
+    if (max !== undefined) {
+      paginatedBlobs = filteredBlobs.slice(0, max);
+    }
     
     // Return a copy of each blob to prevent external modification
-    return blobs.map(blob => ({ ...blob }));
+    const resultBlobs = paginatedBlobs.map(blob => ({ ...blob }));
+    
+    return {
+      blobs: resultBlobs,
+      totalCount: blobs.length
+    };
   }
 }

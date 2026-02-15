@@ -32,8 +32,22 @@ describe('Key Import Feature', () => {
     const sourceDB = new PGlite('memory://sourcedb')
     const sourceClient = new TributaryClient({ server, db: sourceDB })
     
-    // Use createStream action to create a new stream
-    const { stream: sourceStream, streamId: publicKeyBase64, privateKeyBase64 } = await createStream(sourceClient)
+    // Generate key pair directly instead of using createStream
+    // This allows us to have access to the server for blob verification
+    const keyPair = nacl.sign.keyPair()
+    
+    // Add the write key to create a new stream
+    const sourceStream = await sourceClient.addWriteKey('scribe', keyPair.secretKey)
+    
+    // Run scribe migrations on new stream
+    await up(sourceStream, sourceStream.local())
+    
+    // Sync the stream to ensure persistence
+    await sourceStream.sync(1000)
+    
+    // Get the public key
+    const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
+    const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey))
     
     // Create test blocks in source database
     const block1 = await createBlock(sourceStream, {
@@ -49,7 +63,7 @@ describe('Key Import Feature', () => {
     })
     
     // Sync to server to make the blocks available remotely
-    await sourceStream.sync()
+    await sourceStream.sync(1000)
     
     // Verify blocks were created in source database
     const sourceBlocks = await getAllBlocks(sourceStream)
@@ -57,12 +71,12 @@ describe('Key Import Feature', () => {
     expect(sourceBlocks.length).toBe(2)
     
     // Verify server has blobs for this stream
-    const sourceStreamBlobs = await server.getAllBlobMetadata(publicKeyBase64)
-    console.log(`Server has ${sourceStreamBlobs.length} blobs for this stream`)
-    expect(sourceStreamBlobs.length).toBeGreaterThan(0)
+    const sourceStreamBlobsResult = await server.getAllBlobMetadata(publicKeyBase64)
+    console.log(`Server has ${sourceStreamBlobsResult.blobs.length} blobs for this stream`)
+    expect(sourceStreamBlobsResult.blobs.length).toBeGreaterThan(0)
     
     // Log blob details
-    for (const blob of sourceStreamBlobs) {
+    for (const blob of sourceStreamBlobsResult.blobs) {
       console.log(`Blob: ${blob.pubkey}:${blob.sequenceNumber} - hash: ${blob.hash.substring(0, 8)}... - ${blob.data?.length || 0} bytes`)
     }
     
@@ -90,7 +104,7 @@ describe('Key Import Feature', () => {
     console.log('Imported stream lastSyncIndex:', importedStreamAny.lastSyncIndex)
     
     // Force one more sync
-    await importedStream.sync()
+    await importedStream.sync(1000)
     console.log('Sync completed')
     console.log('Imported stream lastSyncIndex after sync:', importedStreamAny.lastSyncIndex)
     
@@ -103,9 +117,9 @@ describe('Key Import Feature', () => {
       const importedPublicKey = importedStream.getPublicKeyBase64()
       console.log('Imported stream public key:', importedPublicKey)
       
-      const importedStreamBlobs = await server.getAllBlobMetadata(importedPublicKey)
-      console.log(`Server has ${importedStreamBlobs.length} blobs for imported stream`)
-      for (const blob of importedStreamBlobs) {
+      const importedStreamBlobsResult = await server.getAllBlobMetadata(importedPublicKey)
+      console.log(`Server has ${importedStreamBlobsResult.blobs.length} blobs for imported stream`)
+      for (const blob of importedStreamBlobsResult.blobs) {
         console.log(`Imported blob: ${blob.pubkey}:${blob.sequenceNumber} - hash: ${blob.hash.substring(0, 8)}...`)
       }
     }
