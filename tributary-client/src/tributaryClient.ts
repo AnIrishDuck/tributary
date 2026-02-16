@@ -342,11 +342,40 @@ export class TributaryClient {
       } else {
         debug('No local stream found in database for ID:', id);
       }
-    } catch (error: unknown) {
-      debug('Error retrieving local stream:', error);
-      warn('Could not retrieve local stream:', error as Error);
+    } catch (err: unknown) {
+      debug("Error retrieving stream:", err)
+      warn('Could not retrieve local stream:', err as Error);
     }
     
     return undefined;
+  }
+
+  /**
+   * Sync with server - retrieve and apply remote changes for all streams
+   * @param max Maximum number of blobs to fetch per stream in this sync
+   * @returns true if all streams are fully synced, false if any stream has more blobs to fetch
+   */
+  async sync(max: number = 1000): Promise<boolean> {
+    // Wait for initialization to complete
+    await this.initialized;
+    
+    let allFullySynced = true;
+    
+    // Sync all tracked streams
+    for (const stream of this.streams.values()) {
+      try {
+        info(`Syncing stream: ${stream.getId()}`);
+        const isFullySynced = await stream.sync(max);
+        if (!isFullySynced) {
+          allFullySynced = false;
+        }
+      } catch (err: unknown) {
+        const errorObj = err as Error;
+        error(`Failed to sync stream ${stream.getId()}:`, errorObj);
+        allFullySynced = false;
+      }
+    }
+    
+    return allFullySynced;
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
+import { useSyncStatus } from '../context/syncStatusContext'
 import { saveBlock } from '../actions/saveBlock'
 import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
@@ -8,7 +9,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { BlockSlug, AuthoritativeVersion, Block } from 'scribe-data'
 import { getBlockBySlug, getAuthoritativeVersionByBlockUuid, getBlockByVersion } from 'scribe-data'
-import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
+import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 
 const EditorPage: React.FC = () => {
   const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
@@ -17,6 +18,7 @@ const EditorPage: React.FC = () => {
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const navigate = useNavigate()
   const { client } = useTributary()
+  const { globalSyncStatus } = useSyncStatus()
   
   // Extract the streamId and optional slug id from params
   const { prefix, slug } = useParams()
@@ -25,6 +27,43 @@ const EditorPage: React.FC = () => {
   // - For /pk/:prefix/new route, slug is undefined
   // - For /pk/:prefix/:slug/edit route, slug is the document slug
   const isNewDocument = !slug || slug === 'new'
+
+  // Check if we're currently syncing
+  const isSyncing = globalSyncStatus?.isSyncing ?? false
+  const isSynced = globalSyncStatus?.synced ?? false
+
+  // If not synced, show a waiting screen
+  if (!isSynced) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
+        <div className="text-center max-w-lg">
+          <div className="bg-blue-50 rounded-2xl p-8 mb-6">
+            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              {isSyncing ? (
+                <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <ExclamationCircleIcon className="w-8 h-8 text-blue-600" />
+              )}
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {isSyncing ? 'Syncing Documents' : 'Documents Still Syncing'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {isSyncing 
+                ? 'Please wait while we sync the latest changes from the server.'
+                : 'Some documents are still syncing. Please wait a moment before making edits.'}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400">
+            Edits will be available once syncing is complete.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // If editing an existing document, we would load it here
   useEffect(() => {

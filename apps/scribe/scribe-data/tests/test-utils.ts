@@ -1,5 +1,4 @@
-import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client'
-import { FakeServer } from 'tributary-client/src/fakeServer.js'
+import { TributaryClient, TributaryStream, TributaryLocal, FakeServer } from 'tributary-client'
 import nacl from 'tweetnacl'
 import { encodeBase64 } from 'tweetnacl-util'
 import { PGlite } from '@electric-sql/pglite'

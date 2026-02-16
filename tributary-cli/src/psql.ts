@@ -33,7 +33,7 @@ export async function executeSQL(
   const shouldSync = options.sync !== false; // Default to true
   if (shouldSync) {
     info('Syncing with server...');
-    await stream.sync();
+    await stream.sync(1000);
   }
   
   // Execute the SQL command if provided

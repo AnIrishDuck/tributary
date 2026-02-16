@@ -150,6 +150,9 @@ describe('GrantWriteAccessPage', () => {
     expect(importedStream).toBeDefined()
     
     if (importedStream) {
+      // Manually sync to pull in the rest of the data (importStream only does initial sync with max=1)
+      await importedStream.sync(1000)
+      
       const importedLocalDb = importedStream.local()
       const importedBlocks = await importedLocalDb.query('SELECT * FROM block')
       

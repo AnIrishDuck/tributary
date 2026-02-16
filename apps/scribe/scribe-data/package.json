@@ -12,7 +12,7 @@
     "test:watch": "vitest tests/"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.0",
+    "@electric-sql/pglite": "^0.3.11",
     "@types/uuid": "^10.0.0",
     "urlsafe-base64": "^1.0.0",
     "uuid": "^13.0.0"

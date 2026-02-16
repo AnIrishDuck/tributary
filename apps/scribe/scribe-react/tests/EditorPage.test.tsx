@@ -3,10 +3,20 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream } from './test-utils'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
+import { SyncStatusProvider } from '../src/context/syncStatusContext'
 import { routes } from '../src/route'
 import { getBlockCount, getBlockVersionCount } from 'scribe-data/src/block'
 import { createBlock } from 'scribe-data/src/block'
 import { indexSlugs, getBlockSlugByUuid } from 'scribe-data/src/indexing'
+
+// Helper to wrap components with both providers
+const WithProviders = ({ client, children }: { client: any, children: React.ReactNode }) => (
+  <SyncStatusProvider client={client} pollInterval={100}>
+    <TributaryProvider client={client}>
+      {children}
+    </TributaryProvider>
+  </SyncStatusProvider>
+)
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -45,9 +55,9 @@ describe('EditorPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to render fully
@@ -64,9 +74,9 @@ describe('EditorPage', () => {
     const { client } = createTestTributaryClient()
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to render fully
@@ -87,9 +97,9 @@ describe('EditorPage', () => {
     })
     
     const { unmount } = render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to render fully
@@ -142,9 +152,9 @@ describe('EditorPage', () => {
     })
     
     const { unmount } = render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to render fully
@@ -196,9 +206,9 @@ describe('EditorPage', () => {
     })
     
     const { rerender } = render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={editRouter} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the editor to load and show it's editing existing document
@@ -220,6 +230,7 @@ describe('EditorPage', () => {
   })
 })
 
+describe('EditorPage Additional Tests', () => {
   it('should render EditorPage at /pk/:prefix/new route and load without errors', async () => {
     // This test verifies that the route /pk/:prefix/new actually renders and works
     
@@ -235,9 +246,9 @@ describe('EditorPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the page to fully load - check for "New Document" heading
@@ -249,3 +260,4 @@ describe('EditorPage', () => {
     const errorEl = screen.queryByText(/Error|error/)
     expect(errorEl).toBeNull()
   })
+})

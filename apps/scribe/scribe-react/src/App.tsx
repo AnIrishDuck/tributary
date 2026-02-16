@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { RouterProvider, createHashRouter } from 'react-router'
 import { routes } from './route'
 import { TributaryProvider } from './context/tributaryContext'
+import { SyncStatusProvider } from './context/syncStatusContext'
 import { TributaryClient, TributaryServer } from 'tributary-client'
 import { getPGlite } from './db/persistence'
 import { CONFIG } from './config'
@@ -105,11 +106,13 @@ function App() {
   }
 
   return (
-    <TributaryProvider client={client}>
-      <div className="min-h-screen bg-gray-50">
-        <RouterProvider router={router} />
-      </div>
-    </TributaryProvider>
+    <SyncStatusProvider client={client}>
+      <TributaryProvider client={client}>
+        <div className="min-h-screen bg-gray-50">
+          <RouterProvider router={router} />
+        </div>
+      </TributaryProvider>
+    </SyncStatusProvider>
   )
 }
 

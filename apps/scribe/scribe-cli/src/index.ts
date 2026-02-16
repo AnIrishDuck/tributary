@@ -1,9 +1,8 @@
 #!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import { TributaryClient, TributaryServer } from 'tributary-client';
-import { indexSlugs } from '@tributary/scribe-data';
-import { up } from '@tributary/scribe-data/dist/migrations.js';
+import { TributaryClient, createCliServer } from 'tributary-client';
+import { indexSlugs, ensureMigrations } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
@@ -51,8 +50,8 @@ async function createClient(directory: string, readKeyPath?: string, writeKeyPat
   // Create PGlite instance with persistent storage
   const pglite = new PGlite(pglitePath);
   
-  // Create server instance pointing to the tributary server
-  const server = new TributaryServer('http://tributary:8080');
+  // Create server instance using TRIBUTARY_CLI_URL environment variable
+  const server = createCliServer();
   
   // Create TributaryClient
   const client = new TributaryClient({
@@ -100,17 +99,11 @@ program
       // Create client and stream
       const { client, stream } = await createClient(directory, options.readKey, options.writeKey, options.db);
       
-      // Run migrations to ensure tables exist
-      try {
-        await up(stream, stream.local());
-      } catch (error: any) {
-        // Ignore "already exists" errors as tables may already exist from previous syncs
-        if (!error.message.includes('already exists')) {
-          console.error('Error creating tables:', error);
-          throw error;
-        }
-        // If tables already exist, that's fine - continue
-      }
+      // Sync FIRST to get existing data from server
+      await stream.sync(1000);
+      
+      // Ensure migrations are run (creates local tables only for existing streams)
+      await ensureMigrations(stream, true);
       
       // Parse limit option
       const limit = parseInt(options.limit);
@@ -178,19 +171,9 @@ Do not manually edit or add files here.
       // Create client and stream
       const { client, stream } = await createClient(directory, undefined, options.writeKey, options.db);
       
-      // Run migrations to create tables
-      try {
-        await up(stream, stream.local());
-        console.log('Database tables created successfully');
-      } catch (error: any) {
-        // Ignore "already exists" errors as tables may already exist from previous syncs
-        if (!error.message.includes('already exists')) {
-          console.error('Error creating tables:', error);
-          throw error;
-        }
-        // If tables already exist, that's fine - continue
-        console.log('Database tables already exist');
-      }
+      // Ensure migrations are run for a NEW stream (creates stream + local tables)
+      await ensureMigrations(stream, true);
+      console.log('Database tables initialized');
       
       // Only create seed document if --empty is not specified
       if (!options.empty) {

@@ -5,6 +5,7 @@ export { TributaryLocal } from './tributaryLocal.js';
 export { TributaryServer } from './tributaryServer.js';
 export { FakeServer } from './fakeServer.js';
 export { createTestServer } from './testUtils.js';
+export { createCliServer } from './cliUtils.js';
 export type { Server } from './server.js';
 export { computeHash } from './hashUtils.js';
 export {

@@ -1,6 +1,6 @@
 import { TributaryClient } from 'tributary-client'
 import * as base64url from 'urlsafe-base64'
-import { up } from 'scribe-data'
+import { ensureMigrations } from 'scribe-data'
 
 /**
  * Import an existing stream using a private key
@@ -15,9 +15,13 @@ export async function importStream(client: TributaryClient, privateKeyBase64: st
   // Add the write key to get or create the stream
   const stream = await client.addWriteKey('scribe', privateKey)
 
-  // Sync first to get all existing data from the server
+  // Sync FIRST to get all existing data from the server (including stream table creation)
   // Using max of 1000 blobs to prevent memory issues
-  await stream.sync(1000)
+  await stream.sync(1)
+
+  // Run migrations for an EXISTING stream (only creates local tables, isNew=false)
+  // The stream tables (block) were already created via sync
+  await ensureMigrations(stream, false)
 
   // Get the local database instance
   const localDb = stream.local()
