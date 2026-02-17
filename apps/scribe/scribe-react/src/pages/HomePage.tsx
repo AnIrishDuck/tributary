@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon } from '@heroicons/react/24/outline'
-import { getStreams } from '../actions/getStreams'
+import { getStreams, StreamInfo } from '../actions/getStreams'
 import { useTributary } from '../context/tributaryContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
-  const [streams, setStreams] = useState<string[]>([])
+  const [streams, setStreams] = useState<StreamInfo[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -63,14 +63,21 @@ const HomePage: React.FC = () => {
             </div>
             <div className="px-8 py-6 bg-gray-50">
               <div className="space-y-3">
-                {streams.map((streamId) => {
+                {streams.map((stream) => {
                   // Stream ID is base64url encoded public key
                   // Show pk/ prefix followed by the full encoded key
-                  const displayId = `pk/${streamId}`
+                  const displayId = `pk/${stream.streamId}`
+                  const lastEditedText = stream.lastEdited
+                    ? new Date(stream.lastEdited).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })
+                    : 'No edits yet'
                   return (
                     <Link
-                      key={streamId}
-                      to={`/pk/${streamId}/`}
+                      key={stream.streamId}
+                      to={`/pk/${stream.streamId}/`}
                       className="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 group"
                     >
                       <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-purple-100 text-purple-600 group-hover:bg-purple-200">
@@ -80,7 +87,7 @@ const HomePage: React.FC = () => {
                         <h4 className="text-base font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                           {displayId}
                         </h4>
-                        <p className="text-sm text-gray-500">Last edited: Just now</p>
+                        <p className="text-sm text-gray-500">Last edited: {lastEditedText}</p>
                       </div>
                       <div className="flex-shrink-0">
                         <svg className="h-5 w-5 text-gray-400 group-hover:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

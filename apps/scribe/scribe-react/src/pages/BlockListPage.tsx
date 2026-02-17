@@ -151,7 +151,7 @@ const BlockListPage: React.FC = () => {
                     
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <span className="text-sm text-gray-500">
-                        {new Date(block.indexed_at).toLocaleDateString('en-US', {
+                        {new Date(block.insert_datetime).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'

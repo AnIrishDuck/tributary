@@ -116,7 +116,8 @@ describe('HomePage', () => {
     // Verify the stream was created
     const createdStreams = await getStreams(client)
     expect(createdStreams.length).toBe(1)
-    expect(createdStreams[0]).toBe(streamId)
+    expect(createdStreams[0].streamId).toBe(streamId)
+    expect(createdStreams[0].lastEdited).toBeNull() // No blocks yet
     
     const router = createMemoryRouter(routes, {
       initialEntries: ['/']

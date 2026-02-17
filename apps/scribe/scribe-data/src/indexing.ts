@@ -549,7 +549,7 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
 /**
  * Get all blocks with their titles and slugs
  * @param db The TributaryLocal database instance
- * @returns Array of blocks with titles and slugs
+ * @returns Array of blocks with titles and slugs, sorted by most recently edited first
  */
 export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockSlugRow[]> {
   const result = await db.query(
@@ -557,11 +557,26 @@ export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockS
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
-     ORDER BY bs.title ASC`,
+     ORDER BY b.insert_datetime DESC`,
     []
   )
-  
+
   return (result.rows || []) as BlockSlugRow[]
+}
+
+/**
+ * Get the last edited time for a stream
+ * @param db The TributaryLocal database instance
+ * @returns ISO string of the most recent block edit time, or null if no blocks exist
+ */
+export async function getLastEditedTime(db: TributaryLocal): Promise<string | null> {
+  const result = await db.query(
+    `SELECT MAX(insert_datetime) as last_edited FROM block`,
+    []
+  )
+
+  const row = result.rows?.[0] as LastEditedResult | undefined
+  return row?.last_edited || null
 }
 
 /**

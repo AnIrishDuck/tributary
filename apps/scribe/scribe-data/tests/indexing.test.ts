@@ -1,15 +1,17 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { up } from '../src/migrations.js'
-import { 
+import {
   indexSlugs,
   indexAll,
-  extractTitleFromMarkdown, 
-  titleToSlug, 
+  extractTitleFromMarkdown,
+  titleToSlug,
   extractTagsFromMarkdown,
   getBlockSlugByUuid,
   getAuthoritativeVersionByBlockUuid,
   getTagsForBlock,
+  getAllBlocksWithTitles,
+  getLastEditedTime,
   IndexSlugsResult
 } from '../src/indexing.js'
 import { searchBlocks } from '../src/search.js'
@@ -415,26 +417,237 @@ describe('scribe-data indexing', () => {
       body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
       inserter: 'test-user'
     })
-    
+
     const block2 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# Python Guide\n\nPython programming essentials.',
       inserter: 'test-user'
     })
-    
+
     // Run indexAll
     const result = await indexAll(localDb)
-    
+
     expect(result.indexedCount).toBe(2)
     expect(result.hasMore).toBe(false)
-    
+
     // Verify slugs were created
     const slug1 = await getBlockSlugByUuid(localDb, block1.block_uuid)
     expect(slug1?.slug).toBe('javascript-tutorial')
-    
+
     // Verify search vectors were created
     const searchResults = await searchBlocks(localDb, 'JavaScript')
     expect(searchResults).toHaveLength(1)
     expect(searchResults[0].block_uuid).toBe(block1.block_uuid)
+  })
+
+  describe('getAllBlocksWithTitles', () => {
+    test('should return blocks sorted by insert_datetime in descending order (most recent first)', async () => {
+      // Create blocks with a delay between them to ensure different insert_datetime
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# First Document\n\nThis is the first document.',
+        inserter: 'test-user'
+      })
+
+      // Small delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Second Document\n\nThis is the second document.',
+        inserter: 'test-user'
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const block3 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Third Document\n\nThis is the third document.',
+        inserter: 'test-user'
+      })
+
+      // Index the blocks
+      await indexSlugs(localDb)
+
+      // Get all blocks with titles
+      const blocks = await getAllBlocksWithTitles(localDb)
+
+      expect(blocks).toHaveLength(3)
+
+      // Verify they are sorted by insert_datetime DESC (most recent first)
+      expect(blocks[0].title).toBe('Third Document')
+      expect(blocks[1].title).toBe('Second Document')
+      expect(blocks[2].title).toBe('First Document')
+    })
+
+    test('should return insert_datetime for each block', async () => {
+      const now = new Date()
+
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test Document\n\nThis is a test.',
+        inserter: 'test-user'
+      })
+
+      // Index the block
+      await indexSlugs(localDb)
+
+      // Get all blocks with titles
+      const blocks = await getAllBlocksWithTitles(localDb)
+
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].title).toBe('Test Document')
+
+      // Verify insert_datetime is present and is a valid ISO date string
+      expect(blocks[0].insert_datetime).toBeDefined()
+      const insertDate = new Date(blocks[0].insert_datetime)
+      expect(insertDate.getTime()).not.toBeNaN()
+
+      // The insert_datetime should be recent (within the last minute)
+      const oneMinuteAgo = new Date(now.getTime() - 60000)
+      expect(insertDate.getTime()).toBeGreaterThan(oneMinuteAgo.getTime())
+    })
+
+    test('should return indexed_at for each block', async () => {
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test Document\n\nThis is a test.',
+        inserter: 'test-user'
+      })
+
+      // Index the block
+      await indexSlugs(localDb)
+
+      // Get all blocks with titles
+      const blocks = await getAllBlocksWithTitles(localDb)
+
+      expect(blocks).toHaveLength(1)
+
+      // Verify indexed_at is present and is a valid ISO date string
+      expect(blocks[0].indexed_at).toBeDefined()
+      const indexedDate = new Date(blocks[0].indexed_at)
+      expect(indexedDate.getTime()).not.toBeNaN()
+    })
+
+    test('should sort blocks by most recent edit after updating a block', async () => {
+      // Create initial blocks
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# First Document\n\nOriginal content.',
+        inserter: 'test-user'
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Second Document\n\nOriginal content.',
+        inserter: 'test-user'
+      })
+
+      // Index both blocks
+      await indexSlugs(localDb)
+
+      // Verify initial sort order (block2 should be first since it's newer)
+      let blocks = await getAllBlocksWithTitles(localDb)
+      expect(blocks[0].title).toBe('Second Document')
+      expect(blocks[1].title).toBe('First Document')
+
+      // Wait a bit, then update block1 (which is older)
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      await createBlockVersion(syncedDb, block1.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# First Document Updated\n\nUpdated content.',
+        inserter: 'test-user'
+      })
+
+      // Re-index
+      await indexSlugs(localDb)
+
+      // Verify new sort order (block1 should now be first since it was edited most recently)
+      blocks = await getAllBlocksWithTitles(localDb)
+      expect(blocks[0].title).toBe('First Document Updated')
+      expect(blocks[1].title).toBe('Second Document')
+    })
+  })
+
+  describe('getLastEditedTime', () => {
+    test('should return null when there are no blocks', async () => {
+      const lastEdited = await getLastEditedTime(localDb)
+      expect(lastEdited).toBeNull()
+    })
+
+    test('should return the insert_datetime of a single block', async () => {
+      const beforeCreate = new Date()
+
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test Document\n\nThis is a test.',
+        inserter: 'test-user'
+      })
+
+      const lastEdited = await getLastEditedTime(localDb)
+
+      expect(lastEdited).not.toBeNull()
+      const lastEditedDate = new Date(lastEdited!)
+      expect(lastEditedDate.getTime()).not.toBeNaN()
+
+      // The last edited time should be after the beforeCreate time
+      expect(lastEditedDate.getTime()).toBeGreaterThanOrEqual(beforeCreate.getTime())
+    })
+
+    test('should return the most recent insert_datetime when there are multiple blocks', async () => {
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# First Document\n\nFirst content.',
+        inserter: 'test-user'
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Second Document\n\nSecond content.',
+        inserter: 'test-user'
+      })
+
+      const lastEdited = await getLastEditedTime(localDb)
+
+      expect(lastEdited).not.toBeNull()
+      const lastEditedDate = new Date(lastEdited!)
+
+      // The last edited time should match the second block's insert_datetime
+      expect(lastEditedDate.getTime()).toBe(new Date(block2.insert_datetime).getTime())
+    })
+
+    test('should update when a new version is created', async () => {
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# First Document\n\nFirst content.',
+        inserter: 'test-user'
+      })
+
+      const initialLastEdited = await getLastEditedTime(localDb)
+
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      // Create a new version of the same block
+      const blockV2 = await createBlockVersion(syncedDb, block1.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# First Document Updated\n\nUpdated content.',
+        inserter: 'test-user'
+      })
+
+      const updatedLastEdited = await getLastEditedTime(localDb)
+
+      expect(updatedLastEdited).not.toBeNull()
+      expect(new Date(updatedLastEdited!).getTime()).toBeGreaterThan(
+        new Date(initialLastEdited!).getTime()
+      )
+
+      // The updated last edited time should match the new version's insert_datetime
+      expect(new Date(updatedLastEdited!).getTime()).toBe(new Date(blockV2.insert_datetime).getTime())
+    })
   })
 })

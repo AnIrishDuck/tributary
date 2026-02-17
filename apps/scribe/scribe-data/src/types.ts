@@ -89,6 +89,7 @@ export interface BlockSlugRow {
   slug: string
   title: string
   indexed_at: string // ISO string for database storage
+  insert_datetime: string // ISO string - when the block was last edited
 }
 
 /**
