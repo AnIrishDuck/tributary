@@ -71,6 +71,23 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
       PRIMARY KEY (block_uuid, tag)
     )
   `)
+
+  // Create the block_search_index table for full-text search (non-synchronized)
+  await local.exec(`
+    CREATE TABLE IF NOT EXISTS block_search_index (
+      block_uuid TEXT PRIMARY KEY,
+      version_uuid TEXT NOT NULL,
+      search_vector TSVECTOR NOT NULL,
+      indexed_at TEXT NOT NULL
+    )
+  `)
+
+  // Create GIN index for fast full-text search
+  await local.exec(`
+    CREATE INDEX IF NOT EXISTS idx_block_search_vector 
+    ON block_search_index 
+    USING GIN (search_vector)
+  `)
 }
 
 /**
@@ -85,6 +102,7 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  * Migration to drop the block table
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
+  await localDb.exec('DROP TABLE IF EXISTS block_search_index')
   await localDb.exec('DROP TABLE IF EXISTS block_tag')
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS block_slug')

@@ -139,3 +139,11 @@ export interface BlockWithTags extends Block {
  * Type for a complete indexed block with all metadata
  */
 export interface IndexedBlock extends BlockWithVersion, BlockWithSlug, BlockWithTags {}
+
+// Re-export search types from search.ts
+export type {
+  SearchOptions,
+  SearchResult,
+  IndexSearchOptions,
+  IndexSearchResult
+} from './search.js'

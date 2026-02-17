@@ -134,6 +134,31 @@ export interface BlockTagTable {
 }
 
 /**
+ * Database representation of a block search index (non-synchronized)
+ */
+export interface BlockSearchIndexTable {
+  /**
+   * Unique identifier for the block
+   */
+  block_uuid: string
+
+  /**
+   * Version UUID of the indexed version
+   */
+  version_uuid: string
+
+  /**
+   * PostgreSQL tsvector for full-text search
+   */
+  search_vector: string  // Note: stored as TEXT in schema, but PostgreSQL treats it as TSVECTOR
+
+  /**
+   * Timestamp when this search vector was indexed (ISO string format)
+   */
+  indexed_at: string
+}
+
+/**
  * The main database schema for the scribe app
  */
 export interface ScribeSchema {
@@ -161,6 +186,11 @@ export interface ScribeSchema {
    * Table containing block tags (non-synchronized)
    */
   block_tag: BlockTagTable
+
+  /**
+   * Table containing block search indexes (non-synchronized)
+   */
+  block_search_index: BlockSearchIndexTable
 }
 
 /**

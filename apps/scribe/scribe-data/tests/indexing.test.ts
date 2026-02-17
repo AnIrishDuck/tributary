@@ -2,7 +2,8 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { up } from '../src/migrations.js'
 import { 
-  indexSlugs, 
+  indexSlugs,
+  indexAll,
   extractTitleFromMarkdown, 
   titleToSlug, 
   extractTagsFromMarkdown,
@@ -11,6 +12,7 @@ import {
   getTagsForBlock,
   IndexSlugsResult
 } from '../src/indexing.js'
+import { searchBlocks } from '../src/search.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { createBlock, createBlockVersion } from '../src/block.js'
@@ -404,5 +406,35 @@ describe('scribe-data indexing', () => {
     expect(tags).toHaveLength(2)
     expect(tags).toContain('newtag')
     expect(tags).toContain('different')
+  })
+
+  test('should index both slugs and search vectors with indexAll', async () => {
+    // Create test blocks
+    const block1 = await createBlock(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+      inserter: 'test-user'
+    })
+    
+    const block2 = await createBlock(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Python Guide\n\nPython programming essentials.',
+      inserter: 'test-user'
+    })
+    
+    // Run indexAll
+    const result = await indexAll(localDb)
+    
+    expect(result.indexedCount).toBe(2)
+    expect(result.hasMore).toBe(false)
+    
+    // Verify slugs were created
+    const slug1 = await getBlockSlugByUuid(localDb, block1.block_uuid)
+    expect(slug1?.slug).toBe('javascript-tutorial')
+    
+    // Verify search vectors were created
+    const searchResults = await searchBlocks(localDb, 'JavaScript')
+    expect(searchResults).toHaveLength(1)
+    expect(searchResults[0].block_uuid).toBe(block1.block_uuid)
   })
 })

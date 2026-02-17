@@ -1,0 +1,593 @@
+import { test, expect, describe, beforeEach, afterEach } from 'vitest'
+import { v4 as uuidv4 } from 'uuid'
+import { up } from '../src/migrations.js'
+import { 
+  searchBlocks, 
+  indexSearchVectors,
+  extractSearchableText,
+  type SearchResult
+} from '../src/search.js'
+import { indexSlugs, indexAll } from '../src/indexing.js'
+import { createTestDB } from './test-utils.js'
+import { TributaryStream, TributaryLocal } from 'tributary-client'
+import { createBlock, createBlockVersion } from '../src/block.js'
+
+describe('Full-text search', () => {
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const result = await createTestDB()
+    syncedDb = result.syncedDb
+    localDb = result.localDb
+    cleanup = async () => {
+      // Cleanup is handled by the test framework
+    }
+    await up(syncedDb, localDb)
+  })
+
+  afterEach(async () => {
+    if (cleanup) await cleanup()
+  })
+
+  describe('Text extraction', () => {
+    test('should extract plain text from simple markdown', () => {
+      const markdown = '# Title\n\nThis is **bold** and *italic* text.'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Title This is bold and italic text.')
+    })
+
+    test('should remove markdown headers but keep text', () => {
+      const markdown = '# Header 1\n## Header 2\n### Header 3\nPlain text'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Header 1 Header 2 Header 3 Plain text')
+    })
+
+    test('should remove markdown bold and italic but keep text', () => {
+      const markdown = 'This is **bold** and __also bold__ and *italic* and _also italic_ text.'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('This is bold and also bold and italic and also italic text.')
+    })
+
+    test('should remove markdown links but keep link text', () => {
+      const markdown = 'This is a [link](https://example.com) and another [link](url).'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('This is a link and another link.')
+    })
+
+    test('should remove code blocks and inline code', () => {
+      const markdown = 'Text with `inline code` and\n```\ncode block\n```\nmore text.'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Text with and more text.')
+    })
+
+    test('should handle empty or whitespace-only content', () => {
+      expect(extractSearchableText('')).toBe('')
+      expect(extractSearchableText('   \n  \n  ')).toBe('')
+      expect(extractSearchableText('```\ncode\n```')).toBe('')
+    })
+
+    test('should normalize whitespace', () => {
+      const markdown = 'Multiple    spaces\n\n\nand\n\nnewlines'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Multiple spaces and newlines')
+    })
+
+    test('should remove images but keep alt text', () => {
+      const markdown = 'Text with ![alt text](image.png) image.'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Text with alt text image.')
+    })
+
+    test('should remove list markers', () => {
+      const markdown = '- Item 1\n- Item 2\n1. Numbered 1\n2. Numbered 2'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Item 1 Item 2 Numbered 1 Numbered 2')
+    })
+
+    test('should remove blockquote markers', () => {
+      const markdown = '> This is a quote\n> Another line'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('This is a quote Another line')
+    })
+
+    test('should remove horizontal rules', () => {
+      const markdown = 'Text\n---\nMore text\n***\nEven more'
+      const text = extractSearchableText(markdown)
+      expect(text).toBe('Text More text Even more')
+    })
+  })
+
+  describe('Search vector indexing', () => {
+    test('should index search vectors for new blocks', async () => {
+      // Create test block
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+
+      // Index authoritative versions first (required for search indexing)
+      await indexSlugs(localDb)
+      
+      // Index search vectors
+      const result = await indexSearchVectors(localDb)
+      
+      expect(result.indexedCount).toBe(1)
+      expect(result.hasMore).toBe(false)
+
+      // Verify search vector was created
+      const searchResult = await localDb.query(
+        'SELECT * FROM block_search_index WHERE block_uuid = $1',
+        [block.block_uuid]
+      )
+      
+      expect(searchResult.rows).toHaveLength(1)
+      expect(searchResult.rows![0].version_uuid).toBe(block.version_uuid)
+    })
+
+    test('should update search vector when block version changes', async () => {
+      // Create initial block
+      const blockV1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Original Content\n\nThis is the first version.',
+        inserter: 'test-user'
+      })
+
+      // Index first version
+      await indexSlugs(localDb)
+      await indexSearchVectors(localDb)
+
+      // Create new version
+      const blockV2 = await createBlockVersion(syncedDb, blockV1.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# Updated Content\n\nThis is the updated version.',
+        inserter: 'test-user'
+      })
+
+      // Index should be updated
+      await indexSlugs(localDb)
+      const result = await indexSearchVectors(localDb)
+      
+      expect(result.indexedCount).toBe(1)
+
+      // Verify search vector was updated
+      const searchResult = await localDb.query(
+        'SELECT * FROM block_search_index WHERE block_uuid = $1',
+        [blockV1.block_uuid]
+      )
+      
+      expect(searchResult.rows).toHaveLength(1)
+      expect(searchResult.rows![0].version_uuid).toBe(blockV2.version_uuid)
+    })
+
+    test('should handle blocks without content', async () => {
+      // Create block with only markdown syntax (no actual text)
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '```\ncode\n```',
+        inserter: 'test-user'
+      })
+
+      await indexSlugs(localDb)
+      const result = await indexSearchVectors(localDb)
+      
+      // Should process but not create search vector for empty content
+      expect(result.indexedCount).toBe(0)
+
+      // Verify no search vector was created
+      const searchResult = await localDb.query(
+        'SELECT * FROM block_search_index WHERE block_uuid = $1',
+        [block.block_uuid]
+      )
+      
+      expect(searchResult.rows).toHaveLength(0)
+    })
+
+    test('should respect indexing limit', async () => {
+      // Create multiple blocks
+      for (let i = 0; i < 5; i++) {
+        await createBlock(syncedDb, {
+          block_type: 'scribe/markdown',
+          body: `# Document ${i}\n\nContent for document ${i}.`,
+          inserter: 'test-user'
+        })
+      }
+
+      await indexSlugs(localDb)
+      
+      // Index with limit
+      const result1 = await indexSearchVectors(localDb, { limit: 3 })
+      expect(result1.indexedCount).toBe(3)
+      expect(result1.hasMore).toBe(true)
+
+      // Index remaining
+      const result2 = await indexSearchVectors(localDb, { limit: 3 })
+      expect(result2.indexedCount).toBe(2)
+      expect(result2.hasMore).toBe(false)
+    })
+
+    test('should delete search vector for blocks with no searchable text', async () => {
+      // Create block with text
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Title\n\nSome content.',
+        inserter: 'test-user'
+      })
+
+      await indexSlugs(localDb)
+      await indexSearchVectors(localDb)
+
+      // Verify search vector exists
+      let searchResult = await localDb.query(
+        'SELECT * FROM block_search_index WHERE block_uuid = $1',
+        [block.block_uuid]
+      )
+      expect(searchResult.rows).toHaveLength(1)
+
+      // Update to version with no searchable text
+      await createBlockVersion(syncedDb, block.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '```\nonly code\n```',
+        inserter: 'test-user'
+      })
+
+      await indexSlugs(localDb)
+      await indexSearchVectors(localDb)
+
+      // Verify search vector was deleted
+      searchResult = await localDb.query(
+        'SELECT * FROM block_search_index WHERE block_uuid = $1',
+        [block.block_uuid]
+      )
+      expect(searchResult.rows).toHaveLength(0)
+    })
+  })
+
+  describe('Search queries', () => {
+    test('should find blocks matching single word query', async () => {
+      // Create test blocks
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+      
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Python Guide\n\nPython programming essentials.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Search for "JavaScript"
+      const results = await searchBlocks(localDb, 'JavaScript')
+      
+      expect(results).toHaveLength(1)
+      expect(results[0].block_uuid).toBe(block1.block_uuid)
+      expect(results[0].title).toBe('JavaScript Tutorial')
+    })
+
+    test('should find blocks matching multi-word query', async () => {
+      // Create test blocks
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics and advanced concepts.',
+        inserter: 'test-user'
+      })
+      
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Python Guide\n\nPython programming essentials.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Search for "JavaScript advanced" (both words must match)
+      const results = await searchBlocks(localDb, 'JavaScript advanced')
+      
+      expect(results).toHaveLength(1)
+      expect(results[0].block_uuid).toBe(block1.block_uuid)
+    })
+
+    test('should rank results by relevance', async () => {
+      // Create blocks with different relevance
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript\n\nJavaScript JavaScript JavaScript',
+        inserter: 'test-user'
+      })
+      
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Web Dev\n\nSome JavaScript here.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      const results = await searchBlocks(localDb, 'JavaScript')
+      
+      expect(results).toHaveLength(2)
+      // block1 should rank higher (more occurrences)
+      expect(results[0].block_uuid).toBe(block1.block_uuid)
+      expect(results[0].rank).toBeGreaterThan(results[1].rank)
+    })
+
+    test('should return empty results for non-matching query', async () => {
+      // Create test block
+      await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Search for something that doesn't exist
+      const results = await searchBlocks(localDb, 'Nonexistent')
+      
+      expect(results).toHaveLength(0)
+    })
+
+    test('should handle empty query gracefully', async () => {
+      // Create test block
+      await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Search with empty query
+      const results1 = await searchBlocks(localDb, '')
+      expect(results1).toHaveLength(0)
+      
+      const results2 = await searchBlocks(localDb, '   ')
+      expect(results2).toHaveLength(0)
+    })
+
+    test('should support pagination with limit and offset', async () => {
+      // Create multiple blocks
+      for (let i = 0; i < 5; i++) {
+        await createBlock(syncedDb, {
+          block_type: 'scribe/markdown',
+          body: `# Document ${i}\n\nThis document contains the word tutorial.`,
+          inserter: 'test-user'
+        })
+      }
+      
+      await indexAll(localDb)
+      
+      // Get first page
+      const page1 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 0 })
+      expect(page1).toHaveLength(2)
+      
+      // Get second page
+      const page2 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 2 })
+      expect(page2).toHaveLength(2)
+      
+      // Should be different results
+      expect(page1[0].block_uuid).not.toBe(page2[0].block_uuid)
+      
+      // Get third page
+      const page3 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 4 })
+      expect(page3).toHaveLength(1)
+    })
+
+    test('should include title and slug in results', async () => {
+      // Create test block with title
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Tutorial\n\nLearn about tutorials.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      const results = await searchBlocks(localDb, 'tutorial')
+      
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('My Tutorial')
+      expect(results[0].slug).toBe('my-tutorial')
+    })
+
+    test('should generate snippet in results', async () => {
+      // Create test block
+      await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Tutorial\n\nThis is a comprehensive tutorial about JavaScript programming.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      const results = await searchBlocks(localDb, 'JavaScript')
+      
+      expect(results).toHaveLength(1)
+      expect(results[0].snippet).toBeTruthy()
+      expect(results[0].snippet.toLowerCase()).toContain('javascript')
+    })
+
+    test('should handle blocks without titles', async () => {
+      // Create test block without title
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: 'This document has no title but contains searchable content.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      const results = await searchBlocks(localDb, 'searchable')
+      
+      expect(results).toHaveLength(1)
+      expect(results[0].block_uuid).toBe(block.block_uuid)
+      expect(results[0].title).toBeNull()
+      expect(results[0].slug).toBeNull()
+    })
+  })
+
+  describe('Integration tests', () => {
+    test('should search blocks after full indexing', async () => {
+      // Create multiple blocks
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Basics\n\nIntroduction to JavaScript programming.',
+        inserter: 'test-user'
+      })
+      
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Advanced JavaScript\n\nDeep dive into JavaScript concepts.',
+        inserter: 'test-user'
+      })
+      
+      const block3 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Python Basics\n\nIntroduction to Python programming.',
+        inserter: 'test-user'
+      })
+      
+      // Use indexAll for complete indexing
+      const result = await indexAll(localDb)
+      expect(result.indexedCount).toBe(3)
+      
+      // Search should work
+      const jsResults = await searchBlocks(localDb, 'JavaScript')
+      expect(jsResults).toHaveLength(2)
+      
+      const pythonResults = await searchBlocks(localDb, 'Python')
+      expect(pythonResults).toHaveLength(1)
+      
+      const basicsResults = await searchBlocks(localDb, 'Basics')
+      expect(basicsResults).toHaveLength(2)
+    })
+
+    test('should find updated content after block version change', async () => {
+      // Create initial block
+      const block = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Original\n\nThis is about Python.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Should find Python
+      let results = await searchBlocks(localDb, 'Python')
+      expect(results).toHaveLength(1)
+      
+      // Should not find JavaScript
+      results = await searchBlocks(localDb, 'JavaScript')
+      expect(results).toHaveLength(0)
+      
+      // Update block
+      await createBlockVersion(syncedDb, block.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# Updated\n\nThis is now about JavaScript.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Should now find JavaScript
+      results = await searchBlocks(localDb, 'JavaScript')
+      expect(results).toHaveLength(1)
+      
+      // Should not find Python anymore
+      results = await searchBlocks(localDb, 'Python')
+      expect(results).toHaveLength(0)
+    })
+
+    test('should search across multiple documents', async () => {
+      // Create documents on various topics
+      const topics = [
+        { title: 'Web Development', content: 'HTML, CSS, and JavaScript fundamentals.' },
+        { title: 'Backend Systems', content: 'Node.js and Express framework.' },
+        { title: 'Database Design', content: 'PostgreSQL and SQL queries.' },
+        { title: 'DevOps', content: 'Docker, Kubernetes, and CI/CD pipelines.' },
+        { title: 'Frontend Frameworks', content: 'React, Vue, and Angular comparison.' }
+      ]
+      
+      for (const topic of topics) {
+        await createBlock(syncedDb, {
+          block_type: 'scribe/markdown',
+          body: `# ${topic.title}\n\n${topic.content}`,
+          inserter: 'test-user'
+        })
+      }
+      
+      await indexAll(localDb)
+      
+      // Search for different terms
+      const webResults = await searchBlocks(localDb, 'JavaScript')
+      expect(webResults.length).toBeGreaterThan(0)
+      
+      const dbResults = await searchBlocks(localDb, 'PostgreSQL')
+      expect(dbResults.length).toBeGreaterThan(0)
+      
+      const devopsResults = await searchBlocks(localDb, 'Docker')
+      expect(devopsResults.length).toBeGreaterThan(0)
+    })
+
+    test('should work with indexAll function', async () => {
+      // Create test blocks
+      const block1 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+      
+      const block2 = await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Python Guide\n\nPython programming essentials.',
+        inserter: 'test-user'
+      })
+      
+      // Run indexAll
+      const result = await indexAll(localDb)
+      
+      expect(result.indexedCount).toBe(2)
+      expect(result.hasMore).toBe(false)
+      
+      // Verify slugs were created
+      const slugResult1 = await localDb.query(
+        'SELECT * FROM block_slug WHERE block_uuid = $1',
+        [block1.block_uuid]
+      )
+      expect(slugResult1.rows).toHaveLength(1)
+      expect(slugResult1.rows![0].slug).toBe('javascript-tutorial')
+      
+      // Verify search vectors were created
+      const searchResults = await searchBlocks(localDb, 'JavaScript')
+      expect(searchResults).toHaveLength(1)
+      expect(searchResults[0].block_uuid).toBe(block1.block_uuid)
+    })
+
+    test('should handle case-insensitive search', async () => {
+      // Create test block
+      await createBlock(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+      
+      await indexAll(localDb)
+      
+      // Search with different cases
+      const results1 = await searchBlocks(localDb, 'javascript')
+      expect(results1).toHaveLength(1)
+      
+      const results2 = await searchBlocks(localDb, 'JAVASCRIPT')
+      expect(results2).toHaveLength(1)
+      
+      const results3 = await searchBlocks(localDb, 'JavaScript')
+      expect(results3).toHaveLength(1)
+    })
+  })
+})

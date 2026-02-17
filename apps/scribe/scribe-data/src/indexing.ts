@@ -563,3 +563,33 @@ export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockS
   
   return (result.rows || []) as BlockSlugRow[]
 }
+
+/**
+ * Index all metadata for unindexed blocks
+ * 
+ * This is a convenience function that calls both indexSlugs() and indexSearchVectors()
+ * to ensure all indexing is performed together.
+ * 
+ * @param localDb The TributaryLocal database instance
+ * @param options Indexing options
+ * @returns Combined result from both indexing operations
+ */
+export async function indexAll(
+  localDb: TributaryLocal,
+  options: IndexSlugsOptions = {}
+): Promise<IndexSlugsResult> {
+  // Import search functions
+  const { indexSearchVectors } = await import('./search.js')
+  
+  // First index slugs and tags
+  const slugResult = await indexSlugs(localDb, options)
+  
+  // Then index search vectors
+  const searchResult = await indexSearchVectors(localDb, options)
+  
+  // Return combined results
+  return {
+    indexedCount: Math.max(slugResult.indexedCount, searchResult.indexedCount),
+    hasMore: slugResult.hasMore || searchResult.hasMore
+  }
+}

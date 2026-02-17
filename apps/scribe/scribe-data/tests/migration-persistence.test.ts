@@ -186,4 +186,34 @@ describe('Migration Persistence Bug', () => {
     const result = await stream.query('SELECT COUNT(*) as count FROM block', [])
     expect(result.rows[0].count).toBe(1)
   })
+
+  it('should create block_search_index table with GIN index', async () => {
+    // Create a stream and run migrations
+    const client = new TributaryClient({
+      server: createTestServer(),
+      db: testDb
+    })
+    
+    const stream = await client.addWriteKey('scribe', privateKey)
+    await ensureMigrations(stream, true)
+    
+    const localDb = stream.local()
+    
+    // Verify table exists
+    const tableResult = await localDb.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_name = 'block_search_index'`,
+      []
+    )
+    expect(tableResult.rows).toHaveLength(1)
+    
+    // Verify GIN index exists
+    const indexResult = await localDb.query(
+      `SELECT indexname FROM pg_indexes 
+       WHERE tablename = 'block_search_index' 
+       AND indexname = 'idx_block_search_vector'`,
+      []
+    )
+    expect(indexResult.rows).toHaveLength(1)
+  })
 })
