@@ -456,8 +456,10 @@ async function syncLocalFilesToDatabase(
   for (const file of files) {
     const filePath = path.join(slugsDir, file);
     
-    // Read file content
+    // Read file content and get file stats for mtime
     const content = await fs.promises.readFile(filePath, 'utf8');
+    const stats = await fs.promises.stat(filePath);
+    const fileMtime = stats.mtime.toISOString();
     
     // Extract the slug from the filename (without .md extension)
     const fileSlug = file.slice(0, -3);
@@ -482,9 +484,8 @@ async function syncLocalFilesToDatabase(
           const currentBlock = currentBlockResult.rows[0] as any;
           
           if (currentBlock.body !== content) {
-            // Content has changed, create a new version
+            // Content has changed, create a new version using file's mtime
             if (!dryRun) {
-              const now = new Date().toISOString();
               await stream.exec(
                 `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -493,7 +494,7 @@ async function syncLocalFilesToDatabase(
                   'scribe/markdown',
                   uuidv4(),
                   av.version_uuid,
-                  now,
+                  fileMtime,
                   'scribe-cli-sync',
                   content
                 ]
@@ -509,9 +510,8 @@ async function syncLocalFilesToDatabase(
         console.warn(`Found block slug without authoritative version: ${fileSlug}`);
       }
     } else {
-      // File doesn't correspond to an existing block, create a new block
+      // File doesn't correspond to an existing block, create a new block using file's mtime
       if (!dryRun) {
-        const now = new Date().toISOString();
         await stream.exec(
           `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -520,7 +520,7 @@ async function syncLocalFilesToDatabase(
             'scribe/markdown',
             uuidv4(),
             null,
-            now,
+            fileMtime,
             'scribe-cli-sync',
             content
           ]
