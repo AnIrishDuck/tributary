@@ -37,9 +37,11 @@ export class TributaryStream {
     schemaId: string;
   }) {
     this.server = options.server;
-    this.privateKey = options.privateKey;
+    // Ensure privateKey is a proper Uint8Array, not a Buffer
+    this.privateKey = new Uint8Array(options.privateKey);
     // In Ed25519, the public key is the last 32 bytes of the expanded private key
-    this.publicKey = this.privateKey.slice(32);
+    // Ensure publicKey is also a proper Uint8Array
+    this.publicKey = new Uint8Array(this.privateKey.slice(32));
     this.pglite = options.pglite;
     this.appId = options.appId;
     this.schemaId = options.schemaId;
@@ -579,8 +581,10 @@ export class TributaryStream {
     debug('ensureServerPersistence: Data to sign length:', dataToSignBytes.length);
     debug('ensureServerPersistence: Data to sign:', hash);
     
-    // Sign the data
-    const signatureBytes = nacl.sign.detached(dataToSignBytes, this.privateKey);
+    // Sign the data - ensure both parameters are proper Uint8Arrays
+    const dataToSign = new Uint8Array(dataToSignBytes);
+    const privateKeyArray = new Uint8Array(this.privateKey);
+    const signatureBytes = nacl.sign.detached(dataToSign, privateKeyArray);
     const signature = base64url.encode(Buffer.from(signatureBytes));
     debug('ensureServerPersistence: Generated signature length:', signature.length);
     
@@ -639,10 +643,14 @@ export class TributaryStream {
     // Derive the encryption key by hashing the private key
     // This ensures we don't give away the private write key when sharing read access
     const { computeHashBytes } = await import('./hashUtils.js');
-    const hashBytes = await computeHashBytes(this.privateKey.slice(0, 32)); // Hash the actual private scalar
+    // Ensure we create a proper Uint8Array from the slice
+    const privateKeySlice = new Uint8Array(this.privateKey.slice(0, 32));
+    const hashBytes = await computeHashBytes(privateKeySlice); // Hash the actual private scalar
     
     // Return the first 32 bytes as our encryption key
-    return hashBytes.slice(0, nacl.secretbox.keyLength);
+    // Ensure we return a proper Uint8Array by creating a new one from the slice
+    const keyBytes = hashBytes.slice(0, nacl.secretbox.keyLength);
+    return new Uint8Array(keyBytes);
   }
 
   /**
@@ -657,8 +665,13 @@ export class TributaryStream {
     // Derive the encryption key
     const secretKey = await this.deriveEncryptionKey();
     
+    // Ensure all parameters are proper Uint8Arrays
+    const dataArray = new Uint8Array(data);
+    const nonceArray = new Uint8Array(nonce);
+    const keyArray = new Uint8Array(secretKey);
+    
     // Encrypt the data
-    const encryptedData = nacl.secretbox(data, nonce, secretKey);
+    const encryptedData = nacl.secretbox(dataArray, nonceArray, keyArray);
     
     // Prepend the nonce to the encrypted data
     const result = new Uint8Array(nonce.length + encryptedData.length);
@@ -683,8 +696,13 @@ export class TributaryStream {
     // Derive the encryption key
     const secretKey = await this.deriveEncryptionKey();
     
+    // Ensure all parameters are proper Uint8Arrays
+    const encryptedArray = new Uint8Array(encryptedData);
+    const nonceArray = new Uint8Array(nonce);
+    const keyArray = new Uint8Array(secretKey);
+    
     // Decrypt the data
-    const decryptedData = nacl.secretbox.open(encryptedData, nonce, secretKey);
+    const decryptedData = nacl.secretbox.open(encryptedArray, nonceArray, keyArray);
     
     if (decryptedData === null) {
       throw new Error('Failed to decrypt data');

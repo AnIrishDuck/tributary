@@ -20,7 +20,9 @@ export async function computeNodeHashBytes(data: Uint8Array): Promise<Uint8Array
   const hash = crypto.createHash('sha256');
   hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   const hashBuffer = hash.digest();
-  return new Uint8Array(hashBuffer);
+  // Create a proper Uint8Array by copying the buffer, not sharing it
+  // This ensures the result is a true Uint8Array, not a Buffer subclass
+  return Uint8Array.from(hashBuffer);
 }
 
 /**

@@ -139,8 +139,13 @@ export class FakeServer implements Server {
       // Create the data that was signed (the hash)
       const dataToSignBytes = new TextEncoder().encode(hash);
       
+      // Ensure all parameters are proper Uint8Arrays (base64url.decode returns Buffer)
+      const dataArray = new Uint8Array(dataToSignBytes);
+      const sigArray = new Uint8Array(signatureBytes);
+      const pubkeyArray = new Uint8Array(pubkeyBytes);
+      
       // Verify the signature using nacl
-      return nacl.sign.detached.verify(dataToSignBytes, signatureBytes, pubkeyBytes);
+      return nacl.sign.detached.verify(dataArray, sigArray, pubkeyArray);
     } catch (error) {
       return false;
     }
