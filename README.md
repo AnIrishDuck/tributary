@@ -15,10 +15,11 @@ presence collections.
 
 This project is organized into several components:
 
-- **tributary-server** - a rust server responsible for storing the raw encrypted
-  binary streams and blobs
+- **supabase** - database migration and serverless functions for the remote
+  tributary server
 - **tributary-cli** - a typescript cli command useful for debugging and testing
-- **tributary-client** - a typescript library that wraps PGLite with persistence guarantees
+- **tributary-client** - a typescript library that wraps PGLite with
+  persistence guarantees
 - **tributary-catalog** - a react application for listing and managing all user
   collections.
 - **apps** - where we maintain official apps
