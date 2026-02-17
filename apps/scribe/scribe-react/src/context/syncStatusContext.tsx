@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { TributaryClient, TributaryStream } from 'tributary-client'
-import { indexSlugs } from 'scribe-data'
+import { indexAll } from 'scribe-data'
 
 export interface SyncStatus {
   synced: boolean
@@ -56,7 +56,7 @@ export const SyncStatusProvider: React.FC<{
           if (stream) {
             try {
               const localDb = stream.local()
-              await indexSlugs(localDb)
+              await indexAll(localDb)
             } catch (error) {
               console.error(`Error reindexing stream ${streamId}:`, error)
               // Continue with other streams even if one fails

@@ -1,11 +1,12 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { 
   DocumentTextIcon, 
   UserGroupIcon, 
   PlusIcon, 
   ArrowLeftIcon,
-  HomeIcon
+  HomeIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -30,6 +31,15 @@ const Navbar: React.FC<NavbarProps> = ({
   hideNavItems = false
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Extract prefix from current path if in stream context
+  const getPrefix = (): string | null => {
+    const match = location.pathname.match(/^\/pk\/([^/]+)/);
+    return match ? match[1] : null;
+  };
+
+  const prefix = getPrefix();
 
   const getNavItems = (): NavItem[] => {
     const currentPath = location.pathname;
@@ -101,6 +111,17 @@ const Navbar: React.FC<NavbarProps> = ({
           
           <div className="flex items-center space-x-1">
             <div className="flex items-center space-x-1">
+              {prefix && (
+                <button
+                  onClick={() => navigate(`/pk/${prefix}/search`)}
+                  className="p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"
+                  title="Search documents"
+                  aria-label="Search documents"
+                >
+                  <MagnifyingGlassIcon className="w-4 h-4" />
+                </button>
+              )}
+              
               <Link 
                 to="/"
                 className="p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"

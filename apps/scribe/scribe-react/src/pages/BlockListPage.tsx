@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { getAllBlocksWithTitles, BlockSlugRow } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
-import { PlusIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
 const BlockListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
@@ -89,13 +89,23 @@ const BlockListPage: React.FC = () => {
               </span>
             </div>
             
-            <button
-              onClick={handleNewBlock}
-              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-            >
-              <PlusIcon className="w-4 h-4 mr-1.5" />
-              New
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate(`/pk/${prefix}/search`)}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <MagnifyingGlassIcon className="w-4 h-4 mr-1.5" />
+                Search
+              </button>
+              
+              <button
+                onClick={handleNewBlock}
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <PlusIcon className="w-4 h-4 mr-1.5" />
+                New
+              </button>
+            </div>
           </div>
         </div>
       </div>

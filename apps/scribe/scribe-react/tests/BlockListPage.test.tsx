@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
@@ -271,5 +271,37 @@ describe('BlockListPage', () => {
       // Content is in HTML rendered by micromark, use a flexible matcher
       expect(screen.getByText(/This is the document content that should be visible after navigation/)).toBeInTheDocument()
     }, { timeout: 3000 })
+  })
+
+  it('should navigate to search page when search button clicked', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+    
+    // Create a test block so the page loads
+    await saveBlock(stream, '# Test\n\nContent.')
+    
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+    
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+    
+    // Wait for page to load
+    await waitFor(() => {
+      expect(screen.getByText(/Documents/i)).toBeInTheDocument()
+    })
+    
+    // Click search button
+    const searchButton = screen.getByRole('button', { name: /Search/i })
+    fireEvent.click(searchButton)
+    
+    // Should navigate to search page
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/pk/${base64Part}/search`)
+    })
   })
 })

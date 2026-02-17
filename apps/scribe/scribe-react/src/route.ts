@@ -6,6 +6,7 @@ import EditorPage from './pages/EditorPage'
 import BlockViewPage from './pages/BlockViewPage'
 import HomePage from './pages/HomePage'
 import BlockListPage from './pages/BlockListPage'
+import SearchPage from './pages/SearchPage'
 import React from 'react'
 
 // Error components for routes
@@ -44,6 +45,11 @@ export const routes: RouteObject[] = [
   {
     path: '/pk/:prefix/',
     Component: BlockListPage,
+    ErrorBoundary: DocumentError
+  },
+  {
+    path: '/pk/:prefix/search',
+    Component: SearchPage,
     ErrorBoundary: DocumentError
   },
   {
