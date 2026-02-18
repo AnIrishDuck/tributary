@@ -1,7 +1,7 @@
 // Main TributaryClient class that manages multiple streams
 import { PGlite } from '@electric-sql/pglite';
 import { Server } from './server.js';
-import { TributaryStream } from './tributaryStream.js';
+import { TributaryStream, SyncStatus } from './tributaryStream.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import nacl from 'tweetnacl';
@@ -353,29 +353,32 @@ export class TributaryClient {
   /**
    * Sync with server - retrieve and apply remote changes for all streams
    * @param max Maximum number of blobs to fetch per stream in this sync
-   * @returns true if all streams are fully synced, false if any stream has more blobs to fetch
+   * @returns Map of stream IDs to their SyncStatus
    */
-  async sync(max: number = 1000): Promise<boolean> {
+  async sync(max: number = 1000): Promise<Map<string, SyncStatus>> {
     // Wait for initialization to complete
     await this.initialized;
     
-    let allFullySynced = true;
+    const syncStatuses = new Map<string, SyncStatus>();
     
     // Sync all tracked streams
     for (const stream of this.streams.values()) {
       try {
         info(`Syncing stream: ${stream.getId()}`);
-        const isFullySynced = await stream.sync(max);
-        if (!isFullySynced) {
-          allFullySynced = false;
-        }
+        const syncStatus = await stream.sync(max);
+        syncStatuses.set(stream.getId(), syncStatus);
       } catch (err: unknown) {
         const errorObj = err as Error;
         error(`Failed to sync stream ${stream.getId()}:`, errorObj);
-        allFullySynced = false;
+        syncStatuses.set(stream.getId(), {
+          currentIndex: 0,
+          finalIndex: 0,
+          complete: () => false,
+          error: errorObj
+        });
       }
     }
     
-    return allFullySynced;
+    return syncStatuses;
   }
 }

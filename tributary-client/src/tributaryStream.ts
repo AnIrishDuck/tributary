@@ -16,6 +16,20 @@ interface TransactionLogEntry {
   result?: any;
 }
 
+/**
+ * Sync status information for a stream
+ */
+export interface SyncStatus {
+  /** Current sync index (last blob synced) */
+  currentIndex: number;
+  /** Final index (total blobs on server) */
+  finalIndex: number;
+  /** Check if sync is complete */
+  complete(): boolean;
+  /** Error encountered during sync, if any */
+  error?: Error;
+}
+
 export class TributaryStream {
   private pglite: PGlite;
   private server: Server;
@@ -373,9 +387,9 @@ export class TributaryStream {
   /**
    * Sync with server - retrieve and apply remote changes
    * @param max Maximum number of blobs to fetch in this sync
-   * @returns true if all blobs have been synced, false if there are more blobs to fetch
+   * @returns SyncStatus containing current and final index
    */
-  async sync(max: number): Promise<boolean> {
+  async sync(max: number): Promise<SyncStatus> {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -521,16 +535,15 @@ export class TributaryStream {
     // Save the last sync index for future sessions
     await this.saveLastSyncIndex();
     
-    
-    // Save the last sync index for future sessions
-    await this.saveLastSyncIndex();
-    
-    // Return true if we've synced all blobs on the server
-    // Compare our lastSyncIndex with the server's total blob count
-    // If lastSyncIndex >= totalCount, we're fully synced
-    const isFullySynced = this.lastSyncIndex >= result.totalCount;
-    info(`SYNC COMPLETE: isFullySynced = ${isFullySynced} (lastSyncIndex=${this.lastSyncIndex}, total_count=${result.totalCount}, fetched ${result.blobs.length})`);
-    return isFullySynced;
+    // Return SyncStatus with current and final index
+    const syncStatus: SyncStatus = {
+      currentIndex: this.lastSyncIndex,
+      finalIndex: result.totalCount,
+      complete: () => this.lastSyncIndex >= result.totalCount
+    };
+
+    info(`SYNC COMPLETE: currentIndex=${syncStatus.currentIndex}, finalIndex=${syncStatus.finalIndex}, complete=${syncStatus.complete()} (fetched ${result.blobs.length})`);
+    return syncStatus;
   }
 
   /**

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
+import { useSyncStatus } from '../context/syncStatusContext'
 import { getAllBlocksWithTitles, BlockSlugRow } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
 import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
@@ -9,6 +10,7 @@ const BlockListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const navigate = useNavigate()
   const { client } = useTributary()
+  const { syncStatus } = useSyncStatus()
   const [blocks, setBlocks] = useState<BlockSlugRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +43,7 @@ const BlockListPage: React.FC = () => {
     }
 
     loadBlocks()
-  }, [client, prefix])
+  }, [client, prefix, syncStatus])
 
   const handleNewBlock = () => {
     if (prefix) {
@@ -76,8 +78,26 @@ const BlockListPage: React.FC = () => {
     )
   }
 
+  // Get sync status for this stream
+  const streamSyncStatus = prefix ? syncStatus[prefix] : undefined
+  const showProgress = streamSyncStatus && !streamSyncStatus.synced
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Sync Progress Banner */}
+      {showProgress && (
+        <div className="bg-blue-50 border-b border-blue-200 py-2">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-blue-900 font-medium">
+                Syncing: {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex} blocks
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-white border-b border-gray-200 py-3">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -112,20 +132,30 @@ const BlockListPage: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {blocks.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
-              <DocumentTextIcon className="w-8 h-8 text-blue-600" />
+          showProgress ? (
+            <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+              <div className="mx-auto w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                Syncing {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex} blocks
+              </h3>
+              <p className="text-gray-600 text-sm">Documents will appear as they are synced</p>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">No documents found</h3>
-            <p className="text-gray-600 mb-6 text-sm">Create your first encrypted document to get started</p>
-            <button
-              onClick={handleNewBlock}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-            >
-              <PlusIcon className="w-4 h-4 mr-1.5" />
-              Create first document
-            </button>
-          </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+              <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                <DocumentTextIcon className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No documents found</h3>
+              <p className="text-gray-600 mb-6 text-sm">Create your first encrypted document to get started</p>
+              <button
+                onClick={handleNewBlock}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <PlusIcon className="w-4 h-4 mr-1.5" />
+                Create first document
+              </button>
+            </div>
+          )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {blocks.map((block) => (

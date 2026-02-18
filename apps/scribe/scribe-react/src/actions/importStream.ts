@@ -16,8 +16,9 @@ export async function importStream(client: TributaryClient, privateKeyBase64: st
   const stream = await client.addWriteKey('scribe', privateKey)
 
   // Sync FIRST to get all existing data from the server (including stream table creation)
-  // Using max of 1000 blobs to prevent memory issues
-  await stream.sync(1)
+  // Using max of 1 blob initially to quickly get started
+  const syncStatus = await stream.sync(1)
+  console.log(`Stream imported with initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
 
   // Run migrations for an EXISTING stream (only creates local tables, isNew=false)
   // The stream tables (block) were already created via sync

@@ -3,9 +3,11 @@ import { Link } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon } from '@heroicons/react/24/outline'
 import { getStreams, StreamInfo } from '../actions/getStreams'
 import { useTributary } from '../context/tributaryContext'
+import { useSyncStatus } from '../context/syncStatusContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
+  const { syncStatus } = useSyncStatus()
   const [streams, setStreams] = useState<StreamInfo[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -26,7 +28,7 @@ const HomePage: React.FC = () => {
     }
 
     fetchStreams()
-  }, [client])
+  }, [client, syncStatus])
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
@@ -74,6 +76,11 @@ const HomePage: React.FC = () => {
                         year: 'numeric'
                       })
                     : 'No edits yet'
+                  
+                  // Get sync status for this stream
+                  const streamSyncStatus = syncStatus[stream.streamId]
+                  const showProgress = streamSyncStatus && !streamSyncStatus.synced
+                  
                   return (
                     <Link
                       key={stream.streamId}
@@ -87,7 +94,14 @@ const HomePage: React.FC = () => {
                         <h4 className="text-base font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                           {displayId}
                         </h4>
-                        <p className="text-sm text-gray-500">Last edited: {lastEditedText}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-gray-500">Last edited: {lastEditedText}</p>
+                          {showProgress && (
+                            <span className="text-xs text-blue-600 font-medium">
+                              Syncing {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex-shrink-0">
                         <svg className="h-5 w-5 text-gray-400 group-hover:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

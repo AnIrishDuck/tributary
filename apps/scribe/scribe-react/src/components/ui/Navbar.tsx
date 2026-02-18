@@ -8,6 +8,7 @@ import {
   HomeIcon,
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
+import { useSyncStatus } from '../../context/syncStatusContext';
 
 interface NavItem {
   name: string;
@@ -32,6 +33,7 @@ const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { syncStatus, globalSyncStatus } = useSyncStatus();
 
   // Extract prefix from current path if in stream context
   const getPrefix = (): string | null => {
@@ -40,6 +42,21 @@ const Navbar: React.FC<NavbarProps> = ({
   };
 
   const prefix = getPrefix();
+
+  // Use per-stream status when viewing a stream, fall back to global
+  const streamStatus = prefix ? syncStatus[prefix] : undefined;
+  const activeStatus = streamStatus || globalSyncStatus;
+
+  // Determine navbar background color based on sync status
+  const getNavbarBgClass = () => {
+    if (activeStatus.hasError) {
+      return 'bg-red-50 border-red-200';
+    }
+    if (!activeStatus.synced && activeStatus.isSyncing) {
+      return 'bg-yellow-50 border-yellow-200';
+    }
+    return 'bg-white border-gray-200';
+  };
 
   const getNavItems = (): NavItem[] => {
     const currentPath = location.pathname;
@@ -63,8 +80,10 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const navItems = getNavItems();
 
+  const showSyncProgress = !activeStatus.synced && activeStatus.finalIndex > 0
+
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <nav className={`${getNavbarBgClass()} border-b sticky top-0 z-50 shadow-sm transition-colors duration-300`}>
       <div className="max-w-7xl mx-auto px-3 sm:px-4">
         <div className="flex justify-between h-10">
           <div className="flex items-center flex-1 gap-2">
@@ -76,12 +95,22 @@ const Navbar: React.FC<NavbarProps> = ({
                 <ArrowLeftIcon className="w-4 h-4" />
               </button>
             )}
-            
+
             <div className="flex items-center">
               {title && (
                 <h1 className="text-base font-bold text-gray-900 truncate max-w-[150px] sm:max-w-md">
                   {title}
                 </h1>
+              )}
+              {showSyncProgress && (
+                <span className="ml-2 text-xs font-medium text-yellow-700">
+                  Syncing {activeStatus.currentIndex}/{activeStatus.finalIndex}
+                </span>
+              )}
+              {activeStatus.hasError && (
+                <span className="ml-2 text-xs font-medium text-red-700">
+                  Sync error
+                </span>
               )}
               
               {!hideNavItems && navItems.length > 0 && (

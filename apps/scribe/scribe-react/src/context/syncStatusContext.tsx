@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { TributaryClient, TributaryStream } from 'tributary-client'
+import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
 import { indexAll } from 'scribe-data'
 
 export interface SyncStatus {
   synced: boolean
   isSyncing: boolean
-  pendingBlobs: number
+  currentIndex: number
+  finalIndex: number
   lastSyncedAt: Date | null
+  hasError: boolean
 }
 
 export interface SyncStatusContextType {
@@ -26,10 +28,12 @@ export const SyncStatusProvider: React.FC<{
 }> = ({ client, children, pollInterval = 1000 }) => {
   const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
   const [globalSyncStatus, setGlobalSyncStatus] = useState<SyncStatus>({
-    synced: true,  // Start as synced to allow immediate editing in tests
-    isSyncing: false,
-    pendingBlobs: -1,
+    synced: false,
+    isSyncing: true,
+    currentIndex: 0,
+    finalIndex: 0,
     lastSyncedAt: null,
+    hasError: false,
   })
 
   // Start background sync thread
@@ -37,98 +41,93 @@ export const SyncStatusProvider: React.FC<{
     let timeoutId: ReturnType<typeof setTimeout>
     let isMounted = true
 
+    // Local mirror of per-stream sync status, updated in the loop and
+    // pushed to React state between async yields so the UI can re-render.
+    let latestPerStream: Record<string, SyncStatus> = {}
+
+    const pushStatus = () => {
+      const snapshot = { ...latestPerStream }
+      setSyncStatus(snapshot)
+
+      const statuses = Object.values(snapshot)
+      const allComplete = statuses.length > 0 && statuses.every(s => s.synced)
+      const anyError = statuses.some(s => s.hasError)
+      const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
+      const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
+      setGlobalSyncStatus(prev => ({
+        synced: allComplete,
+        isSyncing: !allComplete,
+        currentIndex: totalCurrent,
+        finalIndex: totalFinal,
+        lastSyncedAt: allComplete ? new Date() : prev.lastSyncedAt,
+        hasError: anyError,
+      }))
+      return allComplete
+    }
+
     const syncLoop = async () => {
       if (!isMounted) return
 
-      setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true }))
+      setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
       try {
-        // Sync all streams with small batch size
-        const isFullySynced = await client.sync(100)
-
-        if (!isMounted) return
-
-        // Reindex all streams after sync to ensure authoritative versions are up to date
-        // This is necessary because the background sync doesn't automatically trigger reindexing
+        // Load all streams into memory
         const streamIds = await client.list()
+        const streams: Array<{ id: string, stream: TributaryStream }> = []
         for (const streamId of streamIds) {
           const stream = await client.get('scribe', streamId)
-          if (stream) {
-            try {
-              const localDb = stream.local()
-              await indexAll(localDb)
-            } catch (error) {
-              console.error(`Error reindexing stream ${streamId}:`, error)
-              // Continue with other streams even if one fails
-            }
-          }
+          if (stream) streams.push({ id: streamId, stream })
         }
 
         if (!isMounted) return
 
-        // Update sync status for each stream
-        const newSyncStatus: Record<string, SyncStatus> = {}
+        // Sync each stream in a small batch, updating UI after each
+        for (const { id, stream } of streams) {
+          if (!isMounted) return
 
-        for (const streamId of streamIds) {
-          const stream = await client.get('scribe', streamId)
-          if (stream) {
-            // Get the last sync index for this stream
-            // This is a simplified approach - in production we'd track this more accurately
-            const localDb = stream.local()
-            const result: any = await localDb.query(
-              `SELECT last_sync_index FROM tributary.streams WHERE id = $1`,
-              [streamId]
-            )
+          try {
+            const tributaryStatus = await stream.sync(10)
+            const isComplete = tributaryStatus.complete()
 
-            let pendingBlobs = -1
-            if (result.rows && result.rows.length > 0) {
-              const lastSyncIndex = result.rows[0].last_sync_index || 0
-              // Get total blob count from server
-              const serverBlobs = await (client as any).server.getAllBlobMetadata(
-                streamId,
-                0,
-                undefined
-              )
-              pendingBlobs = Math.max(0, serverBlobs.totalCount - lastSyncIndex)
+            latestPerStream[id] = {
+              synced: isComplete,
+              isSyncing: !isComplete,
+              currentIndex: tributaryStatus.currentIndex,
+              finalIndex: tributaryStatus.finalIndex,
+              lastSyncedAt: isComplete ? new Date() : null,
+              hasError: !!tributaryStatus.error,
             }
-
-            newSyncStatus[streamId] = {
-              synced: isFullySynced,
+          } catch (err) {
+            console.error(`Error syncing stream ${id}:`, err)
+            latestPerStream[id] = {
+              ...latestPerStream[id],
               isSyncing: false,
-              pendingBlobs,
-              lastSyncedAt: isFullySynced ? new Date() : null,
+              hasError: true,
             }
+          }
+          pushStatus()
+        }
+
+        if (!isMounted) return
+
+        // Reindex all streams so documents appear in the UI
+        for (const { stream } of streams) {
+          if (!isMounted) return
+          try {
+            const localDb = stream.local()
+            await indexAll(localDb)
+          } catch (error) {
+            console.error('Error reindexing stream:', error)
           }
         }
 
-        setSyncStatus(newSyncStatus)
-
-        // Calculate global sync status
-        const allSynced = streamIds.every(id => newSyncStatus[id]?.synced)
-        const anySyncing = streamIds.some(id => newSyncStatus[id]?.isSyncing)
-
-        setGlobalSyncStatus({
-          synced: allSynced,
-          isSyncing: anySyncing,
-          pendingBlobs: streamIds.reduce((sum, id) => {
-            const status = newSyncStatus[id]
-            return status && status.pendingBlobs >= 0 ? sum + status.pendingBlobs : sum
-          }, 0),
-          lastSyncedAt: allSynced ? new Date() : globalSyncStatus.lastSyncedAt,
-        })
-
-        // Schedule next sync
-        if (isFullySynced) {
-          // Poll less frequently when fully synced
-          timeoutId = setTimeout(syncLoop, pollInterval * 10)
-        } else {
-          // Poll more frequently when syncing
-          timeoutId = setTimeout(syncLoop, pollInterval)
-        }
+        // Schedule next sync - fast when actively syncing, slow when idle
+        const allComplete = pushStatus()
+        timeoutId = setTimeout(syncLoop, allComplete ? pollInterval : 10)
       } catch (error) {
         console.error('Background sync error:', error)
-        // Still schedule next sync to retry
-        timeoutId = setTimeout(syncLoop, pollInterval)
+        setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
+        timeoutId = setTimeout(syncLoop, pollInterval * 5)
       }
     }
 

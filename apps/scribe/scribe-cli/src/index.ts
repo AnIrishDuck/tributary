@@ -100,7 +100,8 @@ program
       const { client, stream } = await createClient(directory, options.readKey, options.writeKey, options.db);
       
       // Sync FIRST to get existing data from server
-      await stream.sync(1000);
+      const syncStatus = await stream.sync(1000);
+      console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
       
       // Ensure migrations are run (creates local tables only for existing streams)
       await ensureMigrations(stream, true);

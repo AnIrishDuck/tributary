@@ -97,8 +97,8 @@ export async function sync(
   // 1. Sync with server first to get latest changes
   if (!dryRun) {
     console.log('Syncing with server...');
-    await stream.sync(1000);
-    console.log('Server sync completed');
+    const syncStatus = await stream.sync(1000);
+    console.log(`Server sync completed: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
   }
   
   // Get local database for index operations

@@ -16,7 +16,8 @@ export async function createStream(client: TributaryClient) {
 
   // Sync the stream to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
-  await stream.sync(1000)
+  const syncStatus = await stream.sync(1000)
+  console.log(`Stream created and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
   
   // Create prefix from public key
   const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
