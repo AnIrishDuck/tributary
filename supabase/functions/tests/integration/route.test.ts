@@ -241,3 +241,75 @@ Deno.test('Route testing: Date handling in latest endpoint', async () => {
     throw error;
   }
 });
+
+Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db);
+  
+  // Generate test key pair
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+  const testPubkey = encodedPubkey;
+  
+  try {
+    // Store 3 blobs to test pagination
+    let priorHash = '';
+    for (let i = 1; i <= 3; i++) {
+      const testData = new TextEncoder().encode(`Test data ${i}`);
+      const chainHash = await computeChainHash(priorHash, testData);
+      
+      const hashBytes = new TextEncoder().encode(chainHash);
+      const signature = generateTestSignature(hashBytes, keyPair);
+      
+      const storeRequest = createFakeRequest(createEncodedPath(testPubkey), {
+        method: 'POST',
+        headers: {
+          'X-Tributary-Hash': chainHash,
+          'X-Tributary-Authorization': signature
+        },
+        body: testData
+      });
+      
+      const storeResponse = await handler(storeRequest);
+      assertEquals(storeResponse.status, 200);
+      
+      priorHash = chainHash;
+    }
+    
+    // Test the blobs endpoint
+    const blobsRequest = createFakeRequest(createEncodedPath(testPubkey, 'blobs') + '?max=10');
+    const blobsResponse = await handler(blobsRequest);
+    
+    // Should return 200 with Arrow data
+    assertEquals(blobsResponse.status, 200);
+    
+    // Check content type
+    const contentType = blobsResponse.headers.get('Content-Type');
+    assertEquals(contentType, 'application/vnd.apache.arrow.stream');
+    
+    // Check total count header
+    const totalCount = blobsResponse.headers.get('X-Total-Count');
+    assertEquals(totalCount, '3');
+    
+    // Get the Arrow IPC data
+    const arrowData = await blobsResponse.arrayBuffer();
+    assert(arrowData.byteLength > 0, 'Arrow data should not be empty');
+    
+    console.log(`Route testing: Get blobs Arrow endpoint returned ${arrowData.byteLength} bytes`);
+    
+    // Test with pagination (start_sequence)
+    const blobsRequest2 = createFakeRequest(createEncodedPath(testPubkey, 'blobs') + '?start_sequence=1&max=10');
+    const blobsResponse2 = await handler(blobsRequest2);
+    assertEquals(blobsResponse2.status, 200);
+    
+    // Test with invalid parameters
+    const blobsRequest3 = createFakeRequest(createEncodedPath(testPubkey, 'blobs') + '?start_sequence=-1');
+    const blobsResponse3 = await handler(blobsRequest3);
+    assertEquals(blobsResponse3.status, 400);
+    
+    console.log('Route testing: Get blobs Arrow endpoint test completed successfully');
+  } catch (error) {
+    console.error('Route testing for blobs Arrow endpoint failed:', error);
+    throw error;
+  }
+});

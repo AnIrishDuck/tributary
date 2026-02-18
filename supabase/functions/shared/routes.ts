@@ -3,6 +3,7 @@
 
 import { Database } from './database.ts';
 import { verifySignature, computeChainHash, computeHash, decodeUrlBase64, encodeUrlBase64 } from './crypto.ts';
+import { makeTable, tableToIPC, vectorFromArray, Utf8, Binary, Uint64 } from '@apache-arrow/ts';
 
 // CORS headers for all responses
 const corsHeaders = {
@@ -115,6 +116,8 @@ export const createRouteHandler = (db: Database) => {
           return handleInfo(req, encodedPubkey, db);
         } else if (endpoint === 'all') {
           return handleAllMetadata(req, encodedPubkey, db);
+        } else if (endpoint === 'blobs') {
+          return handleGetBlobs(req, encodedPubkey, db);
         } else if (endpoint === 'latest') {
           return handleLatest(req, encodedPubkey, db);
         } else {
@@ -441,6 +444,112 @@ async function handleAllMetadata(req: Request, encodedPubkey: string, db: Databa
     console.error('Error in all metadata function:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+// GET /{encoded-pubkey}/blobs?start_sequence=X&max=Y
+// Get multiple blobs with data in Apache Arrow IPC format
+// This is more efficient than fetching blobs one-by-one
+async function handleGetBlobs(req: Request, encodedPubkey: string, db: Database): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    const startSequence = url.searchParams.get('start_sequence');
+    const max = url.searchParams.get('max');
+    
+    // Parse parameters with defaults
+    const startSeq = startSequence !== null ? parseInt(startSequence, 10) : undefined;
+    const maxCount = max !== null ? parseInt(max, 10) : 10; // Default to 10 if not specified
+    
+    // Validate parameters
+    if (startSeq !== undefined && (isNaN(startSeq) || startSeq < 0)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid start_sequence parameter' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    if (isNaN(maxCount) || maxCount <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid max parameter' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Get blobs from database
+    const result = await db.getAllBlobsPaginated(encodedPubkey, startSeq, maxCount);
+    
+    // Apply byte size limit (10MB)
+    const BYTE_LIMIT = 10 * 1024 * 1024; // 10 MB
+    let totalBytes = 0;
+    const selectedBlobs = [];
+    
+    for (const blob of result.blobs) {
+      // Check if we've hit the max count limit
+      if (selectedBlobs.length >= maxCount) {
+        break;
+      }
+      
+      // Check if adding this blob would exceed the byte limit
+      const blobSize = blob.data.length;
+      if (totalBytes + blobSize > BYTE_LIMIT) {
+        // Stop adding blobs if we'd exceed the limit
+        console.log(`Byte limit reached: ${totalBytes} bytes, skipping remaining blobs`);
+        break;
+      }
+      
+      totalBytes += blobSize;
+      selectedBlobs.push(blob);
+    }
+    
+    console.log(`Selected ${selectedBlobs.length} blobs (${totalBytes} bytes) for Arrow serialization`);
+    
+    // Build Arrow table from selected blobs using vectorFromArray with explicit types
+    // This ensures the Binary type is properly preserved
+    // Schema: seq (Uint64), hash (Utf8), data (Binary)
+    const seqVector = vectorFromArray(selectedBlobs.map(b => BigInt(b.sequence_number)), new Uint64());
+    const hashVector = vectorFromArray(selectedBlobs.map(b => b.hash), new Utf8());
+    const dataVector = vectorFromArray(selectedBlobs.map(b => b.data), new Binary());
+    
+    const table = makeTable({
+      seq: seqVector,
+      hash: hashVector,
+      data: dataVector
+    });
+    
+    // Serialize to Arrow IPC format
+    const ipcBytes = tableToIPC(table);
+    
+    console.log(`Serialized ${selectedBlobs.length} blobs to ${ipcBytes.byteLength} bytes of Arrow IPC data`);
+    
+    // Return Arrow IPC stream with appropriate headers
+    // Include total_count in a custom header for the client to know pagination status
+    return new Response(ipcBytes, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/vnd.apache.arrow.stream',
+        'X-Total-Count': result.totalCount.toString()
+      }
+    });
+  } catch (error) {
+    console.error('Error in get blobs function:', error);
+    // Return JSON error (not Arrow) for error cases
+    return new Response(
+      JSON.stringify({ 
+        error: 'Internal server error',
+        message: (error as Error).message 
+      }),
       { 
         status: 500,
         headers: { 'Content-Type': 'application/json' }

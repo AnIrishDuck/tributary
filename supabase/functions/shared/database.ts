@@ -235,4 +235,57 @@ export class Database {
       total_count: count !== null ? count : 0
     };
   }
+
+  // Get all blobs with full data (including data field) with pagination
+  // Used by the Arrow endpoint to fetch blobs efficiently
+  async getAllBlobsPaginated(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Blob[];
+    totalCount: number;
+  }> {
+    let query = this.client
+      .from('blobs')
+      .select('*')
+      .eq('pubkey', pubkey)
+      .order('sequence_number', { ascending: true });
+
+    // Filter by sequence number if startSequence is provided
+    // Note: We use > (not >=) because startSequence represents the last blob
+    // that was already processed, and we want to fetch blobs AFTER that one
+    if (startSequence !== undefined) {
+      query = query.gt('sequence_number', startSequence);
+    }
+
+    // Apply limit if max is provided
+    if (max !== undefined) {
+      query = query.limit(max);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Database error in getAllBlobsPaginated:', error);
+      return { blobs: [], totalCount: 0 };
+    }
+
+    // Get total count for this pubkey
+    const { count, error: countError } = await this.client
+      .from('blobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('pubkey', pubkey);
+
+    if (countError) {
+      console.error('Database error getting total count:', countError);
+    }
+
+    const blobs = (data || []).map(processDatabaseResponse) as Blob[];
+
+    return {
+      blobs,
+      totalCount: count !== null ? count : 0
+    };
+  }
 }
