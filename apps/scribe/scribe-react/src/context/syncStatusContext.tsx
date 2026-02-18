@@ -44,7 +44,7 @@ export const SyncStatusProvider: React.FC<{
 
       try {
         // Sync all streams with small batch size
-        const isFullySynced = await client.sync(10)
+        const isFullySynced = await client.sync(100)
 
         if (!isMounted) return
 
