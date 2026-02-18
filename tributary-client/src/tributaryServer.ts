@@ -5,6 +5,9 @@ import { warn } from './logger.js';
 // Import base64url functions
 import * as base64url from 'urlsafe-base64';
 
+// Import Apache Arrow for blob batch retrieval
+import { tableFromIPC } from 'apache-arrow';
+
 export class TributaryServer implements Server {
   private baseUrl: string;
   private authKey?: string;
@@ -213,6 +216,101 @@ export class TributaryServer implements Server {
       }
     } catch (error) {
       throw new Error(`Failed to retrieve blob metadata: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get multiple blobs with data in Apache Arrow IPC format
+   * This is more efficient than fetching blobs one-by-one
+   * 
+   * @param pubkey The public key of the stream
+   * @param startSequence Optional: Fetch blobs with sequence_number > this value
+   * @param max Optional: Maximum number of blobs to return (default: 10)
+   * @returns Array of blobs with their data and the total count
+   */
+  async getBlobsArrow(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      sequenceNumber: number;
+      hash: string;
+      data: Uint8Array;
+    }>;
+    totalCount: number;
+  }> {
+    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/blobs`;
+    
+    const params = new URLSearchParams();
+    if (startSequence !== undefined) {
+      params.set('start_sequence', startSequence.toString());
+    }
+    if (max !== undefined) {
+      params.set('max', max.toString());
+    }
+    
+    const urlString = params.toString() 
+      ? `${url}?${params.toString()}`
+      : url;
+    
+    const headers: Record<string, string> = {};
+    
+    // Add auth header if authKey is provided
+    if (this.authKey) {
+      headers['Authorization'] = `Bearer ${this.authKey}`;
+    }
+    
+    try {
+      const response = await fetch(urlString, { headers });
+      
+      if (!response.ok) {
+        // Try to parse error as JSON
+        const contentType = response.headers.get('Content-Type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(`Failed to retrieve blobs: ${response.status} - ${errorData.error || errorData.message || 'Unknown error'}`);
+        } else {
+          throw new Error(`Failed to retrieve blobs: ${response.status} ${response.statusText}`);
+        }
+      }
+      
+      // Get total count from header
+      const totalCountHeader = response.headers.get('X-Total-Count');
+      const totalCount = totalCountHeader ? parseInt(totalCountHeader, 10) : 0;
+      
+      // Get the Arrow IPC data
+      const arrayBuffer = await response.arrayBuffer();
+      const ipcBytes = new Uint8Array(arrayBuffer);
+      
+      // Deserialize Arrow IPC stream
+      const table = tableFromIPC(ipcBytes);
+      
+      // Extract blobs from the table
+      // Arrow schema: seq (UInt64), hash (Utf8), data (Binary)
+      const blobs: Array<{
+        sequenceNumber: number;
+        hash: string;
+        data: Uint8Array;
+      }> = [];
+      
+      // Iterate through rows and extract data
+      for (const row of table) {
+        const rowData = row.toJSON();
+        blobs.push({
+          // Convert BigInt to number (Arrow Uint64 deserializes as BigInt)
+          sequenceNumber: Number(rowData.seq),
+          hash: rowData.hash,
+          data: new Uint8Array(rowData.data)
+        });
+      }
+      
+      return {
+        blobs,
+        totalCount
+      };
+    } catch (error) {
+      throw new Error(`Failed to retrieve blobs via Arrow: ${(error as Error).message}`);
     }
   }
 }

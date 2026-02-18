@@ -81,4 +81,25 @@ export interface Server {
     }>;
     totalCount: number;
   }>;
+
+  /**
+   * Get multiple blobs with data in Apache Arrow IPC format
+   * This is more efficient than fetching blobs one-by-one
+   * @param pubkey Base64 encoded public key
+   * @param startSequence Optional sequence number to fetch blobs after
+   * @param max Optional maximum number of blobs to return
+   * @returns Promise resolving to object with blobs array (including data) and total count
+   */
+  getBlobsArrow(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      sequenceNumber: number;
+      hash: string;
+      data: Uint8Array;
+    }>;
+    totalCount: number;
+  }>;
 }

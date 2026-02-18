@@ -228,4 +228,59 @@ export class FakeServer implements Server {
       totalCount: blobs.length
     };
   }
+
+  async getBlobsArrow(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      sequenceNumber: number;
+      hash: string;
+      data: Uint8Array;
+    }>;
+    totalCount: number;
+  }> {
+    // Filter blobs by pubkey
+    const blobs = Array.from(this.blobs.values())
+      .filter(blob => blob.pubkey === pubkey);
+    
+    // Filter by sequence number if startSequence is provided
+    let filteredBlobs = blobs;
+    if (startSequence !== undefined) {
+      filteredBlobs = filteredBlobs.filter(blob => blob.sequenceNumber > startSequence);
+    }
+    
+    // Sort by sequence number
+    filteredBlobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    
+    // Apply limit if max is provided (default to 10)
+    const maxCount = max !== undefined ? max : 10;
+    let paginatedBlobs = filteredBlobs.slice(0, maxCount);
+    
+    // Apply byte size limit (10MB) - same as server
+    const BYTE_LIMIT = 10 * 1024 * 1024;
+    let totalBytes = 0;
+    const selectedBlobs = [];
+    
+    for (const blob of paginatedBlobs) {
+      if (totalBytes + blob.data.length > BYTE_LIMIT) {
+        break;
+      }
+      totalBytes += blob.data.length;
+      selectedBlobs.push(blob);
+    }
+    
+    // Return blobs in Arrow-compatible format (seq, hash, data)
+    const resultBlobs = selectedBlobs.map(blob => ({
+      sequenceNumber: blob.sequenceNumber,
+      hash: blob.hash,
+      data: new Uint8Array(blob.data) // Create a copy
+    }));
+    
+    return {
+      blobs: resultBlobs,
+      totalCount: blobs.length
+    };
+  }
 }
