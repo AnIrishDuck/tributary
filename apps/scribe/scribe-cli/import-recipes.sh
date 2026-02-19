@@ -17,6 +17,7 @@ cd /root/tributary/apps/scribe/scribe-cli
 node generate-key.js
 
 # Init and sync
+npm run start -- login
 npm run start -- init --empty "$SCRIBE_DIR"
 npm run start -- sync --write-key write.key --limit 1000 "$SCRIBE_DIR"
 

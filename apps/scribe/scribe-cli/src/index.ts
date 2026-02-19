@@ -1,13 +1,14 @@
 #!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import { TributaryClient, createCliServer } from 'tributary-client';
+import { TributaryClient, createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client';
 import { indexSlugs, ensureMigrations } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 
 // Import the sync function
 import { sync } from './sync.js';
@@ -26,15 +27,15 @@ async function createClient(directory: string, readKeyPath?: string, writeKeyPat
   // Read keys from files
   let readKeyBase64: string | undefined;
   let writeKeyBase64: string | undefined;
-  
+
   if (readKeyPath) {
     readKeyBase64 = fs.readFileSync(readKeyPath, 'utf8').trim();
   }
-  
+
   if (writeKeyPath) {
     writeKeyBase64 = fs.readFileSync(writeKeyPath, 'utf8').trim();
   }
-  
+
   // Use db/ directory within the checkout if dbPath is not explicitly provided
   let pglitePath: string;
   if (dbPath) {
@@ -43,16 +44,16 @@ async function createClient(directory: string, readKeyPath?: string, writeKeyPat
     // Use db/ directory within the checkout directory
     pglitePath = path.join(directory, 'db');
   }
-  
+
   // Ensure the database directory exists
   await fs.promises.mkdir(pglitePath, { recursive: true });
-  
+
   // Create PGlite instance with persistent storage
   const pglite = new PGlite(pglitePath);
-  
-  // Create server instance using TRIBUTARY_CLI_URL environment variable
-  const server = createCliServer();
-  
+
+  // Create server instance (auto-attaches auth token if logged in)
+  const server = await createCliServer();
+
   // Create TributaryClient
   const client = new TributaryClient({
     server,
@@ -96,9 +97,9 @@ program
   .option('-l, --limit <number>', 'Maximum number of blocks to process in this run', '100')
   .action(async (directory, options) => {
     try {
-      // Create client and stream
+      // Create client and stream (auth token is auto-attached if logged in)
       const { client, stream } = await createClient(directory, options.readKey, options.writeKey, options.db);
-      
+
       // Sync FIRST to get existing data from server
       const syncStatus = await stream.sync(1000);
       console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
@@ -169,7 +170,7 @@ Do not manually edit or add files here.
 `;
       await fs.promises.writeFile(path.join(indexedDir, 'READ-ONLY.md'), readOnlyContent);
       
-      // Create client and stream
+      // Create client and stream (auth token is auto-attached if logged in)
       const { client, stream } = await createClient(directory, undefined, options.writeKey, options.db);
       
       // Ensure migrations are run for a NEW stream (creates stream + local tables)
@@ -238,6 +239,74 @@ Use \`scribe sync <directory>\` to synchronize your local directory with the Tri
       console.error('Error:', (error as Error).message);
       process.exit(1);
     }
+  });
+
+function prompt(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+function promptPassword(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stderr.write(question);
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw;
+    if (stdin.isTTY) stdin.setRawMode(true);
+    let password = '';
+    const onData = (ch: Buffer) => {
+      const c = ch.toString('utf8');
+      if (c === '\n' || c === '\r') {
+        stdin.removeListener('data', onData);
+        if (stdin.isTTY) stdin.setRawMode(wasRaw ?? false);
+        stdin.pause();
+        process.stderr.write('\n');
+        resolve(password);
+      } else if (c === '\u0003') {
+        // Ctrl-C
+        process.exit(1);
+      } else if (c === '\u007f' || c === '\b') {
+        password = password.slice(0, -1);
+      } else {
+        password += c;
+      }
+    };
+    stdin.resume();
+    stdin.on('data', onData);
+  });
+}
+
+program
+  .command('login')
+  .description('Log in to Scribe with your email and password')
+  .action(async () => {
+    try {
+      // Skip if already authenticated
+      const existing = await getCliAuthToken();
+      if (existing) {
+        console.log('Already logged in.');
+        return;
+      }
+      const email = await prompt('Email: ');
+      const password = await promptPassword('Password: ');
+      await cliLogin(email, password);
+      console.log('Logged in successfully.');
+    } catch (error) {
+      console.error('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('logout')
+  .description('Log out (removes stored credentials)')
+  .action(async () => {
+    await cliLogout();
+    console.log('Logged out.');
   });
 
 program.parse();
