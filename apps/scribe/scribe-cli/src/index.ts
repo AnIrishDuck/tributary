@@ -1,7 +1,8 @@
 #!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import { TributaryClient, createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client';
+import { TributaryClient } from 'tributary-client';
+import { createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client/cli';
 import { indexSlugs, ensureMigrations } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';

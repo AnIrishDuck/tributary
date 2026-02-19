@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cliUtils.d.ts",
+      "default": "./dist/cliUtils.js"
     }
   },
   "scripts": {
