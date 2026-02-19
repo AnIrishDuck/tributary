@@ -9,8 +9,8 @@ Here's an example directory layout:
 
 - recipes (root)
   - slugs
-    - 8f21-gumbo.md
-    - 431c-gumbo.md
+    - gumbo-8f21.md
+    - gumbo-431c.md
     - beef-stew.md
   - .scribe
     - config.json - contains the stream id

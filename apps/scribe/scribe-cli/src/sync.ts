@@ -349,19 +349,20 @@ async function syncLinkTargetFiles(
   const { dryRun = false } = options;
   
   // Find slugs that have multiple blocks with the same name
-  // Group slugs by their base name (without UUID prefix)
+  // Group slugs by their base name (without UUID suffix)
   const slugGroups = new Map<string, Array<{ slug: string; title: string; block_uuid: string }>>();
-  
+
   const allSlugs = await getAllBlockSlugs(localDb);
   for (const blockSlug of allSlugs) {
     const bs = blockSlug as any;
-    // Extract base name by removing UUID prefix if present
+    // Extract base name by removing UUID suffix if present
     let baseName = bs.slug;
     if (baseName.includes('-')) {
       const parts = baseName.split('-');
-      // If first part looks like a UUID fragment, remove it
-      if (parts[0].length <= 8 && /^[0-9a-f]+$/.test(parts[0])) {
-        baseName = parts.slice(1).join('-');
+      // If last part looks like a UUID fragment, remove it
+      const lastPart = parts[parts.length - 1];
+      if (lastPart.length <= 8 && /^[0-9a-f]+$/.test(lastPart)) {
+        baseName = parts.slice(0, -1).join('-');
       }
     }
     

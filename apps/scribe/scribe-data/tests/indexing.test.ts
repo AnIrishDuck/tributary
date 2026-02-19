@@ -223,50 +223,50 @@ describe('scribe-data indexing', () => {
     expect(result2.hasMore).toBe(false)
   })
 
-  test('should generate unique slugs with UUID prefixes for duplicate titles', async () => {
+  test('should generate unique slugs with UUID suffixes for duplicate titles', async () => {
     // Insert two blocks with the same title using the block functions
     const block1 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# Same Title\n\nThis is the first document with this title.',
       inserter: 'test-user'
     })
-    
+
     const block1Uuid = block1.block_uuid
     const version1Uuid = block1.version_uuid
-    
+
     const block2 = await createBlock(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# Same Title\n\nThis is the second document with this title.',
       inserter: 'test-user'
     })
-    
+
     const block2Uuid = block2.block_uuid
     const version2Uuid = block2.version_uuid
-    
+
     // Run indexing
     await indexSlugs(localDb)
-    
+
     // Get both slugs
     const slug1 = await getBlockSlugByUuid(localDb, block1Uuid)
     const slug2 = await getBlockSlugByUuid(localDb, block2Uuid)
-    
+
     expect(slug1).toBeDefined()
     expect(slug2).toBeDefined()
-    
-    // Both should have the same base slug but with different UUID prefixes
+
+    // Both should have the same base slug but with different UUID suffixes
     expect(slug1?.title).toBe('Same Title')
     expect(slug2?.title).toBe('Same Title')
-    
+
     // Both slugs should be unique
     expect(slug1?.slug).not.toBe(slug2?.slug)
-    
+
     // Both should contain the base slug
     expect(slug1?.slug).toContain('same-title')
     expect(slug2?.slug).toContain('same-title')
-    
-    // Both should have UUID prefixes
-    expect(slug1?.slug).toMatch(/^[a-f0-9]{4}-.+/)
-    expect(slug2?.slug).toMatch(/^[a-f0-9]{4}-.+/)
+
+    // Both should have UUID suffixes
+    expect(slug1?.slug).toMatch(/.+-[a-f0-9]{4}$/)
+    expect(slug2?.slug).toMatch(/.+-[a-f0-9]{4}$/)
   })
 
   test('should index tags for new blocks', async () => {

@@ -127,10 +127,10 @@ All indexing operations are wrapped in database transactions to ensure consisten
 The indexing process handles slug conflicts as follows:
 
 1. When indexing a new block, if its base slug conflicts with an existing slug:
-   - Both the existing block and the new block are updated to have prefixed slugs
-   - The existing block gets a 4-character UUID prefix
-   - The new block gets a 4-character UUID prefix
-2. If 4-character prefixes still conflict, more UUID characters are added progressively
+   - Both the existing block and the new block are updated to have suffixed slugs
+   - The existing block gets a 4-character UUID suffix
+   - The new block gets a 4-character UUID suffix
+2. If 4-character suffixes still conflict, more UUID characters are added progressively
 3. All updates happen within a transaction to maintain consistency
 
 ## Link Resolution Support

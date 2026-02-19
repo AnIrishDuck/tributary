@@ -64,10 +64,10 @@ export function titleToSlug(title: string): string {
 /**
  * Generate a unique slug by appending UUID fragments
  * Implements the algorithm from apps/scribe/docs/slugs.md:
- * - If multiple docs have same title, first 4 chars of UUID are prepended
+ * - If multiple docs have same title, first 4 chars of UUID are appended
  * - If still conflicting, continue adding UUID chunks until unique
  * - Handles titles with UUID-like fragments
- * 
+ *
  * @param baseSlug The base slug to make unique
  * @param blockUuid The UUID of the current block
  * @param db Database transaction
@@ -79,65 +79,65 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
     `SELECT block_uuid FROM block_slug WHERE slug = $1`,
     [baseSlug]
   )
-  
+
   const existingBlocks = result.rows || []
-  
+
   // If no conflicts, return base slug
   if (existingBlocks.length === 0) {
     return baseSlug
   }
-  
+
   // We have conflicts, need to add UUID fragments
-  // According to the spec, when there are conflicts, we need to prefix ALL blocks
-  
-  // First, check if the current block already has a unique slug with a prefix
-  // Try with 4-character prefix first
-  const prefix4 = blockUuid.substring(0, 4)
-  const slugWith4CharPrefix = `${prefix4}-${baseSlug}`
-  
+  // According to the spec, when there are conflicts, we need to suffix ALL blocks
+
+  // First, check if the current block already has a unique slug with a suffix
+  // Try with 4-character suffix first
+  const suffix4 = blockUuid.substring(0, 4)
+  const slugWith4CharSuffix = `${baseSlug}-${suffix4}`
+
   // Check if this conflicts with any existing slug
   const existingResult = await db.query(
     `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-    [slugWith4CharPrefix, blockUuid]
+    [slugWith4CharSuffix, blockUuid]
   )
-  
-  const existingSlugWith4Prefix = existingResult.rows && existingResult.rows.length > 0 ? existingResult.rows[0] : null
-  
-  if (!existingSlugWith4Prefix) {
-    return slugWith4CharPrefix
+
+  const existingSlugWith4Suffix = existingResult.rows && existingResult.rows.length > 0 ? existingResult.rows[0] : null
+
+  if (!existingSlugWith4Suffix) {
+    return slugWith4CharSuffix
   }
-  
-  // If 4-char prefix still conflicts, we need to keep adding more UUID characters
+
+  // If 4-char suffix still conflicts, we need to keep adding more UUID characters
   // until we get a unique slug
   let fragmentLength = 9  // 8 characters (two 4-char segments) + 1 hyphen
-  
+
   while (fragmentLength <= blockUuid.length) {
-    const prefix = blockUuid.substring(0, fragmentLength)
-    const slugWithPrefix = `${prefix}-${baseSlug}`
-    
+    const suffix = blockUuid.substring(0, fragmentLength)
+    const slugWithSuffix = `${baseSlug}-${suffix}`
+
     // Check if this conflicts with any existing slug
-    const existingPrefixResult = await db.query(
+    const existingSuffixResult = await db.query(
       `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-      [slugWithPrefix, blockUuid]
+      [slugWithSuffix, blockUuid]
     )
-    
-    const existingSlugWithPrefix = existingPrefixResult.rows && existingPrefixResult.rows.length > 0 ? existingPrefixResult.rows[0] : null
-    
-    if (!existingSlugWithPrefix) {
-      return slugWithPrefix
+
+    const existingSlugWithSuffix = existingSuffixResult.rows && existingSuffixResult.rows.length > 0 ? existingSuffixResult.rows[0] : null
+
+    if (!existingSlugWithSuffix) {
+      return slugWithSuffix
     }
-    
+
     // Increase fragment length
     fragmentLength += 5  // 4 more chars + 1 hyphen
-    
+
     // Safety check
     if (fragmentLength > blockUuid.length) {
-      return `${blockUuid}-${baseSlug}`
+      return `${baseSlug}-${blockUuid}`
     }
   }
-  
+
   // Fallback to full UUID
-  return `${blockUuid}-${baseSlug}`
+  return `${baseSlug}-${blockUuid}`
 }
 
 /**
@@ -295,7 +295,7 @@ export async function indexSlugs(
         const existingSlug = existingSlugRow ? existingSlugRow : null
 
         if (existingSlug && existingSlug.block_uuid !== block.block_uuid) {
-          // Conflict detected - update both blocks to have UUID prefixes
+          // Conflict detected - update both blocks to have UUID suffixes
           const existingBlockResult = await tx.query(
             `SELECT block_uuid, body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
             [existingSlug.block_uuid]
@@ -308,8 +308,8 @@ export async function indexSlugs(
             const existingBaseSlug = existingTitle ? titleToSlug(existingTitle) : null
 
             if (existingBaseSlug) {
-              const existingBlockPrefix = existingBlockRow.block_uuid.substring(0, 4)
-              const updatedExistingSlug = `${existingBlockPrefix}-${existingBaseSlug}`
+              const existingBlockSuffix = existingBlockRow.block_uuid.substring(0, 4)
+              const updatedExistingSlug = `${existingBaseSlug}-${existingBlockSuffix}`
 
               await tx.query(
                 `UPDATE block_slug SET slug = $1, title = $2, indexed_at = $3 WHERE block_uuid = $4`,
@@ -318,8 +318,8 @@ export async function indexSlugs(
             }
           }
 
-          const currentBlockPrefix = block.block_uuid.substring(0, 4)
-          const finalSlug = `${currentBlockPrefix}-${baseSlug}`
+          const currentBlockSuffix = block.block_uuid.substring(0, 4)
+          const finalSlug = `${baseSlug}-${currentBlockSuffix}`
 
           await tx.query(
             `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)

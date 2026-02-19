@@ -130,9 +130,9 @@ The linking system works closely with the slug system:
 - The `block_slug` table serves as the authoritative lookup for link resolution
 
 ### Conflict Impact
-- When slug conflicts are resolved by adding UUID prefixes, existing links may need updating
+- When slug conflicts are resolved by adding UUID suffixes, existing links may need updating
 - Links to base slugs continue to work if they remain unique
-- Links to specific prefixed slugs remain stable
+- Links to specific suffixed slugs remain stable
 
 ## Future Enhancements
 
