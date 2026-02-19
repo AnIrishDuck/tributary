@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createTestClientWithStream } from './test-utils'
 import { saveBlock } from '../src/actions/saveBlock'
 import { getBlockCount, getBlockVersionCount } from 'scribe-data/src/block'

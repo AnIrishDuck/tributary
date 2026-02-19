@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import HomePage from '../src/pages/HomePage'
-import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
+import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { createStream } from '../src/actions/createStream'
 import { routes } from '../src/route'
 import { getStreams } from '../src/actions/getStreams'
+import { WithProviders } from './test-utils'
 
 // Mock the useNavigate hook from react-router
 const mockNavigate = vi.fn()
@@ -31,9 +32,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for loading to complete
@@ -59,9 +60,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Should show loading text initially
@@ -85,9 +86,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for streams to load
@@ -124,9 +125,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for streams to load
@@ -174,9 +175,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for streams to load
@@ -204,9 +205,9 @@ describe('HomePage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     await waitFor(() => {

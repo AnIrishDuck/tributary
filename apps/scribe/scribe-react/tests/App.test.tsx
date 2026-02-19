@@ -1,20 +1,27 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import App from '../src/App'
+import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
+import { createTestTributaryClient } from '../src/context/tributaryContext'
+import { WithProviders } from './test-utils'
 
 describe('App', () => {
-  it('should render the app with routing', () => {
-    // Create a memory router for testing
+  it('should render the app with routing', async () => {
+    const { client } = createTestTributaryClient()
+
     const router = createMemoryRouter(routes, {
       initialEntries: ['/']
     })
-    
-    render(<RouterProvider router={router} />)
-    
-    // Should render the HomePage by default
-    // Check for the empty state heading
-    expect(screen.getByRole('heading', { name: /no streams yet/i })).toBeInTheDocument()
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for sync to complete and page to render
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /no streams yet/i })).toBeInTheDocument()
+    }, { timeout: 3000 })
   })
 })

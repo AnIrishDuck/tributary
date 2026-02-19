@@ -3,8 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
-import { createTestClientWithStream } from './test-utils'
+import { createTestTributaryClient } from '../src/context/tributaryContext'
+import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveBlock } from '../src/actions/saveBlock'
 import * as scribeData from 'scribe-data'
 
@@ -21,9 +21,9 @@ describe('BlockViewPage', () => {
     const { client } = createTestTributaryClient()
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
 
     // Should show error state for missing parameters
@@ -54,9 +54,9 @@ describe('BlockViewPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to finish loading and show content
@@ -86,7 +86,6 @@ describe('BlockViewPage', () => {
     // Check for the new document button
     expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
   })
-})
 
   it('should render BlockViewPage at /pk/:prefix/:slug route and load without errors', async () => {
     // This test verifies that the route /pk/:prefix/:slug actually renders and works
@@ -111,9 +110,9 @@ describe('BlockViewPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the page to fully load - check for Edit button which means page loaded
@@ -125,3 +124,4 @@ describe('BlockViewPage', () => {
     const errorEl = screen.queryByText(/Error|error/)
     expect(errorEl).toBeNull()
   })
+})

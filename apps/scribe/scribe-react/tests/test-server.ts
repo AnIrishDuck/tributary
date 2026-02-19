@@ -5,21 +5,21 @@ import { FakeServer } from 'tributary-client'
  * and blob limit controls for testing
  */
 export class TestFakeServer extends FakeServer {
-  private isDisconnected = false
+  private _disconnected = false
   private maxBlobsPerSync: Map<string, number> = new Map()
 
   /**
    * Disconnect the server - all operations will fail
    */
   disconnect(): void {
-    this.isDisconnected = true
+    this._disconnected = true
   }
 
   /**
    * Reconnect the server - operations will succeed again
    */
   reconnect(): void {
-    this.isDisconnected = false
+    this._disconnected = false
   }
 
   /**
@@ -48,7 +48,7 @@ export class TestFakeServer extends FakeServer {
    * Check if server is currently disconnected
    */
   isDisconnected(): boolean {
-    return this.isDisconnected
+    return this._disconnected
   }
 
   async storeBlob(
@@ -59,7 +59,7 @@ export class TestFakeServer extends FakeServer {
     signature: string,
     sequenceNumber: number
   ): Promise<boolean> {
-    if (this.isDisconnected) {
+    if (this._disconnected) {
       throw new Error('Network error: Server disconnected')
     }
     return super.storeBlob(pubkey, data, hash, priorHash, signature, sequenceNumber)
@@ -78,7 +78,7 @@ export class TestFakeServer extends FakeServer {
     sequenceNumber: number
     createdAt: Date
   } | null> {
-    if (this.isDisconnected) {
+    if (this._disconnected) {
       throw new Error('Network error: Server disconnected')
     }
     return super.retrieveBlob(pubkey, id)
@@ -95,10 +95,29 @@ export class TestFakeServer extends FakeServer {
     sequenceNumber: number
     createdAt: Date
   } | null> {
-    if (this.isDisconnected) {
+    if (this._disconnected) {
       throw new Error('Network error: Server disconnected')
     }
     return super.getLatestBlobMetadata(pubkey)
+  }
+
+  async getBlobsArrow(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: Array<{
+      data: Uint8Array
+      hash: string
+      signature: string
+      sequenceNumber: number
+    }>
+    totalCount: number
+  }> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+    return super.getBlobsArrow(pubkey, startSequence, max)
   }
 
   async getAllBlobMetadata(
@@ -117,7 +136,7 @@ export class TestFakeServer extends FakeServer {
     }>
     totalCount: number
   }> {
-    if (this.isDisconnected) {
+    if (this._disconnected) {
       throw new Error('Network error: Server disconnected')
     }
 

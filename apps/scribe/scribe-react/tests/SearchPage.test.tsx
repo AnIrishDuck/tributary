@@ -3,8 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { TributaryProvider } from '../src/context/tributaryContext'
-import { createTestClientWithStream } from './test-utils'
+import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveBlock } from '../src/actions/saveBlock'
 import { indexAll } from 'scribe-data'
 
@@ -23,9 +22,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     await waitFor(() => {
@@ -42,9 +41,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     await waitFor(() => {
@@ -70,9 +69,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for results
@@ -101,9 +100,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     await waitFor(() => {
@@ -120,9 +119,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     const searchInput = await screen.findByPlaceholderText(/Search documents/i)
@@ -150,9 +149,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for result and click it
@@ -184,9 +183,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Should find the JavaScript Tutorial (has both words)
@@ -213,9 +212,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Should show result count
@@ -241,9 +240,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Should show "Untitled Document"
@@ -269,9 +268,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     await waitFor(() => {
@@ -296,9 +295,9 @@ describe('SearchPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     const createButton = await screen.findByRole('button', { name: /Create New Document/i })

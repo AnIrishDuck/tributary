@@ -3,8 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { TributaryProvider } from '../src/context/tributaryContext'
-import { createTestClientWithStream } from './test-utils'
+import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveBlock } from '../src/actions/saveBlock'
 
 describe('BlockListPage', () => {
@@ -26,9 +25,9 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to finish loading
@@ -68,9 +67,9 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to finish loading and show the list
@@ -78,9 +77,10 @@ describe('BlockListPage', () => {
       expect(screen.getByText('Documents')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Check that we have the correct number of blocks (links in the grid)
+    // Check that we have at least 4 document links (there may also be
+    // navigation links from the Layout's bottom nav bar)
     const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(4)
+    expect(links.length).toBeGreaterThanOrEqual(4)
     
     // Check that all titles are displayed
     expect(screen.getByText('First Document')).toBeInTheDocument()
@@ -116,9 +116,9 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to finish loading
@@ -146,9 +146,9 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the page to fully load
@@ -180,9 +180,9 @@ describe('BlockListPage', () => {
     })
     
     const { container } = render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the component to finish loading
@@ -227,9 +227,9 @@ describe('BlockListPage', () => {
     })
     
     const { unmount } = render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={listRouter} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the block list page to load
@@ -257,9 +257,9 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={viewRouter} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
     // Wait for the document view page to load and display the content
@@ -285,16 +285,17 @@ describe('BlockListPage', () => {
     })
     
     render(
-      <TributaryProvider client={client}>
+      <WithProviders client={client}>
         <RouterProvider router={router} />
-      </TributaryProvider>
+      </WithProviders>
     )
     
-    // Wait for page to load
+    // Wait for page to fully load (not just the loading spinner which says "Loading documents...")
+    // The header button "Search" only appears once loading is complete.
     await waitFor(() => {
-      expect(screen.getByText(/Documents/i)).toBeInTheDocument()
-    })
-    
+      expect(screen.getByRole('button', { name: /Search/i })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
     // Click search button
     const searchButton = screen.getByRole('button', { name: /Search/i })
     fireEvent.click(searchButton)

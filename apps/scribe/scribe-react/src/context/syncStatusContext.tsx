@@ -59,7 +59,7 @@ export const SyncStatusProvider: React.FC<{
       setSyncStatus(snapshot)
 
       const statuses = Object.values(snapshot)
-      const allComplete = statuses.length > 0 && statuses.every(s => s.synced)
+      const allComplete = statuses.length === 0 || statuses.every(s => s.synced)
       const anyError = statuses.some(s => s.hasError)
       const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
       const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)

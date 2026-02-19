@@ -1,22 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { createTestClientWithStream } from './test-utils'
-import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
-import { SyncStatusProvider } from '../src/context/syncStatusContext'
+import { createTestClientWithStream, WithProviders } from './test-utils'
+import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
 import { getBlockCount, getBlockVersionCount } from 'scribe-data/src/block'
 import { createBlock } from 'scribe-data/src/block'
 import { indexSlugs, getBlockSlugByUuid } from 'scribe-data/src/indexing'
-
-// Helper to wrap components with both providers
-const WithProviders = ({ client, children }: { client: any, children: React.ReactNode }) => (
-  <SyncStatusProvider client={client} pollInterval={100}>
-    <TributaryProvider client={client}>
-      {children}
-    </TributaryProvider>
-  </SyncStatusProvider>
-)
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -137,39 +127,42 @@ describe('EditorPage', () => {
 
   it('should handle save errors gracefully', async () => {
     const { client, prefix } = await createTestClientWithStream()
-    
-    // Mock the get method to throw an error
-    if (client) {
-      vi.spyOn(client, 'get').mockRejectedValue(new Error('Stream error'))
-    }
-    
+
     // Extract just the base64 part for the route parameter (remove the 'pk/' prefix)
     const parts = prefix.split('/')
     const base64Part = parts[1]
-    
+
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/new`]
     })
-    
+
     const { unmount } = render(
       <WithProviders client={client}>
         <RouterProvider router={router} />
       </WithProviders>
     )
-    
-    // Wait for the component to render fully
+
+    // Wait for the component to render fully BEFORE mocking client.get.
+    // SyncStatusProvider's background sync loop calls client.get during sync,
+    // so mocking it before render causes the sync to fail and the editor
+    // shows the "syncing" screen instead of the editor form.
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
     })
-    
+
+    // NOW mock client.get to throw an error so the save operation fails
+    if (client) {
+      vi.spyOn(client, 'get').mockRejectedValue(new Error('Stream error'))
+    }
+
     const saveButton = screen.getByRole('button', { name: 'Add Document' })
     fireEvent.click(saveButton)
-    
+
     // Wait for error message to appear
     await waitFor(() => {
       expect(screen.getByText(/Failed to save document/)).toBeInTheDocument()
     }, { timeout: 2000 })
-    
+
     // Restore the spy and unmount to prevent navigation issues
     vi.restoreAllMocks()
     unmount()
