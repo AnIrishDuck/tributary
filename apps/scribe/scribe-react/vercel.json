@@ -1,0 +1,5 @@
+{
+  "installCommand": "cd ../../../tributary-client && npm install && cd ../apps/scribe/scribe-data && npm install && cd ../scribe-react && npm install",
+  "buildCommand": "cd ../../../tributary-client && npm run build && cd ../apps/scribe/scribe-data && npm run build && cd ../scribe-react && npm run build",
+  "outputDirectory": "dist"
+}
