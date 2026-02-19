@@ -1,10 +1,6 @@
 import { TributaryLocal } from 'tributary-client'
 import { Block, BlockSlug, AuthoritativeVersion, BlockTag, PGliteResult, BlockSlugRow } from './types'
 
-// TODO: Transactions don't really work in the current implementation.
-// We're using individual queries instead of transactions to avoid correctness issues.
-// In the future, when we have proper transaction support, we should wrap related
-// operations in transactions for consistency.
 
 // Add proper typing for the query results
 interface UnindexedBlock {
@@ -21,6 +17,10 @@ interface ExistingSlugResult {
 interface ExistingBlockResult {
   block_uuid: string;
   body: string;
+}
+
+interface LastEditedResult {
+  last_edited: string | null;
 }
 
 /**
@@ -184,11 +184,17 @@ export interface IndexSlugsResult {
    * Number of slugs that were indexed
    */
   indexedCount: number
-  
+
   /**
    * Whether there are more slugs to index
    */
   hasMore: boolean
+
+  /**
+   * Block UUIDs that were processed during this indexing run.
+   * Can be passed to indexSearchVectors to avoid a redundant scan.
+   */
+  indexedBlockUuids: string[]
 }
 
 /**
@@ -210,16 +216,16 @@ export async function indexSlugs(
   options: IndexSlugsOptions = {}
 ): Promise<IndexSlugsResult> {
   const limit = options.limit ?? 100
-  
+
   // First, find the latest version of each block using a window function
   const unindexedBlocksResult = await localDb.query(`
-    SELECT 
+    SELECT
       latest_blocks.block_uuid,
       latest_blocks.version_uuid,
       latest_blocks.body,
       latest_blocks.insert_datetime
     FROM (
-      SELECT 
+      SELECT
         block_uuid,
         version_uuid,
         body,
@@ -233,177 +239,138 @@ export async function indexSlugs(
     ORDER BY latest_blocks.insert_datetime ASC  -- Process oldest first
     LIMIT $1
   `, [limit])
-  
+
   const unindexedBlocks: UnindexedBlock[] = (unindexedBlocksResult.rows || []) as UnindexedBlock[]
-  
+
   // If no unindexed blocks, return early
   if (unindexedBlocks.length === 0) {
     return {
       indexedCount: 0,
-      hasMore: false
+      hasMore: false,
+      indexedBlockUuids: []
     }
   }
-  
-  // Extract titles and update indexes
+
+  console.log(`indexSlugs: ${unindexedBlocks.length} new/changed authoritative blocks to index`)
+  const slugStartTime = performance.now()
+
+  // Process all blocks in a single transaction for atomicity and performance
   let indexedCount = 0
-  
-  // Process blocks one by one to handle conflicts correctly
-  for (const block of unindexedBlocks) {
-    // Extract title from the block body
-    const title = extractTitleFromMarkdown(block.body)
-    const baseSlug = title ? titleToSlug(title) : null
-    
-    // Extract tags from the block body
-    const tags = extractTagsFromMarkdown(block.body)
-    
-    // TODO: In the future, when we have proper transaction support, we should wrap these
-    // related operations in a transaction to ensure consistency
-    try {
+  const indexedBlockUuids: string[] = []
+
+  await localDb.transaction(async (tx: any) => {
+    for (const block of unindexedBlocks) {
+      const title = extractTitleFromMarkdown(block.body)
+      const baseSlug = title ? titleToSlug(title) : null
+      const tags = extractTagsFromMarkdown(block.body)
+      const now = new Date().toISOString()
+
       // Mark the block as indexed
-      await localDb.query(
-        `INSERT INTO indexed_block (block_uuid, version_uuid, indexed, last_indexed_at) 
+      await tx.query(
+        `INSERT INTO indexed_block (block_uuid, version_uuid, indexed, last_indexed_at)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (block_uuid) 
+         ON CONFLICT (block_uuid)
          DO UPDATE SET version_uuid = $2, indexed = $3, last_indexed_at = $4`,
-        [
-          block.block_uuid,
-          block.version_uuid,
-          true,
-          new Date().toISOString()
-        ]
+        [block.block_uuid, block.version_uuid, true, now]
       )
-      
+
       // Update the authoritative version mapping
-      await localDb.query(
-        `INSERT INTO authoritative_version (block_uuid, version_uuid, indexed_at) 
+      await tx.query(
+        `INSERT INTO authoritative_version (block_uuid, version_uuid, indexed_at)
          VALUES ($1, $2, $3)
-         ON CONFLICT (block_uuid) 
+         ON CONFLICT (block_uuid)
          DO UPDATE SET version_uuid = $2, indexed_at = $3`,
-        [
-          block.block_uuid,
-          block.version_uuid,
-          new Date().toISOString()
-        ]
+        [block.block_uuid, block.version_uuid, now]
       )
-      
+
       // Handle slug updates
       if (baseSlug && title) {
         // Check if this base slug already exists for a different block
-        const existingSlugResult = await localDb.query(
+        const existingSlugResult = await tx.query(
           `SELECT block_uuid FROM block_slug WHERE slug = $1`,
           [baseSlug]
         )
-        
+
         const existingSlugRow = existingSlugResult.rows && existingSlugResult.rows.length > 0 ? existingSlugResult.rows[0] as ExistingSlugResult : null
         const existingSlug = existingSlugRow ? existingSlugRow : null
-        
+
         if (existingSlug && existingSlug.block_uuid !== block.block_uuid) {
-          // Conflict detected - we need to update both blocks to have UUID prefixes
-          
-          // Get the existing block's data to update its slug
-          const existingBlockResult = await localDb.query(
+          // Conflict detected - update both blocks to have UUID prefixes
+          const existingBlockResult = await tx.query(
             `SELECT block_uuid, body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
             [existingSlug.block_uuid]
           )
-          
+
           const existingBlockRow = existingBlockResult.rows && existingBlockResult.rows.length > 0 ? existingBlockResult.rows[0] as ExistingBlockResult : null
-          const existingBlock = existingBlockRow ? existingBlockRow : null
-          
-          if (existingBlock) {
-            // Extract title from the existing block
-            const existingTitle = extractTitleFromMarkdown(existingBlock.body)
+
+          if (existingBlockRow) {
+            const existingTitle = extractTitleFromMarkdown(existingBlockRow.body)
             const existingBaseSlug = existingTitle ? titleToSlug(existingTitle) : null
-            
+
             if (existingBaseSlug) {
-              // Generate a unique slug for the existing block
-              const existingBlockPrefix = existingBlock.block_uuid.substring(0, 4)
+              const existingBlockPrefix = existingBlockRow.block_uuid.substring(0, 4)
               const updatedExistingSlug = `${existingBlockPrefix}-${existingBaseSlug}`
-              
-              // Update the existing block's slug
-              await localDb.query(
+
+              await tx.query(
                 `UPDATE block_slug SET slug = $1, title = $2, indexed_at = $3 WHERE block_uuid = $4`,
-                [
-                  updatedExistingSlug,
-                  existingTitle || "Untitled",
-                  new Date().toISOString(),
-                  existingBlock.block_uuid
-                ]
+                [updatedExistingSlug, existingTitle || "Untitled", now, existingBlockRow.block_uuid]
               )
             }
           }
-          
-          // Generate a unique slug for the current block
+
           const currentBlockPrefix = block.block_uuid.substring(0, 4)
           const finalSlug = `${currentBlockPrefix}-${baseSlug}`
-          
-          // Update or insert the slug entry for this block
-          await localDb.query(
-            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at) 
+
+          await tx.query(
+            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (block_uuid) 
+             ON CONFLICT (block_uuid)
              DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [
-              block.block_uuid,
-              finalSlug,
-              title,
-              new Date().toISOString()
-            ]
+            [block.block_uuid, finalSlug, title, now]
           )
         } else {
-          // No conflict or updating the same block, just use the base slug
-          await localDb.query(
-            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at) 
+          // No conflict or updating the same block
+          await tx.query(
+            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (block_uuid) 
+             ON CONFLICT (block_uuid)
              DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [
-              block.block_uuid,
-              baseSlug,
-              title,
-              new Date().toISOString()
-            ]
+            [block.block_uuid, baseSlug, title, now]
           )
         }
-        
+
         indexedCount++
       } else {
-        // If no slug, delete any existing slug entry for this block
-        await localDb.query(
+        await tx.query(
           `DELETE FROM block_slug WHERE block_uuid = $1`,
           [block.block_uuid]
         )
       }
-      
+
       // Handle tag updates
-      // First, delete all existing tags for this block
-      await localDb.query(
+      await tx.query(
         `DELETE FROM block_tag WHERE block_uuid = $1`,
         [block.block_uuid]
       )
-      
-      // Then insert new tags for this block
+
       for (const tag of tags) {
-        await localDb.query(
+        await tx.query(
           `INSERT INTO block_tag (block_uuid, tag, indexed_at) VALUES ($1, $2, $3)`,
-          [
-            block.block_uuid,
-            tag,
-            new Date().toISOString()
-          ]
+          [block.block_uuid, tag, now]
         )
       }
-    } catch (error) {
-      // TODO: In the future, with transaction support, we could rollback all changes
-      // for this block if an error occurs
-      console.error(`Error indexing block ${block.block_uuid}:`, error)
-      // Continue with other blocks
+
+      indexedBlockUuids.push(block.block_uuid)
     }
-  }
-  
+  })
+
+  const slugElapsed = (performance.now() - slugStartTime).toFixed(1)
+  console.log(`indexSlugs: indexed ${indexedCount} slugs in ${slugElapsed}ms`)
+
   return {
     indexedCount,
-    // Check if we hit the limit, indicating there might be more to process
-    hasMore: unindexedBlocks.length === limit
+    hasMore: unindexedBlocks.length === limit,
+    indexedBlockUuids
   }
 }
 
@@ -595,16 +562,21 @@ export async function indexAll(
 ): Promise<IndexSlugsResult> {
   // Import search functions
   const { indexSearchVectors } = await import('./search.js')
-  
+
   // First index slugs and tags
   const slugResult = await indexSlugs(localDb, options)
-  
-  // Then index search vectors
-  const searchResult = await indexSearchVectors(localDb, options)
-  
+
+  // Then index search vectors only for the blocks that were just processed,
+  // avoiding a redundant full-table scan to find unindexed blocks.
+  const searchResult = await indexSearchVectors(localDb, {
+    ...options,
+    blockUuids: slugResult.indexedBlockUuids
+  })
+
   // Return combined results
   return {
     indexedCount: Math.max(slugResult.indexedCount, searchResult.indexedCount),
-    hasMore: slugResult.hasMore || searchResult.hasMore
+    hasMore: slugResult.hasMore || searchResult.hasMore,
+    indexedBlockUuids: slugResult.indexedBlockUuids
   }
 }

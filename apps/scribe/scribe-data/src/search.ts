@@ -9,6 +9,13 @@ export interface IndexSearchOptions {
    * Defaults to 100
    */
   limit?: number
+
+  /**
+   * Optional list of block UUIDs to index.
+   * When provided, only these blocks are indexed (skipping the scan for unindexed blocks).
+   * Typically populated from the result of indexSlugs().
+   */
+  blockUuids?: string[]
 }
 
 /**
@@ -152,75 +159,95 @@ export async function indexSearchVectors(
   options: IndexSearchOptions = {}
 ): Promise<IndexSearchResult> {
   const limit = options.limit ?? 100
-  
-  // Find blocks that are authoritative but not search-indexed (or have a newer version)
-  const result = await localDb.query(`
-    SELECT 
-      b.block_uuid,
-      b.version_uuid,
-      b.body
-    FROM block b
-    INNER JOIN authoritative_version av 
-      ON b.block_uuid = av.block_uuid 
-      AND b.version_uuid = av.version_uuid
-    LEFT JOIN block_search_index bsi 
-      ON b.block_uuid = bsi.block_uuid
-    WHERE bsi.block_uuid IS NULL 
-      OR bsi.version_uuid != av.version_uuid
-    ORDER BY b.insert_datetime ASC
-    LIMIT $1
-  `, [limit])
-  
-  const unindexedBlocks: UnindexedSearchBlock[] = (result.rows || []) as UnindexedSearchBlock[]
-  
+  const { blockUuids } = options
+
+  let unindexedBlocks: UnindexedSearchBlock[]
+
+  if (blockUuids && blockUuids.length > 0) {
+    // Fast path: caller already knows which blocks need indexing (e.g. from indexSlugs).
+    // Just fetch their authoritative content directly – no scan required.
+    const placeholders = blockUuids.map((_, i) => `$${i + 1}`).join(', ')
+    const result = await localDb.query(`
+      SELECT
+        b.block_uuid,
+        b.version_uuid,
+        b.body
+      FROM block b
+      INNER JOIN authoritative_version av
+        ON b.block_uuid = av.block_uuid
+        AND b.version_uuid = av.version_uuid
+      WHERE b.block_uuid IN (${placeholders})
+    `, blockUuids)
+
+    unindexedBlocks = (result.rows || []) as UnindexedSearchBlock[]
+  } else {
+    // Fallback: scan for blocks that are authoritative but not yet search-indexed
+    const result = await localDb.query(`
+      SELECT
+        b.block_uuid,
+        b.version_uuid,
+        b.body
+      FROM block b
+      INNER JOIN authoritative_version av
+        ON b.block_uuid = av.block_uuid
+        AND b.version_uuid = av.version_uuid
+      LEFT JOIN block_search_index bsi
+        ON b.block_uuid = bsi.block_uuid
+      WHERE bsi.block_uuid IS NULL
+        OR bsi.version_uuid != av.version_uuid
+      ORDER BY b.insert_datetime ASC
+      LIMIT $1
+    `, [limit])
+
+    unindexedBlocks = (result.rows || []) as UnindexedSearchBlock[]
+  }
+
   if (unindexedBlocks.length === 0) {
     return {
       indexedCount: 0,
       hasMore: false
     }
   }
-  
-  // Index each block
+
+  console.log(`indexSearchVectors: ${unindexedBlocks.length} blocks to update`)
+  const searchStartTime = performance.now()
+
+  // Index all blocks in a single transaction for atomicity and performance
   let indexedCount = 0
-  
-  for (const block of unindexedBlocks) {
-    try {
+
+  await localDb.transaction(async (tx: any) => {
+    for (const block of unindexedBlocks) {
       const searchableText = extractSearchableText(block.body)
-      
+      const now = new Date().toISOString()
+
       if (searchableText.trim().length > 0) {
-        // Insert or update the search vector
-        await localDb.query(
+        await tx.query(
           `INSERT INTO block_search_index (block_uuid, version_uuid, search_vector, indexed_at)
            VALUES ($1, $2, to_tsvector('english', $3), $4)
            ON CONFLICT (block_uuid)
-           DO UPDATE SET 
+           DO UPDATE SET
              version_uuid = $2,
              search_vector = to_tsvector('english', $3),
              indexed_at = $4`,
-          [
-            block.block_uuid,
-            block.version_uuid,
-            searchableText,
-            new Date().toISOString()
-          ]
+          [block.block_uuid, block.version_uuid, searchableText, now]
         )
         indexedCount++
       } else {
-        // If no searchable text, remove from search index
-        await localDb.query(
+        await tx.query(
           `DELETE FROM block_search_index WHERE block_uuid = $1`,
           [block.block_uuid]
         )
       }
-    } catch (error) {
-      console.error(`Error indexing search vector for block ${block.block_uuid}:`, error)
-      // Continue with other blocks
     }
-  }
-  
+  })
+
+  const searchElapsed = (performance.now() - searchStartTime).toFixed(1)
+  console.log(`indexSearchVectors: updated ${indexedCount} search vectors in ${searchElapsed}ms`)
+
   return {
     indexedCount,
-    hasMore: unindexedBlocks.length === limit
+    // When blockUuids was provided, hasMore is always false (caller gave us the exact set)
+    hasMore: blockUuids ? false : unindexedBlocks.length === limit
   }
 }
 
