@@ -22,6 +22,15 @@ export class TributaryServer implements Server {
     this.writeAuthToken = token;
   }
 
+  private getAuthHeader(): string | undefined {
+    if (this.writeAuthToken) {
+      return `Bearer ${this.writeAuthToken}`;
+    } else if (this.authKey) {
+      return `Bearer ${this.authKey}`;
+    }
+    return undefined;
+  }
+
   async storeBlob(
     pubkey: string,
     data: Uint8Array,
@@ -40,11 +49,9 @@ export class TributaryServer implements Server {
       'X-Tributary-Authorization': signature
     };
 
-    // Use writeAuthToken (Supabase JWT) for writes; fall back to authKey (anon key)
-    if (this.writeAuthToken) {
-      headers['Authorization'] = `Bearer ${this.writeAuthToken}`;
-    } else if (this.authKey) {
-      headers['Authorization'] = `Bearer ${this.authKey}`;
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
     }
     
     const response = await fetch(url, {
@@ -81,9 +88,9 @@ export class TributaryServer implements Server {
     
     const headers: Record<string, string> = {};
     
-    // Add auth header if authKey is provided
-    if (this.authKey) {
-      headers['Authorization'] = `Bearer ${this.authKey}`;
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
     }
     
     const response = await fetch(url, { headers });
@@ -126,9 +133,9 @@ export class TributaryServer implements Server {
     
     const headers: Record<string, string> = {};
     
-    // Add auth header if authKey is provided
-    if (this.authKey) {
-      headers['Authorization'] = `Bearer ${this.authKey}`;
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
     }
     
     try {
@@ -193,9 +200,9 @@ export class TributaryServer implements Server {
     
     const headers: Record<string, string> = {};
     
-    // Add auth header if authKey is provided
-    if (this.authKey) {
-      headers['Authorization'] = `Bearer ${this.authKey}`;
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
     }
     
     try {
@@ -263,9 +270,9 @@ export class TributaryServer implements Server {
     
     const headers: Record<string, string> = {};
     
-    // Add auth header if authKey is provided
-    if (this.authKey) {
-      headers['Authorization'] = `Bearer ${this.authKey}`;
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
     }
     
     try {
