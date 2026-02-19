@@ -4,7 +4,7 @@ import { useTributary } from '../context/tributaryContext'
 import { searchBlocks, SearchResult } from 'scribe-data'
 import { SearchBar } from '../components/SearchBar'
 import { SearchResultCard } from '../components/SearchResultCard'
-import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
 const RESULTS_PER_PAGE = 20
 
@@ -70,7 +70,7 @@ const SearchPage: React.FC = () => {
   // Handle search input change
   const handleSearch = useCallback((newQuery: string) => {
     setPage(0) // Reset to first page
-    setSearchParams(newQuery ? { q: newQuery } : {})
+    setSearchParams(newQuery ? { q: newQuery } : {}, { replace: true })
   }, [setSearchParams])
   
   // Handle pagination
@@ -96,6 +96,13 @@ const SearchPage: React.FC = () => {
       <div className="bg-white border-b border-gray-200 py-4">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4 mb-4">
+            <button
+              onClick={() => navigate(`/pk/${prefix}/`)}
+              className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <ArrowLeftIcon className="w-4 h-4 mr-1" />
+              Documents
+            </button>
             <h1 className="text-xl font-bold text-gray-900">Search Documents</h1>
           </div>
           

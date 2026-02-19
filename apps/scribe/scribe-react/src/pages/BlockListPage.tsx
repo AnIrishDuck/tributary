@@ -4,7 +4,7 @@ import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
 import { getAllBlocksWithTitles, BlockSlugRow } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
-import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
 const BlockListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
@@ -103,6 +103,13 @@ const BlockListPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/')}
+                className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <ArrowLeftIcon className="w-4 h-4 mr-1" />
+                Streams
+              </button>
               <h1 className="text-xl font-bold text-gray-900">Documents</h1>
               <span className="text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
                 {blocks.length} document{blocks.length !== 1 ? 's' : ''}
