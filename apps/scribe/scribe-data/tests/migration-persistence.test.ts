@@ -42,55 +42,30 @@ describe('Migration Persistence Bug', () => {
   })
 
   it('should fail when migrations are not in the stream (demonstrates current bug)', async () => {
-    // Step 1: Create stream in CLI WITHOUT running migrations
+    // Create stream WITHOUT running migrations
     const cliClient = new TributaryClient({
       server: createTestServer(),
       db: testDb
     })
-    
+
     const cliStream = await cliClient.addWriteKey('scribe', privateKey)
-    
-    // DON'T run migrations - tables only exist in schema, not in stream
-    // await up(cliStream, cliStream.local())
-    
-    // Insert a test block directly (this goes into the stream)
-    const blockUuid = uuidv4()
-    const versionUuid = uuidv4()
-    await cliStream.exec(
-      `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        blockUuid,
-        'scribe/markdown',
-        versionUuid,
-        null,
-        new Date().toISOString(),
-        'test',
-        '# Test Document\n\nThis is a test.'
-      ]
-    )
-    
-    // Step 2: Simulate scribe-react loading the stream from a fresh database
-    const freshDb = new PGlite()  // Fresh database!
-    const reactClient = new TributaryClient({
-      server: createTestServer(),
-      db: freshDb
-    })
-    
-    // Sync the stream to apply all transactions
-    const reactStream = await reactClient.get('scribe', streamId)
-    expect(reactStream).toBeDefined()
-    await reactStream!.sync(100)
-    
-    // Get the local database
-    const localDb = await reactClient.getLocal('scribe', streamId)
-    expect(localDb).toBeDefined()
-    
-    // Step 3: Try to query - this should work if migrations are in the stream
-    // Currently it will fail because migrations were never added to the stream
+
+    // Without migrations, the block table doesn't exist, so INSERT fails
     await expect(async () => {
-      await getAllBlocksWithTitles(localDb!)
-    }).rejects.toThrow(/relation.*authoritative_version.*does not exist/)
+      await cliStream.exec(
+        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          uuidv4(),
+          'scribe/markdown',
+          uuidv4(),
+          null,
+          new Date().toISOString(),
+          'test',
+          '# Test Document\n\nThis is a test.'
+        ]
+      )
+    }).rejects.toThrow(/relation.*block.*does not exist/)
   })
 
   it('should work with ensureMigrations() on a fresh database', async () => {

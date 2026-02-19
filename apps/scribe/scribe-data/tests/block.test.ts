@@ -257,6 +257,6 @@ describe('Block Operations', () => {
     })
     
     count = await getBlockCount(syncedDb)
-    expect(count).toBe(3) // 2 original blocks + 1 new version
+    expect(count).toBe(3) // 2 unique blocks + 1 new version = 3 total rows
   })
 })
