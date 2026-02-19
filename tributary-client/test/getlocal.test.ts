@@ -1,6 +1,6 @@
 // Test for the getLocal() method in TributaryClient and TributaryLocal functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, TributaryLocal, createTestServer } from '../src/index';
+import { TributaryClient, createTestServer } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -53,56 +53,52 @@ describe('TributaryClient - getLocal() Method', () => {
 describe('TributaryLocal Class', () => {
   let client: TributaryClient;
   let stream: any;
-  let localInstance: TributaryLocal;
+  let localInstance: any;
 
   beforeEach(async () => {
     const server = createTestServer();
     client = new TributaryClient({ server });
-    
+
     // Generate a key pair for testing
     const keyPair = nacl.sign.keyPair();
     const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
-    
+
     // Add a stream with a write key
     stream = await client.addWriteKey('scribe', privateKeyBase64);
-    
-    // Get a TributaryLocal instance (for testing the class methods)
-    // We need to create it directly since it's mainly used internally
-    localInstance = new TributaryLocal(stream.pglite, stream.getSchemaName());
+
+    // Get a TributaryLocal instance via the public API
+    localInstance = stream.local();
   });
 
   it('should execute query method correctly', async () => {
-    // Test the query method
     await localInstance.exec('CREATE TABLE IF NOT EXISTS test_local_query (id INTEGER, value TEXT)');
     await localInstance.exec("INSERT INTO test_local_query VALUES (1, 'local query test')");
-    
+
     const result = await localInstance.query('SELECT * FROM test_local_query');
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toEqual({ id: 1, value: 'local query test' });
   });
 
   it('should execute exec method correctly', async () => {
-    // Test the exec method
     await localInstance.exec('CREATE TABLE IF NOT EXISTS test_local_exec (id INTEGER, value TEXT)');
     await localInstance.exec("INSERT INTO test_local_exec VALUES (1, 'local exec test')");
-    
-    // Verify the data was inserted by querying it
-    const db = await stream.local();
+
+    // Verify the data was inserted by querying via a fresh local() call
+    const db = stream.local();
     const result = await db.query('SELECT * FROM test_local_exec');
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toEqual({ id: 1, value: 'local exec test' });
   });
 
   it('should execute transaction method correctly', async () => {
-    // Test the transaction method
     const result = await localInstance.transaction(async (tx: any) => {
       await tx.exec('CREATE TABLE IF NOT EXISTS test_local_transaction (id INTEGER, value TEXT)');
       await tx.exec("INSERT INTO test_local_transaction VALUES (1, 'transaction test')");
-      
+
       const queryResult = await tx.query('SELECT * FROM test_local_transaction');
       return queryResult.rows;
     });
-    
+
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({ id: 1, value: 'transaction test' });
   });

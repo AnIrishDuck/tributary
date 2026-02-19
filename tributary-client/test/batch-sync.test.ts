@@ -1,8 +1,7 @@
 // Tests for batch sync functionality with various edge cases
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { TributaryClient } from '../src/tributaryClient';
-import { FakeServer } from '../src/fakeServer';
+import { TributaryClient, FakeServer } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -33,14 +32,14 @@ describe('Batch Sync Tests', () => {
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync 2 blobs at a time
-    let isFullySynced = await stream2.sync(2);
-    expect(isFullySynced).toBe(false); // Should have more blobs
+    let status = await stream2.sync(2);
+    expect(status.complete()).toBe(false); // Should have more blobs
 
-    isFullySynced = await stream2.sync(2);
-    expect(isFullySynced).toBe(false); // Should still have more
+    status = await stream2.sync(2);
+    expect(status.complete()).toBe(false); // Should still have more
 
-    isFullySynced = await stream2.sync(2);
-    expect(isFullySynced).toBe(true); // Should be fully synced now
+    status = await stream2.sync(2);
+    expect(status.complete()).toBe(true); // Should be fully synced now
 
     // Verify all data is present
     const result: any = await stream2.local().query('SELECT * FROM test ORDER BY id');
@@ -63,8 +62,8 @@ describe('Batch Sync Tests', () => {
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync first 2 blobs
-    let isFullySynced = await stream2.sync(2);
-    expect(isFullySynced).toBe(false);
+    let status = await stream2.sync(2);
+    expect(status.complete()).toBe(false);
 
     // Verify 1 row (first INSERT)
     let result: any = await stream2.local().query('SELECT * FROM test ORDER BY id');
@@ -72,8 +71,8 @@ describe('Batch Sync Tests', () => {
     expect(result.rows[0].id).toBe(1);
 
     // Sync next batch - should NOT reprocess blob 2
-    isFullySynced = await stream2.sync(2);
-    expect(isFullySynced).toBe(true);
+    status = await stream2.sync(2);
+    expect(status.complete()).toBe(true);
 
     // Verify we now have 2 rows (not 3 or more from duplicates)
     result = await stream2.local().query('SELECT * FROM test ORDER BY id');
@@ -96,14 +95,14 @@ describe('Batch Sync Tests', () => {
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync one blob at a time - this is a critical test case
-    let isFullySynced = await stream2.sync(1);
-    expect(isFullySynced).toBe(false);
+    let status = await stream2.sync(1);
+    expect(status.complete()).toBe(false);
 
-    isFullySynced = await stream2.sync(1);
-    expect(isFullySynced).toBe(false);
+    status = await stream2.sync(1);
+    expect(status.complete()).toBe(false);
 
-    isFullySynced = await stream2.sync(1);
-    expect(isFullySynced).toBe(true);
+    status = await stream2.sync(1);
+    expect(status.complete()).toBe(true);
 
     // Verify all data is present
     const result: any = await stream2.local().query('SELECT * FROM test ORDER BY id');

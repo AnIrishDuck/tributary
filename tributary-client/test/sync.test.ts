@@ -155,23 +155,18 @@ describe('Sync Functionality', () => {
     // Stream 2 (fresh) hasn't synced yet, so its lastSyncIndex = 0
     const stream2 = await freshClient2.addWriteKey('test', testPrivateKeyBase64);
     
-    // First sync with max=2 should return false (not fully synced, more blobs available)
+    // First sync with max=2 should not be complete (more blobs available)
     const result1 = await stream2.sync(2);
-    expect(result1).toBe(false);
-    
-    // Check that we synced exactly 2 blobs
-    const stream2Any = stream2 as any;
-    expect(stream2Any.lastSyncIndex).toBe(2);
-    
-    // Sync again with max=100 should return true (now fully synced)
+    expect(result1.complete()).toBe(false);
+    expect(result1.currentIndex).toBe(2);
+
+    // Sync again with max=100 should be complete (now fully synced)
     const result2 = await stream2.sync(100);
-    expect(result2).toBe(true);
-    
-    // Now we should have synced all 3 blobs
-    expect(stream2Any.lastSyncIndex).toBe(3);
-    
-    // Sync once more should return true (still fully synced)
+    expect(result2.complete()).toBe(true);
+    expect(result2.currentIndex).toBe(3);
+
+    // Sync once more should still be complete
     const result3 = await stream2.sync(100);
-    expect(result3).toBe(true);
+    expect(result3.complete()).toBe(true);
   });
 });
