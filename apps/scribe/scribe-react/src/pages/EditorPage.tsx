@@ -238,7 +238,7 @@ const EditorPage: React.FC = () => {
           </div>
         )}
         
-        <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100vh-250px)]">
+        <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100dvh-250px)]">
           <div className="flex-1 overflow-hidden">
             <CodeMirror
               value={content}
@@ -252,7 +252,7 @@ const EditorPage: React.FC = () => {
             />
           </div>
           
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
             <div className="flex items-center text-sm text-gray-500">
               <DocumentTextIcon className="w-4 h-4 mr-2" />
               <span>{content.length} characters</span>

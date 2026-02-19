@@ -193,6 +193,20 @@ export const useSyncStatus = () => {
   return context
 }
 
+const defaultSyncStatus: SyncStatus = {
+  synced: false,
+  isSyncing: false,
+  currentIndex: 0,
+  finalIndex: 0,
+  lastSyncedAt: null,
+  hasError: false,
+}
+
+/** Like useSyncStatus but returns a default value when no provider is present */
+export const useSyncStatusOptional = (): SyncStatusContextType | null => {
+  return useContext(SyncStatusContext) ?? null
+}
+
 // Helper function to check if a stream is synced
 export const useIsStreamSynced = (streamId: string): boolean => {
   const { syncStatus } = useSyncStatus()

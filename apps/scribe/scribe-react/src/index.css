@@ -7,7 +7,14 @@
   html {
     @apply scroll-smooth;
   }
-  
+
+  /* Support safe area insets for notched devices */
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     @apply w-2 h-2;
@@ -34,5 +41,10 @@
 
   .card:hover {
     @apply shadow-lg;
+  }
+
+  /* Safe area bottom padding utility for bottom-positioned UI */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

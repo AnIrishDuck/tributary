@@ -7,6 +7,7 @@ import BlockViewPage from './pages/BlockViewPage'
 import HomePage from './pages/HomePage'
 import BlockListPage from './pages/BlockListPage'
 import SearchPage from './pages/SearchPage'
+import Layout from './components/Layout'
 import React from 'react'
 
 // Error components for routes
@@ -20,50 +21,55 @@ function DocumentError() {
 
 export const routes: RouteObject[] = [
   {
-    path: '/',
-    Component: HomePage,
-  },
-  {
-    path: '/new',
-    Component: NewStreamPage,
-  },
-  {
-    path: '/import',
-    Component: ImportStreamPage,
-  },
-  {
-    path: '/import/write/:writeKey',
-    Component: ImportStreamPage,
-  },
-  {
-    // Route for granting write access via encoded private key
-    path: '/pk/:prefix/grant/write/:encodedPrivateKey',
-    Component: GrantWriteAccessPage,
-    ErrorBoundary: DocumentError
-  },
-  {
-    path: '/pk/:prefix/new',
-    Component: EditorPage,
-    ErrorBoundary: NewDocumentError
-  },
-  {
-    path: '/pk/:prefix/',
-    Component: BlockListPage,
-    ErrorBoundary: DocumentError
-  },
-  {
-    path: '/pk/:prefix/search',
-    Component: SearchPage,
-    ErrorBoundary: DocumentError
-  },
-  {
-    path: '/pk/:prefix/:slug/edit',
-    Component: EditorPage,
-    ErrorBoundary: DocumentError
-  },
-  {
-    path: '/pk/:prefix/:slug',
-    Component: BlockViewPage,
-    ErrorBoundary: DocumentError
+    Component: Layout,
+    children: [
+      {
+        path: '/',
+        Component: HomePage,
+      },
+      {
+        path: '/new',
+        Component: NewStreamPage,
+      },
+      {
+        path: '/import',
+        Component: ImportStreamPage,
+      },
+      {
+        path: '/import/write/:writeKey',
+        Component: ImportStreamPage,
+      },
+      {
+        // Route for granting write access via encoded private key
+        path: '/pk/:prefix/grant/write/:encodedPrivateKey',
+        Component: GrantWriteAccessPage,
+        ErrorBoundary: DocumentError
+      },
+      {
+        path: '/pk/:prefix/new',
+        Component: EditorPage,
+        ErrorBoundary: NewDocumentError
+      },
+      {
+        path: '/pk/:prefix/',
+        Component: BlockListPage,
+        ErrorBoundary: DocumentError
+      },
+      {
+        path: '/pk/:prefix/search',
+        Component: SearchPage,
+        ErrorBoundary: DocumentError
+      },
+      {
+        path: '/pk/:prefix/:slug/edit',
+        Component: EditorPage,
+        ErrorBoundary: DocumentError
+      },
+      {
+        path: '/pk/:prefix/:slug',
+        Component: BlockViewPage,
+        ErrorBoundary: DocumentError
+      }
+    ]
   }
 ]

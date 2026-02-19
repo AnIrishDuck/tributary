@@ -229,9 +229,7 @@ function App() {
   return (
     <SyncStatusProvider client={client}>
       <TributaryProvider client={client}>
-        <div className="min-h-screen bg-gray-50">
-          <RouterProvider router={router} />
-        </div>
+        <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>
   )
