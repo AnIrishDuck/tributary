@@ -32,6 +32,10 @@ export const routes: RouteObject[] = [
     Component: ImportStreamPage,
   },
   {
+    path: '/import/write/:writeKey',
+    Component: ImportStreamPage,
+  },
+  {
     // Route for granting write access via encoded private key
     path: '/pk/:prefix/grant/write/:encodedPrivateKey',
     Component: GrantWriteAccessPage,

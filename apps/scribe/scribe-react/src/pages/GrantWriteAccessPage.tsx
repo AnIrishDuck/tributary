@@ -29,7 +29,7 @@ const GrantWriteAccessPage: React.FC = () => {
         
         // Wait a moment to show the success message before redirecting
         setTimeout(() => {
-          navigate(`#${newPrefix}/`)
+          navigate(`/${newPrefix}/`)
         }, 1500)
       } catch (err) {
         console.error('Error importing stream:', err)

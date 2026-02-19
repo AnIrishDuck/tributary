@@ -205,6 +205,30 @@ export class TributaryClient {
   }
 
   /**
+   * Get the base64url-encoded write key for a stream
+   * @param id URL-safe base64 encoded stream ID (public key)
+   * @returns The base64url-encoded write key, or null if not found
+   */
+  async getWriteKey(id: string): Promise<string | null> {
+    await this.initialized;
+
+    try {
+      const result: any = await this.pglite.query(
+        `SELECT write_key FROM tributary.streams WHERE id = $1`,
+        [id]
+      );
+
+      if (result.rows.length > 0 && result.rows[0].write_key) {
+        return base64url.encode(Buffer.from(result.rows[0].write_key));
+      }
+    } catch (err: unknown) {
+      warn('Could not get write key:', err as Error);
+    }
+
+    return null;
+  }
+
+  /**
    * List all TributaryStream objects tracked locally
    * @returns Array of stream IDs
    */

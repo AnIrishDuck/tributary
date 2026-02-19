@@ -1,19 +1,58 @@
-import React, { useState, FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router'
+import React, { useState, useEffect, FormEvent } from 'react'
+import { useNavigate, Link, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { importStream } from '../actions/importStream'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
+import * as base64url from 'urlsafe-base64'
 
 const ImportStreamPage: React.FC = () => {
+  const { writeKey } = useParams<{ writeKey?: string }>()
   const [privateKey, setPrivateKey] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [checkingExisting, setCheckingExisting] = useState(!!writeKey)
   const { client } = useTributary()
   const navigate = useNavigate()
 
+  // If writeKey is in the URL, check if the stream already exists or prepopulate
+  useEffect(() => {
+    if (!writeKey || !client) {
+      setCheckingExisting(false)
+      return
+    }
+
+    const checkExisting = async () => {
+      try {
+        // Derive public key from the private key (last 32 bytes of Ed25519 secret key)
+        const decoded = base64url.decode(writeKey)
+        const publicKey = new Uint8Array(decoded.slice(32))
+        const publicKeyBase64 = base64url.encode(Buffer.from(publicKey))
+
+        // Check if stream already exists
+        const existingStreams = await client.list()
+        if (existingStreams.includes(publicKeyBase64)) {
+          // Stream already imported, redirect to it
+          navigate(`/pk/${publicKeyBase64}/`, { replace: true })
+          return
+        }
+
+        // Not yet imported — prepopulate the form
+        setPrivateKey(writeKey)
+      } catch (err) {
+        console.error('Error checking existing stream:', err)
+        // Still prepopulate so user can try manually
+        setPrivateKey(writeKey)
+      } finally {
+        setCheckingExisting(false)
+      }
+    }
+
+    checkExisting()
+  }, [writeKey, client, navigate])
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    
+
     if (!client) {
       setError('Tributary client is not initialized')
       return
@@ -30,12 +69,10 @@ const ImportStreamPage: React.FC = () => {
     try {
       // Import the stream using the provided private key
       const { prefix } = await importStream(client, privateKey.trim())
-      
-      // Navigate to the stream's home page - Add console log for debugging
-      console.log('Navigating to', `#${prefix}/`)
-      // Make sure to return to the event loop before navigating
+
+      // Navigate to the stream's home page
       setTimeout(() => {
-        navigate(`#${prefix}/`)
+        navigate(`/${prefix}/`)
       }, 0)
     } catch (err) {
       console.error('Error importing stream:', err)
@@ -43,6 +80,17 @@ const ImportStreamPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingExisting) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Checking stream...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -70,11 +118,11 @@ const ImportStreamPage: React.FC = () => {
                   Import an existing stream by entering its private key. You can also import a stream via a shared link.
                 </p>
               </div>
-              
+
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                  <label 
-                    htmlFor="privateKey" 
+                  <label
+                    htmlFor="privateKey"
                     className="block text-sm font-semibold text-gray-700 mb-2"
                   >
                     Private Key
@@ -110,7 +158,7 @@ const ImportStreamPage: React.FC = () => {
                     </p>
                   )}
                 </div>
-                
+
                 <div className="pt-6">
                   <button
                     type="submit"
@@ -133,7 +181,7 @@ const ImportStreamPage: React.FC = () => {
                   </button>
                 </div>
               </form>
-              
+
               <div className="mt-8 pt-6 border-t border-gray-100 text-center">
                 <p className="text-gray-600 text-sm">
                   <Link
@@ -145,21 +193,21 @@ const ImportStreamPage: React.FC = () => {
                 </p>
               </div>
             </div>
-            
+
             {/* Right side - Help */}
             <div className="bg-gray-50 p-8 lg:p-10">
               <h3 className="text-xl font-bold text-gray-900 mb-6">Share Access</h3>
-              
+
               <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
                 <h4 className="font-semibold text-gray-900 mb-3">To share access to your stream, create a link with your write key.</h4>
                 <p className="text-sm text-gray-600 mb-4">
                   Format:
                 </p>
                 <code className="block bg-gray-900 text-gray-50 px-4 py-3 rounded-lg text-sm font-mono break-all">
-                  yourapp.com/#pk/[publicKey]/grant/write/[privateKey]
+                  yourapp.com/#/import/write/[writeKey]
                 </code>
               </div>
-              
+
               <div>
                 <h4 className="font-semibold text-gray-900 mb-4">Quick Actions</h4>
                 <div className="space-y-3">
@@ -172,7 +220,7 @@ const ImportStreamPage: React.FC = () => {
                     </svg>
                     <span className="font-medium">Back to Home</span>
                   </Link>
-                  
+
                   <Link
                     to="/import"
                     className="flex items-center p-3 bg-white rounded-lg border border-gray-200 hover:border-green-300 hover:shadow-sm transition-all duration-200 text-gray-700 hover:text-green-600"
