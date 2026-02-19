@@ -45,10 +45,26 @@ export const SyncStatusProvider: React.FC<{
     focusedStreamRef.current = focusedStreamId
   }, [focusedStreamId])
 
+  // Track tab visibility so the sync loop can back off when hidden
+  const visibleRef = useRef(!document.hidden)
+  const wakeUpRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const wasVisible = visibleRef.current
+      visibleRef.current = !document.hidden
+      console.log(`[sync] visibilitychange: ${wasVisible ? 'visible' : 'hidden'} → ${document.hidden ? 'hidden' : 'visible'}`)
+      // When the tab becomes visible again, restart the sync loop immediately
+      if (!document.hidden) wakeUpRef.current?.()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+
   // Start background sync thread
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>
     let isMounted = true
+    let isRunning = false // guard against concurrent execution
 
     // Local mirror of per-stream sync status, updated in the loop and
     // pushed to React state between async yields so the UI can re-render.
@@ -74,8 +90,32 @@ export const SyncStatusProvider: React.FC<{
       return allComplete
     }
 
+    const scheduleNext = (delay: number) => {
+      timeoutId = setTimeout(syncLoop, delay)
+    }
+
+    // Compute the delay for the next sync iteration based on tab visibility
+    // and sync completeness.
+    const nextDelay = (allComplete: boolean) => {
+      if (!visibleRef.current) return pollInterval * 30 // ~30s background
+      return allComplete ? pollInterval : 10
+    }
+
     const syncLoop = async () => {
       if (!isMounted) return
+
+      // If the tab is hidden, skip the work entirely and just reschedule.
+      // The wakeUp callback will restart us immediately when the tab returns.
+      if (!visibleRef.current) {
+        console.log(`[sync] tab hidden, sleeping for ${pollInterval * 30}ms`)
+        scheduleNext(pollInterval * 30)
+        return
+      }
+
+      // Prevent concurrent execution — if wakeUp fires while we're mid-sync,
+      // just let the current iteration finish (it will reschedule itself).
+      if (isRunning) return
+      isRunning = true
 
       setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
@@ -88,7 +128,7 @@ export const SyncStatusProvider: React.FC<{
           if (stream) streams.push({ id: streamId, stream })
         }
 
-        if (!isMounted) return
+        if (!isMounted) { isRunning = false; return }
 
         // When a focused stream is set, only sync that stream
         const focused = focusedStreamRef.current
@@ -98,7 +138,7 @@ export const SyncStatusProvider: React.FC<{
 
         // Sync each stream in a small batch, updating UI after each
         for (const { id, stream } of streamsToSync) {
-          if (!isMounted) return
+          if (!isMounted) { isRunning = false; return }
 
           try {
             const tributaryStatus = await stream.sync(10)
@@ -123,11 +163,11 @@ export const SyncStatusProvider: React.FC<{
           pushStatus()
         }
 
-        if (!isMounted) return
+        if (!isMounted) { isRunning = false; return }
 
         // Reindex synced streams so documents appear in the UI
         for (const { stream } of streamsToSync) {
-          if (!isMounted) return
+          if (!isMounted) { isRunning = false; return }
           try {
             const localDb = stream.local()
             await indexAll(localDb)
@@ -136,20 +176,31 @@ export const SyncStatusProvider: React.FC<{
           }
         }
 
-        // Schedule next sync - fast when actively syncing, slow when idle
         const allComplete = pushStatus()
-        timeoutId = setTimeout(syncLoop, allComplete ? pollInterval : 10)
+        isRunning = false
+        scheduleNext(nextDelay(allComplete))
       } catch (error) {
         console.error('Background sync error:', error)
         setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
-        timeoutId = setTimeout(syncLoop, pollInterval * 5)
+        isRunning = false
+        // On error use 5× poll interval, but still respect background throttle
+        const errorDelay = visibleRef.current ? pollInterval * 5 : pollInterval * 30
+        scheduleNext(errorDelay)
       }
+    }
+
+    // Allow the visibility handler to cancel a long background timeout
+    // and restart the loop immediately when the tab becomes visible.
+    wakeUpRef.current = () => {
+      clearTimeout(timeoutId)
+      syncLoop() // guarded by isRunning — safe if a sync is already in-flight
     }
 
     syncLoop()
 
     return () => {
       isMounted = false
+      wakeUpRef.current = null
       clearTimeout(timeoutId)
     }
   }, [client, pollInterval])
