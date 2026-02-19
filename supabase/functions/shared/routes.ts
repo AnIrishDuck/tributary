@@ -1,6 +1,7 @@
 // Route handler for tributary-fn
 // This module handles all HTTP routing and request processing
 
+import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.ts';
 import { verifySignature, computeChainHash, computeHash, decodeUrlBase64, encodeUrlBase64 } from './crypto.ts';
 import { makeTable, tableToIPC, vectorFromArray, Utf8, Binary, Uint64 } from '@apache-arrow/ts';
@@ -26,7 +27,7 @@ function createResponse(body: string, status: number, additionalHeaders: Record<
 }
 
 // Route handler function that processes HTTP requests
-export const createRouteHandler = (db: Database) => {
+export const createRouteHandler = (db: Database, authenticator: Authenticator = authenticateUser) => {
   return async (req: Request): Promise<Response> => {
     // Handle CORS preflight
     console.log(req.method)
@@ -96,7 +97,7 @@ export const createRouteHandler = (db: Database) => {
     if (req.method === 'POST') {
       // POST /{pubkey} - must have exactly one part after stream
       if (pathParts.length === startIndex + 1) {
-        return handleUpload(req, encodedPubkey, db);
+        return handleUpload(req, encodedPubkey, db, authenticator);
       }
     } else if (req.method === 'GET') {
       // GET requests
@@ -266,10 +267,47 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
   }
 }
 
+// Authenticator function type — returns user info or null if invalid/missing
+export type Authenticator = (req: Request) => Promise<{ userId: string } | null>;
+
+// Default authenticator: validate a Supabase JWT and return the user ID
+async function authenticateUser(req: Request): Promise<{ userId: string } | null> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  const jwt = authHeader.slice(7);
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+  const supabaseAnonKey = Deno.env.get('SUPABASE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+
+  const { data: { user }, error } = await supabase.auth.getUser(jwt);
+  if (error || !user) {
+    return null;
+  }
+  return { userId: user.id };
+}
+
 // POST /{encoded-pubkey}
 // Store a new blob in the tributary stream
-async function handleUpload(req: Request, encodedPubkey: string, db: Database): Promise<Response> {
+async function handleUpload(req: Request, encodedPubkey: string, db: Database, authenticate: Authenticator): Promise<Response> {
   try {
+    // Authenticate the user via Supabase JWT
+    const authResult = await authenticate(req);
+    if (!authResult) {
+      return createResponse(
+        JSON.stringify({ error: 'Unauthorized: valid Supabase auth token required' }),
+        401,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+    const ownerId = authResult.userId;
+    const origin = req.headers.get('Origin');
+
     // Extract headers
     const providedHash = req.headers.get('X-Tributary-Hash');
     const signature = req.headers.get('X-Tributary-Authorization');
@@ -371,7 +409,7 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database): 
       created_at: new Date()
     };
 
-    const stored = await db.storeBlob(blob);
+    const stored = await db.storeBlob(blob, ownerId, origin);
     
     if (stored) {
       return new Response(

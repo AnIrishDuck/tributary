@@ -11,10 +11,15 @@ import { tableFromIPC } from 'apache-arrow';
 export class TributaryServer implements Server {
   private baseUrl: string;
   private authKey?: string;
+  private writeAuthToken?: string;
 
   constructor(baseUrl: string, authKey?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash if present
     this.authKey = authKey;
+  }
+
+  setWriteAuthToken(token: string | undefined) {
+    this.writeAuthToken = token;
   }
 
   async storeBlob(
@@ -34,9 +39,11 @@ export class TributaryServer implements Server {
       'X-Tributary-Hash': hash, // Send the concatenated hash
       'X-Tributary-Authorization': signature
     };
-    
-    // Add auth header if authKey is provided
-    if (this.authKey) {
+
+    // Use writeAuthToken (Supabase JWT) for writes; fall back to authKey (anon key)
+    if (this.writeAuthToken) {
+      headers['Authorization'] = `Bearer ${this.writeAuthToken}`;
+    } else if (this.authKey) {
       headers['Authorization'] = `Bearer ${this.authKey}`;
     }
     

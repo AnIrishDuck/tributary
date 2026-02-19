@@ -3,8 +3,12 @@ import { assert, assertEquals } from 'jsr:@std/assert@1';
 import util from 'tweetnacl-util';
 import nacl from 'tweetnacl';
 import { FakeDatabase } from '../../shared/fake-database.ts';
-import { createRouteHandler } from '../../shared/routes.ts';
+import { createRouteHandler, Authenticator } from '../../shared/routes.ts';
 import { verifySignature, computeChainHash, encodeUrlBase64 } from '../../shared/crypto.ts';
+
+// Fake authenticator for tests — always returns a fixed test user ID
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+const fakeAuthenticator: Authenticator = async (_req) => ({ userId: TEST_USER_ID });
 
 // Helper function to generate a test signature
 function generateTestSignature(data: Uint8Array, keyPair: nacl.SignKeyPair): string {
@@ -40,7 +44,7 @@ function createEncodedPath(pubkey: string, endpoint?: string): string {
 Deno.test('Route handler with fake database: Health endpoint', async () => {
   // Create a fake database instance
   const db = new FakeDatabase();
-  const handler = createRouteHandler(db as any); // Cast to any to avoid type issues
+  const handler = createRouteHandler(db as any, fakeAuthenticator); // Cast to any to avoid type issues
   
   // Create a fake request for the health endpoint
   const request = createFakeRequest('/health');
@@ -56,7 +60,7 @@ Deno.test('Route handler with fake database: Health endpoint', async () => {
 Deno.test('Route handler with fake database: Complete flow test', async () => {
   // Create a fake database instance
   const db = new FakeDatabase();
-  const handler = createRouteHandler(db as any); // Cast to any to avoid type issues
+  const handler = createRouteHandler(db as any, fakeAuthenticator); // Cast to any to avoid type issues
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();
@@ -228,7 +232,7 @@ Deno.test('Route handler with fake database: Complete flow test', async () => {
 Deno.test('Route handler with fake database: Error cases', async () => {
   // Create a fake database instance
   const db = new FakeDatabase();
-  const handler = createRouteHandler(db as any); // Cast to any to avoid type issues
+  const handler = createRouteHandler(db as any, fakeAuthenticator); // Cast to any to avoid type issues
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();

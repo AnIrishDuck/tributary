@@ -4,47 +4,159 @@ import { routes } from './route'
 import { TributaryProvider } from './context/tributaryContext'
 import { SyncStatusProvider } from './context/syncStatusContext'
 import { TributaryClient, TributaryServer } from 'tributary-client'
+import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import { getPGlite } from './db/persistence'
 import { CONFIG } from './config'
-import { ShieldCheckIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
+
+// Create a Supabase auth client (only if project URL is configured)
+let supabaseAuth: SupabaseClient | null = null
+if (CONFIG.SUPABASE_PROJECT_URL && CONFIG.API_KEY) {
+  supabaseAuth = createSupabaseClient(CONFIG.SUPABASE_PROJECT_URL, CONFIG.API_KEY)
+}
 
 // Singleton to prevent multiple PGlite instances (WASM can only load once)
-let clientPromise: Promise<TributaryClient> | null = null
+let clientPromise: Promise<{ client: TributaryClient; server: TributaryServer }> | null = null
 
 // Create client based on configuration
 // Uses real TributaryServer connecting to remote Supabase
-async function createClient() {
+async function createTributaryClient(session: Session | null) {
   // Return existing promise if already creating
   if (clientPromise) {
     return clientPromise
   }
-  
+
   clientPromise = (async () => {
     const server = new TributaryServer(CONFIG.API_URL, CONFIG.API_KEY)
-    
+
+    if (session?.access_token) {
+      server.setWriteAuthToken(session.access_token)
+    }
+
     // Use IndexedDB for persistence
     const pglite = getPGlite(CONFIG.DB_NAME)
-    
-    return new TributaryClient({ server, db: pglite })
+
+    return { client: new TributaryClient({ server, db: pglite }), server }
   })()
-  
+
   return clientPromise
 }
 
 const router = createHashRouter(routes)
 
-function App() {
-  const [client, setClient] = useState<TributaryClient | null>(null)
+// Login screen shown when Supabase auth is configured but user is not signed in
+function LoginScreen() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabaseAuth) return
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabaseAuth.auth.signInWithPassword({ email, password })
+    if (error) {
+      setError(error.message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
+      <div className="max-w-sm w-full">
+        <div className="card p-8">
+          <div className="text-center mb-6">
+            <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <LockClosedIcon className="w-6 h-6 text-blue-600" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900">Sign in to Scribe</h1>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function App() {
+  const [client, setClient] = useState<TributaryClient | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [authReady, setAuthReady] = useState(!supabaseAuth) // skip auth gate if no supabase auth
+  const [error, setError] = useState<string | null>(null)
+
+  // Listen for auth state changes
   useEffect(() => {
+    if (!supabaseAuth) return
+
+    // Get initial session
+    supabaseAuth.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthReady(true)
+    })
+
+    const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setAuthReady(true)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Initialize tributary client once we have a session (or auth is not configured)
+  useEffect(() => {
+    if (!authReady) return
+    // If auth is configured, require a session before initializing
+    if (supabaseAuth && !session) return
+
     let mounted = true
-    
+
     async function init() {
       try {
-        const newClient = await createClient()
+        const { client: newClient, server } = await createTributaryClient(session)
         if (mounted) {
           setClient(newClient)
+        }
+
+        // Keep write token fresh on session changes
+        if (supabaseAuth) {
+          const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
+            server.setWriteAuthToken(session?.access_token ?? undefined)
+          })
+          return () => subscription.unsubscribe()
         }
       } catch (err) {
         if (mounted) {
@@ -52,13 +164,22 @@ function App() {
         }
       }
     }
-    
-    init()
-    
+
+    let unsubscribe: (() => void) | undefined
+    init().then(cleanup => {
+      unsubscribe = cleanup
+    })
+
     return () => {
       mounted = false
+      unsubscribe?.()
     }
-  }, [])
+  }, [authReady, session])
+
+  // Show login screen if auth is configured but user is not signed in
+  if (supabaseAuth && authReady && !session) {
+    return <LoginScreen />
+  }
 
   if (error) {
     return (

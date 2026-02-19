@@ -4,10 +4,14 @@ import util from 'tweetnacl-util';
 import nacl from 'tweetnacl';
 import { Database } from '../../shared/database.ts';
 import { verifySignature, computeChainHash, encodeUrlBase64, decodeUrlBase64 } from '../../shared/crypto.ts';
-import { createRouteHandler } from '../../shared/routes.ts';
+import { createRouteHandler, Authenticator } from '../../shared/routes.ts';
 
 // GOOSE: we need to be using encodeUrlBase64 throughout this test
 const { encodeBase64 } = util;
+
+// Fake authenticator for tests — always returns a fixed test user ID
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+const fakeAuthenticator: Authenticator = async (_req) => ({ userId: TEST_USER_ID });
 
 // Helper function to generate a test signature
 function generateTestSignature(data: Uint8Array, keyPair: nacl.SignKeyPair): string {
@@ -46,7 +50,7 @@ Deno.test('Route testing: Health endpoint', async () => {
   
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Create a fake request for the health endpoint
   const request = createFakeRequest('/health');
@@ -62,7 +66,7 @@ Deno.test('Route testing: Health endpoint', async () => {
 Deno.test('Route testing: Store and retrieve blob', async () => {
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();
@@ -104,7 +108,7 @@ Deno.test('Route testing: Store and retrieve blob', async () => {
 Deno.test('Route testing: Collection info endpoint', async () => {
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();
@@ -133,7 +137,7 @@ Deno.test('Route testing: Collection info endpoint', async () => {
 Deno.test('Route testing: Latest blob endpoint', async () => {
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();
@@ -159,7 +163,7 @@ Deno.test('Route testing: Latest blob endpoint', async () => {
 Deno.test('Route testing: Error cases', async () => {
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   try {
     // Test retrieving non-existent blob
@@ -188,7 +192,7 @@ Deno.test('Route testing: Error cases', async () => {
 
 Deno.test('Route testing: Date handling in latest endpoint', async () => {
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();
@@ -244,7 +248,7 @@ Deno.test('Route testing: Date handling in latest endpoint', async () => {
 
 Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
   const db = new Database(true);
-  const handler = createRouteHandler(db);
+  const handler = createRouteHandler(db, fakeAuthenticator);
   
   // Generate test key pair
   const keyPair = nacl.sign.keyPair();

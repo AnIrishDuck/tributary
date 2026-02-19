@@ -9,6 +9,8 @@ export interface Blob {
   signature: string;
   sequence_number: number;
   created_at: Date;
+  owner_id?: string;
+  origin?: string;
 }
 
 export interface BlobMetadata {

@@ -49,7 +49,7 @@ export class Database {
     // Always connect using DATABASE_URL as SUPABASE_URL
     // In local development, this will be set to the local Supabase instance
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
     
     let clientOptions = {};
     
@@ -74,12 +74,14 @@ export class Database {
   }
 
   // Store a blob in the database
-  async storeBlob(blob: Blob): Promise<boolean> {
+  async storeBlob(blob: Blob, ownerId?: string, origin?: string | null): Promise<boolean> {
     // Convert Uint8Array to hex string for storage
-    const blobForStorage = {
+    const blobForStorage: Record<string, unknown> = {
       ...blob,
       data: uint8ArrayToHexString(blob.data)
     };
+    if (ownerId) blobForStorage.owner_id = ownerId;
+    if (origin) blobForStorage.origin = origin;
     
     const { error } = await this.client
       .from('blobs')
