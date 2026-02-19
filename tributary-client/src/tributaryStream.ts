@@ -42,6 +42,7 @@ export class TributaryStream {
   private appId: string;
   private schemaId: string;
   private schemaName: string;
+  private searchPathSQL: string;
 
   constructor(options: {
     server: Server;
@@ -61,6 +62,10 @@ export class TributaryStream {
     this.schemaId = options.schemaId;
     // Quote the schema name to handle special characters
     this.schemaName = `"${this.appId}_${this.schemaId}"`;
+    // Pre-compute the SET LOCAL statement. SET LOCAL scopes the search_path
+    // to the current transaction, preventing concurrent operations on other
+    // streams from stomping on it.
+    this.searchPathSQL = `SET LOCAL search_path TO ${this.schemaName}, tributary, public`;
     debug("schemaName", this.schemaName);
   }
 
@@ -73,13 +78,6 @@ export class TributaryStream {
    */
   getSchemaName(): string {
     return this.schemaName;
-  }
-
-  /**
-   * Set the search path to include this stream's schema first
-   */
-  private async setSearchPath(): Promise<void> {
-    await this.pglite.exec(`SET search_path TO ${this.schemaName}, tributary, public`);
   }
 
   /**
@@ -112,9 +110,6 @@ export class TributaryStream {
       // Create the schema for this stream if it doesn't exist
       // Properly quote the schema name to handle special characters
       await this.pglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
-      
-      // Set the search path to this schema
-      await this.setSearchPath();
     } catch (error: unknown) {
       warn('Could not initialize schema:', error as Error);
     }
@@ -172,16 +167,17 @@ export class TributaryStream {
       await this.initializeSyncState();
       this.syncStateInitialized = true;
     }
-    
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
-    // For read operations, we can execute directly on local DB
+
+    // For read operations, wrap in a transaction with SET LOCAL search_path
+    // so the search_path is scoped and cannot be changed by concurrent streams.
     if (this.isReadQuery(query)) {
-      // @ts-ignore
-      return await this.pglite.query(query, params);
+      return await this.pglite.transaction(async (tx) => {
+        await tx.exec(this.searchPathSQL);
+        // @ts-ignore
+        return await tx.query(query, params);
+      });
     }
-    
+
     // For write operations, we need to ensure server persistence BEFORE local commit
     // Create a transaction log entry
     const transactionEntry: TransactionLogEntry = {
@@ -190,17 +186,20 @@ export class TributaryStream {
       query,
       params
     };
-    
+
     // Send to server with persistence guarantee BEFORE executing locally
     await this.ensureServerPersistence(transactionEntry);
-    
+
     // Now execute locally since we have server confirmation
-    // @ts-ignore
-    const result = await this.pglite.query(query, params);
-    
+    const result = await this.pglite.transaction(async (tx) => {
+      await tx.exec(this.searchPathSQL);
+      // @ts-ignore
+      return await tx.query(query, params);
+    });
+
     // Update the transaction entry with the result
     transactionEntry.result = result;
-    
+
     return result;
   }
 
@@ -216,10 +215,7 @@ export class TributaryStream {
       await this.initializeSyncState();
       this.syncStateInitialized = true;
     }
-    
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
+
     // For write operations, we need to ensure server persistence BEFORE local commit
     // Create a transaction log entry
     const transactionEntry: TransactionLogEntry = {
@@ -228,18 +224,21 @@ export class TributaryStream {
       query,
       params
     };
-    
+
     // Send to server with persistence guarantee BEFORE executing locally
     await this.ensureServerPersistence(transactionEntry);
-    
-    // Now execute locally since we have server confirmation
-    // Use query instead of exec for parameterized operations to work around PGLite issue
-    // @ts-ignore
-    if (params && params.length > 0) {
-      await this.pglite.query(query, params);
-    } else {
-      await this.pglite.exec(query);
-    }
+
+    // Now execute locally with SET LOCAL search_path scoped to this transaction
+    await this.pglite.transaction(async (tx) => {
+      await tx.exec(this.searchPathSQL);
+      // Use query instead of exec for parameterized operations to work around PGLite issue
+      // @ts-ignore
+      if (params && params.length > 0) {
+        await tx.query(query, params);
+      } else {
+        await tx.exec(query);
+      }
+    });
   }
 
   /**
@@ -254,23 +253,23 @@ export class TributaryStream {
       await this.initializeSyncState();
       this.syncStateInitialized = true;
     }
-    
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
+
     info('TRANSACTION: Starting transaction method');
-    
+
     // For transactions, we run commands immediately so users can see results and make decisions
     // We record all commands, then post to server while still inside the PGlite transaction
     // If server post fails, we throw an error to cause PGlite to rollback the entire transaction
-    
+
     // Create array to store commands for server persistence
     const recordedCommands: Array<{ query: string, params?: any[] }> = [];
-    
+
     info('TRANSACTION: About to call pglite.transaction');
-    
+
     // Execute the transaction with immediate command execution and recording
     const result = await this.pglite.transaction(async (tx) => {
+      // Set search_path locally within this transaction so concurrent
+      // operations on other streams cannot interfere.
+      await tx.exec(this.searchPathSQL);
       info('TRANSACTION: Inside pglite.transaction callback with transaction object');
       
       // Create a transaction object that executes immediately AND records
@@ -461,15 +460,15 @@ export class TributaryStream {
             const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
             
             info(`SYNC APPLYING: Processing blob with sequence ${blob.sequenceNumber}`);
-            
-            // Set the search path before applying operations
-            await this.setSearchPath();
-            
+
             // Apply to local database only if it's a write operation
             if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
               // Handle transaction - wrap in a try-catch to handle existing table cases
               try {
                 await this.pglite.transaction(async (tx) => {
+                  // Set search_path locally within this transaction so concurrent
+                  // operations on other streams cannot interfere.
+                  await tx.exec(this.searchPathSQL);
                   for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
                     if (command.query) {
                       try {
@@ -493,10 +492,13 @@ export class TributaryStream {
                 // Skip read queries as they don't modify state
                 continue;
               } else {
-                // Execute all other operations including INSERT
+                // Execute all other operations including INSERT, with scoped search_path
                 try {
-                  // Use query instead of exec to properly handle parameters
-                  await this.pglite.query(transactionEntry.query, transactionEntry.params || []);
+                  await this.pglite.transaction(async (tx) => {
+                    await tx.exec(this.searchPathSQL);
+                    // @ts-ignore
+                    await tx.query(transactionEntry.query, transactionEntry.params || []);
+                  });
                 } catch (execError) {
                   // Throw errors during sync rather than just warning
                   // Synced SQL expressions should never fail (otherwise they would've failed locally first)

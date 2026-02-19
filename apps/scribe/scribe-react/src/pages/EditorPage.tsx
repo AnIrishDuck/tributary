@@ -18,10 +18,18 @@ const EditorPage: React.FC = () => {
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { globalSyncStatus } = useSyncStatus()
+  const { globalSyncStatus, setFocusedStream } = useSyncStatus()
   
   // Extract the streamId and optional slug id from params
   const { prefix, slug } = useParams()
+
+  // Focus sync on this stream while the page is mounted
+  useEffect(() => {
+    if (prefix) {
+      setFocusedStream(prefix)
+      return () => setFocusedStream(null)
+    }
+  }, [prefix, setFocusedStream])
 
   // Determine if this is a new document:
   // - For /pk/:prefix/new route, slug is undefined

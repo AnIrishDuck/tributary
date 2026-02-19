@@ -7,10 +7,15 @@ import { useSyncStatus } from '../context/syncStatusContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
-  const { syncStatus } = useSyncStatus()
+  const { syncStatus, setFocusedStream } = useSyncStatus()
   const [streams, setStreams] = useState<StreamInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [copiedStreamId, setCopiedStreamId] = useState<string | null>(null)
+
+  // Clear focused stream so all streams sync on the home page
+  useEffect(() => {
+    setFocusedStream(null)
+  }, [setFocusedStream])
 
   useEffect(() => {
     const fetchStreams = async () => {

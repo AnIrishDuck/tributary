@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
 import { indexAll } from 'scribe-data'
 
@@ -17,6 +17,8 @@ export interface SyncStatusContextType {
   syncStream: (streamId: string, max?: number) => Promise<void>
   syncAll: (max?: number) => Promise<void>
   isSyncingAny: boolean
+  focusedStreamId: string | null
+  setFocusedStream: (id: string | null) => void
 }
 
 const SyncStatusContext = createContext<SyncStatusContextType | undefined>(undefined)
@@ -35,6 +37,13 @@ export const SyncStatusProvider: React.FC<{
     lastSyncedAt: null,
     hasError: false,
   })
+  const [focusedStreamId, setFocusedStream] = useState<string | null>(null)
+  const focusedStreamRef = useRef<string | null>(null)
+
+  // Keep ref in sync so the async sync loop can read the latest value
+  useEffect(() => {
+    focusedStreamRef.current = focusedStreamId
+  }, [focusedStreamId])
 
   // Start background sync thread
   useEffect(() => {
@@ -81,8 +90,14 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) return
 
+        // When a focused stream is set, only sync that stream
+        const focused = focusedStreamRef.current
+        const streamsToSync = focused
+          ? streams.filter(s => s.id === focused)
+          : streams
+
         // Sync each stream in a small batch, updating UI after each
-        for (const { id, stream } of streams) {
+        for (const { id, stream } of streamsToSync) {
           if (!isMounted) return
 
           try {
@@ -110,8 +125,8 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) return
 
-        // Reindex all streams so documents appear in the UI
-        for (const { stream } of streams) {
+        // Reindex synced streams so documents appear in the UI
+        for (const { stream } of streamsToSync) {
           if (!isMounted) return
           try {
             const localDb = stream.local()
@@ -159,6 +174,8 @@ export const SyncStatusProvider: React.FC<{
     syncStream,
     syncAll,
     isSyncingAny,
+    focusedStreamId,
+    setFocusedStream,
   }
 
   return (

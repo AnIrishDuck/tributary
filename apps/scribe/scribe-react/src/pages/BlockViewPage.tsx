@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
+import { useSyncStatus } from '../context/syncStatusContext'
 import * as base64url from 'urlsafe-base64'
 import { micromark } from 'micromark'
 import { PencilIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
@@ -30,9 +31,18 @@ const BlockViewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
-  
+  const { setFocusedStream } = useSyncStatus()
+
   // Extract the streamId and slug from params
   const { prefix, slug } = useParams()
+
+  // Focus sync on this stream while the page is mounted
+  useEffect(() => {
+    if (prefix) {
+      setFocusedStream(prefix)
+      return () => setFocusedStream(null)
+    }
+  }, [prefix, setFocusedStream])
 
   useEffect(() => {
     const loadDocument = async () => {

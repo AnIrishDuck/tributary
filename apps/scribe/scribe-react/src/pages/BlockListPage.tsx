@@ -10,10 +10,21 @@ const BlockListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { syncStatus } = useSyncStatus()
+  const { syncStatus, setFocusedStream } = useSyncStatus()
   const [blocks, setBlocks] = useState<BlockSlugRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Focus sync on this stream while the page is mounted
+  useEffect(() => {
+    if (prefix) {
+      setFocusedStream(prefix)
+      return () => setFocusedStream(null)
+    }
+  }, [prefix, setFocusedStream])
+
+  // Only re-render when this stream's sync status changes
+  const streamSyncStatusDep = prefix ? syncStatus[prefix] : undefined
 
   useEffect(() => {
     const loadBlocks = async () => {
@@ -43,7 +54,7 @@ const BlockListPage: React.FC = () => {
     }
 
     loadBlocks()
-  }, [client, prefix, syncStatus])
+  }, [client, prefix, streamSyncStatusDep])
 
   const handleNewBlock = () => {
     if (prefix) {

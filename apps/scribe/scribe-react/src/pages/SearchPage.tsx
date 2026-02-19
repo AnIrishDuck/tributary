@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
+import { useSyncStatus } from '../context/syncStatusContext'
 import { searchBlocks, SearchResult } from 'scribe-data'
 import { SearchBar } from '../components/SearchBar'
 import { SearchResultCard } from '../components/SearchResultCard'
@@ -12,7 +13,16 @@ const SearchPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const navigate = useNavigate()
   const { client } = useTributary()
+  const { setFocusedStream } = useSyncStatus()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Focus sync on this stream while the page is mounted
+  useEffect(() => {
+    if (prefix) {
+      setFocusedStream(prefix)
+      return () => setFocusedStream(null)
+    }
+  }, [prefix, setFocusedStream])
   
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)

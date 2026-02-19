@@ -5,10 +5,15 @@ import { logger, debug } from './logger.js';
 export class TributaryLocal {
   private pglite: PGlite;
   private schemaName: string;
+  private searchPathSQL: string;
 
   constructor(pglite: PGlite, schemaName: string) {
     this.pglite = pglite;
     this.schemaName = schemaName;
+    // Pre-compute the SET LOCAL statement to avoid string building on every call.
+    // SET LOCAL scopes the search_path to the current transaction, preventing
+    // concurrent operations on other streams from stomping on it.
+    this.searchPathSQL = `SET LOCAL search_path TO "${schemaName}", tributary, public`;
   }
 
   /**
@@ -21,24 +26,19 @@ export class TributaryLocal {
   }
 
   /**
-   * Set the search path to include this stream's schema first
-   */
-  private async setSearchPath(): Promise<void> {
-    await this.pglite.exec(`SET search_path TO ${this.schemaName}, tributary, public`);
-  }
-
-  /**
    * Execute SQL query with persistence guarantee
    * @param query SQL query to execute
    * @param params Query parameters
    * @returns Query result
    */
   async query(query: string, params?: any[]) {
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
-    // @ts-ignore
-    return await this.pglite.query(query, params);
+    // Wrap in a transaction with SET LOCAL search_path so the search_path
+    // is scoped to this operation and cannot be changed by concurrent streams.
+    return await this.pglite.transaction(async (tx) => {
+      await tx.exec(this.searchPathSQL);
+      // @ts-ignore
+      return await tx.query(query, params);
+    });
   }
 
   /**
@@ -47,16 +47,16 @@ export class TributaryLocal {
    * @param params Command parameters
    */
   async exec(query: string, params?: any[]) {
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
-    // Use query instead of exec for parameterized operations to work around PGLite issue
-    // @ts-ignore
-    if (params && params.length > 0) {
-      await this.pglite.query(query, params);
-    } else {
-      await this.pglite.exec(query);
-    }
+    return await this.pglite.transaction(async (tx) => {
+      await tx.exec(this.searchPathSQL);
+      // Use query instead of exec for parameterized operations to work around PGLite issue
+      // @ts-ignore
+      if (params && params.length > 0) {
+        await tx.query(query, params);
+      } else {
+        await tx.exec(query);
+      }
+    });
   }
 
   /**
@@ -65,10 +65,11 @@ export class TributaryLocal {
    * @returns Transaction result
    */
   async transaction<T>(callback: (tx: any) => Promise<T>) {
-    // Set the search path to ensure we're operating on the correct schema
-    await this.setSearchPath();
-    
-    // Execute the transaction using the underlying PGLite transaction method
-    return await this.pglite.transaction(callback);
+    // Set search_path inside the transaction so it's scoped and cannot
+    // be changed by concurrent operations on other streams.
+    return await this.pglite.transaction(async (tx) => {
+      await tx.exec(this.searchPathSQL);
+      return await callback(tx);
+    });
   }
 }
