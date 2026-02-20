@@ -55,7 +55,7 @@ For each unindexed authoritative block:
 4. Store the unique slug in the `block_slug` table
 5. If not found, remove any existing slug entry for that block
 
-### 3. Tag Extraction
+### 4. Tag Extraction
 
 For each unindexed authoritative block:
 1. Extract all tags in the format `[#tagname](#tagname)` from the document body

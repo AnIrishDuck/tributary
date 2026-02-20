@@ -34,4 +34,10 @@ This approach ensures that:
 - Existing links to documents are preserved when possible
 - New conflicts are resolved automatically without user intervention
 
+## Shared Namespace with Collections
+
+Collections and blocks share a single slug namespace. When a collection is created, its title is slugified using the same algorithm as blocks. Conflict resolution works across both — if a collection and a block derive the same base slug, both receive UUID-postfix suffixes just as two conflicting blocks would.
+
+This unified namespace ensures that every slug in a stream resolves unambiguously to either a block or a collection. See [Collections](collections.md) for more on how collections use slugs.
+
 For information about how slugs are used for linking, see [Linking System](linking.md).
