@@ -1,12 +1,13 @@
 import { TributaryClient } from 'tributary-client'
-import { getLastEditedTime } from 'scribe-data'
+import { getLastEditedTime, getStreamDisplayName } from 'scribe-data'
 
 /**
- * Information about a stream including last edit time
+ * Information about a stream including last edit time and display name
  */
 export interface StreamInfo {
   streamId: string
   lastEdited: string | null // ISO string of last edit time, or null if no blocks
+  rootCollectionTitle: string | null // Root collection title, or null (implies "Notes")
 }
 
 /**
@@ -23,15 +24,16 @@ export async function getStreams(client: TributaryClient): Promise<StreamInfo[]>
       try {
         const localDb = await client.getLocal('scribe', streamId)
         if (!localDb) {
-          return { streamId, lastEdited: null }
+          return { streamId, lastEdited: null, rootCollectionTitle: null }
         }
 
-        // Use the function from scribe-data to get last edited time
         const lastEdited = await getLastEditedTime(localDb)
-        return { streamId, lastEdited }
+        const rootCollectionTitle = await getStreamDisplayName(localDb)
+
+        return { streamId, lastEdited, rootCollectionTitle }
       } catch (error) {
-        console.error(`Error getting last edit time for stream ${streamId}:`, error)
-        return { streamId, lastEdited: null }
+        console.error(`Error getting info for stream ${streamId}:`, error)
+        return { streamId, lastEdited: null, rootCollectionTitle: null }
       }
     })
   )

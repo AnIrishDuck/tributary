@@ -16,14 +16,32 @@ export async function streamMigrations(stream: TributaryStream): Promise<void> {
       prior_version_uuid TEXT,
       insert_datetime TEXT NOT NULL,
       inserter TEXT NOT NULL,
-      body TEXT NOT NULL
+      body TEXT NOT NULL,
+      collection_id TEXT
     )
   `)
 
   await stream.exec(`
-    ALTER TABLE block 
-    ADD CONSTRAINT block_uuid_version_uuid_unique 
+    ALTER TABLE block
+    ADD CONSTRAINT block_uuid_version_uuid_unique
     UNIQUE (block_uuid, version_uuid)
+  `)
+
+  // Create the collection table
+  await stream.exec(`
+    CREATE TABLE IF NOT EXISTS collection (
+      collection_uuid TEXT NOT NULL PRIMARY KEY,
+      title TEXT NOT NULL,
+      parent_collection_uuid TEXT,
+      insert_datetime TEXT NOT NULL,
+      inserter TEXT NOT NULL
+    )
+  `)
+
+  // Enforce at most one root collection (parent_collection_uuid IS NULL) per stream
+  await stream.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS collection_one_root
+    ON collection ((1)) WHERE parent_collection_uuid IS NULL
   `)
 }
 
@@ -84,10 +102,11 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
 
   // Create GIN index for fast full-text search
   await local.exec(`
-    CREATE INDEX IF NOT EXISTS idx_block_search_vector 
-    ON block_search_index 
+    CREATE INDEX IF NOT EXISTS idx_block_search_vector
+    ON block_search_index
     USING GIN (search_vector)
   `)
+
 }
 
 /**
@@ -107,6 +126,7 @@ export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): 
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS block_slug')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
+  await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')
 }
 
@@ -146,8 +166,53 @@ export async function ensureMigrations(stream: TributaryStream, isNew?: boolean)
     console.log('Running stream migrations for new stream')
     await streamMigrations(stream)
   }
-  
+  // For existing/imported streams, stream tables arrive via sync — no stream.exec() needed
+
   // Always run local migrations (these are never in the stream)
   console.log('Running local migrations')
   await localMigrations(stream.local())
+}
+
+/**
+ * Run incremental migrations for existing streams.
+ * Checks for missing tables/columns and adds them if needed.
+ */
+async function incrementalStreamMigrations(stream: TributaryStream): Promise<void> {
+  // Check if collection table exists
+  try {
+    await stream.query('SELECT 1 FROM collection LIMIT 1', [])
+  } catch (error: any) {
+    if (error.message && error.message.includes('does not exist')) {
+      console.log('Creating collection table for existing stream')
+      await stream.exec(`
+        CREATE TABLE IF NOT EXISTS collection (
+          collection_uuid TEXT NOT NULL PRIMARY KEY,
+          title TEXT NOT NULL,
+          parent_collection_uuid TEXT,
+          insert_datetime TEXT NOT NULL,
+          inserter TEXT NOT NULL
+        )
+      `)
+    } else {
+      throw error
+    }
+  }
+
+  // Ensure root collection uniqueness constraint exists
+  await stream.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS collection_one_root
+    ON collection ((1)) WHERE parent_collection_uuid IS NULL
+  `)
+
+  // Check if block.collection_id column exists
+  try {
+    await stream.query(`SELECT collection_id FROM block LIMIT 1`, [])
+  } catch (error: any) {
+    if (error.message && error.message.includes('does not exist')) {
+      console.log('Adding collection_id column to block table')
+      await stream.exec(`ALTER TABLE block ADD COLUMN collection_id TEXT`)
+    } else {
+      throw error
+    }
+  }
 }

@@ -141,12 +141,12 @@ describe('HomePage', () => {
     // Should show stream count
     expect(screen.getByText(/you have 1 stream available/i)).toBeInTheDocument()
     
-    // Should show the full stream ID with pk/ prefix
-    const streamIdWithPrefix = `pk/${streamId}`
-    expect(screen.getByText(streamIdWithPrefix)).toBeInTheDocument()
-    
-    // Should have the link to the stream (match by partial text since link includes sibling text)
-    const streamLink = screen.getByRole('link', { name: new RegExp(`^pk/${streamId.substring(0, 8)}`) })
+    // Should show the truncated stream ID with pk/ prefix
+    const displayId = `pk/${streamId.substring(0, 16)}...`
+    expect(screen.getByText(displayId)).toBeInTheDocument()
+
+    // Should have the link to the stream
+    const streamLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 16)}`) })
     expect(streamLink).toBeInTheDocument()
     expect(streamLink).toHaveAttribute('href', `/pk/${streamId}/`)
     
@@ -188,11 +188,11 @@ describe('HomePage', () => {
     // Should show correct stream count
     expect(screen.getByText(/you have 3 streams available/i)).toBeInTheDocument()
     
-    // Should show all three streams (pk/ prefix followed by full stream ID)
+    // Should show all three streams (pk/ prefix followed by truncated stream ID)
     const streamLinks = screen.getAllByRole('link')
     expect(streamLinks.length).toBeGreaterThanOrEqual(3)
     streamIds.forEach(streamId => {
-      const displayId = `pk/${streamId}`
+      const displayId = `pk/${streamId.substring(0, 16)}...`
       expect(screen.getByText(displayId)).toBeInTheDocument()
     })
   })

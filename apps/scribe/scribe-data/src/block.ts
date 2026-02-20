@@ -21,10 +21,11 @@ export async function createBlock(
     body: string
     inserter: string
     prior_version_uuid?: string | null
+    collection_id?: string | null
   }
 ): Promise<Block> {
   const now = new Date()
-  
+
   const newBlock: Block = {
     block_uuid: blockData.block_uuid || uuidv4(),
     block_type: blockData.block_type,
@@ -32,12 +33,13 @@ export async function createBlock(
     prior_version_uuid: blockData.prior_version_uuid !== undefined ? blockData.prior_version_uuid : null,
     insert_datetime: now.toISOString(),
     inserter: blockData.inserter,
-    body: blockData.body
+    body: blockData.body,
+    collection_id: blockData.collection_id ?? null
   }
-  
+
   await db.exec(
-    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       newBlock.block_uuid,
       newBlock.block_type,
@@ -45,7 +47,8 @@ export async function createBlock(
       newBlock.prior_version_uuid,
       newBlock.insert_datetime,
       newBlock.inserter,
-      newBlock.body
+      newBlock.body,
+      newBlock.collection_id
     ]
   )
   
@@ -77,23 +80,27 @@ export async function createBlockVersion(
     block_type: string
     body: string
     inserter: string
+    collection_id?: string | null
   }
 ): Promise<Block> {
-  // Get the latest version of this block to set as prior_version_uuid
+  // Get the latest version of this block to set as prior_version_uuid and carry forward collection_id
   const result = await db.query(
-    `SELECT version_uuid FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    `SELECT version_uuid, collection_id FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
   )
-  
-  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as BlockQueryResult : null
+
+  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as any : null
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
-  
+  // Use explicitly provided collection_id, otherwise carry forward from latest version
+  const collection_id = blockData.collection_id !== undefined ? blockData.collection_id : (versionResult?.collection_id ?? null)
+
   return createBlock(db, {
     block_uuid,
     block_type: blockData.block_type,
     body: blockData.body,
     inserter: blockData.inserter,
-    prior_version_uuid
+    prior_version_uuid,
+    collection_id
   })
 }
 

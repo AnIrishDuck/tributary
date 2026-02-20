@@ -548,10 +548,10 @@ export async function getLastEditedTime(db: TributaryLocal): Promise<string | nu
 
 /**
  * Index all metadata for unindexed blocks
- * 
+ *
  * This is a convenience function that calls both indexSlugs() and indexSearchVectors()
  * to ensure all indexing is performed together.
- * 
+ *
  * @param localDb The TributaryLocal database instance
  * @param options Indexing options
  * @returns Combined result from both indexing operations

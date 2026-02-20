@@ -18,6 +18,11 @@ export type VersionUuid = string
 export type BlockType = 'scribe/markdown'
 
 /**
+ * Unique identifier for a collection (UUID format)
+ */
+export type CollectionUuid = string
+
+/**
  * User or device identifier that inserted a version
  */
 export type Inserter = string
@@ -33,6 +38,39 @@ export interface Block {
   insert_datetime: string // ISO string for database storage
   inserter: string
   body: string
+  collection_id: string | null
+}
+
+/**
+ * Database representation of a collection
+ */
+export interface Collection {
+  collection_uuid: string
+  title: string
+  parent_collection_uuid: string | null
+  insert_datetime: string
+  inserter: string
+}
+
+/**
+ * Database representation of a collection slug
+ */
+export interface CollectionSlug {
+  collection_uuid: string
+  slug: string
+  title: string
+  indexed_at: string
+}
+
+/**
+ * Collection slug row with insert_datetime for listing
+ */
+export interface CollectionSlugRow {
+  collection_uuid: string
+  slug: string
+  title: string
+  indexed_at: string
+  insert_datetime: string
 }
 
 /**
@@ -90,6 +128,7 @@ export interface BlockSlugRow {
   title: string
   indexed_at: string // ISO string for database storage
   insert_datetime: string // ISO string - when the block was last edited
+  collection_id: string | null
 }
 
 /**

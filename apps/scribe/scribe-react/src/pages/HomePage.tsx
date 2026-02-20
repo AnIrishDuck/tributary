@@ -92,9 +92,8 @@ const HomePage: React.FC = () => {
             <div className="px-8 py-6 bg-gray-50">
               <div className="space-y-3">
                 {streams.map((stream) => {
-                  // Stream ID is base64url encoded public key
-                  // Show pk/ prefix followed by the full encoded key
-                  const displayId = `pk/${stream.streamId}`
+                  const displayName = stream.rootCollectionTitle || 'Notes'
+                  const displayId = `pk/${stream.streamId.substring(0, 16)}...`
                   const lastEditedText = stream.lastEdited
                     ? new Date(stream.lastEdited).toLocaleDateString('en-US', {
                         month: 'short',
@@ -118,10 +117,12 @@ const HomePage: React.FC = () => {
                       </div>
                       <div className="ml-4 flex-1">
                         <h4 className="text-base font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
-                          {displayId}
+                          {displayName}
                         </h4>
                         <div className="flex items-center gap-2">
-                          <p className="text-sm text-gray-500">Last edited: {lastEditedText}</p>
+                          <span className="text-xs text-gray-400 font-mono">{displayId}</span>
+                          <span className="text-gray-300">·</span>
+                          <p className="text-sm text-gray-500">{lastEditedText}</p>
                           {showProgress && (
                             <span className="text-xs text-blue-600 font-medium">
                               Syncing {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex}

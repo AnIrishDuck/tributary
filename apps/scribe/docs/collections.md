@@ -2,9 +2,25 @@
 
 Collections are a grouping mechanism for blocks within a stream. They let users organize related documents together under a shared name.
 
+## Listing
+
+The root listing of the scribe app lists "Collections". These still map to
+streams, but are named and may have their own slugs (though, if they have
+no root collection they have no slug and must be referenced via their
+unique public key route).
+
+The slug resolution protocol for collections is the same as for blocks within
+a collection, see indexing.md for details.
+
 ## Structure
 
-Every stream has a **root collection** — the stream itself. Named collections sit under the root collection and contain blocks. Each block belongs to exactly one collection. Blocks not assigned to a named collection belong to the root collection.
+Every stream has a **root collection** — the stream itself. Named
+collections sit under the root collection and contain blocks. Each block
+belongs to exactly one collection. Blocks not assigned to a named collection
+belong to the root collection.
+
+(note that recursive sub-collections are currently a _planned_ feature and
+will be implemented later)
 
 ```
 Stream (root collection)

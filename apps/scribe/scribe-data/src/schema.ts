@@ -134,6 +134,37 @@ export interface BlockTagTable {
 }
 
 /**
+ * Database representation of a collection (synchronized via Tributary)
+ */
+export interface CollectionTable {
+  /**
+   * Unique identifier for the collection
+   */
+  collection_uuid: string
+
+  /**
+   * Display title for the collection
+   */
+  title: string
+
+  /**
+   * Parent collection UUID (null = root collection)
+   * Reserved for future nesting support; always null for now
+   */
+  parent_collection_uuid: string | null
+
+  /**
+   * Timestamp when this collection was created
+   */
+  insert_datetime: string
+
+  /**
+   * User or device that created this collection
+   */
+  inserter: string
+}
+
+/**
  * Database representation of a block search index (non-synchronized)
  */
 export interface BlockSearchIndexTable {
@@ -191,6 +222,12 @@ export interface ScribeSchema {
    * Table containing block search indexes (non-synchronized)
    */
   block_search_index: BlockSearchIndexTable
+
+  /**
+   * Table containing collections (synchronized via Tributary)
+   */
+  collection: CollectionTable
+
 }
 
 /**
