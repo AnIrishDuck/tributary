@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { getAllBlocksWithTitles, BlockSlugRow } from 'scribe-data'
+import { getAllBlocksWithTitles, BlockSlugRow, getStreamDisplayName } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
 import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
@@ -12,6 +12,7 @@ const BlockListPage: React.FC = () => {
   const { client } = useTributary()
   const { syncStatus, setFocusedStream } = useSyncStatus()
   const [blocks, setBlocks] = useState<BlockSlugRow[]>([])
+  const [streamName, setStreamName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,6 +45,11 @@ const BlockListPage: React.FC = () => {
         // Get all blocks with titles
         const blockList = await getAllBlocksWithTitles(localDb)
         setBlocks(blockList)
+
+        // Get stream display name
+        const name = await getStreamDisplayName(localDb)
+        setStreamName(name)
+
         setError(null)
       } catch (err) {
         console.error('Error loading blocks:', err)
@@ -121,7 +127,7 @@ const BlockListPage: React.FC = () => {
                 <ArrowLeftIcon className="w-4 h-4 mr-1" />
                 Streams
               </button>
-              <h1 className="text-xl font-bold text-gray-900">Documents</h1>
+              <h1 className="text-xl font-bold text-gray-900">{streamName || 'Documents'}</h1>
               <span className="text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
                 {blocks.length} document{blocks.length !== 1 ? 's' : ''}
               </span>

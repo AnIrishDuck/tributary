@@ -24,7 +24,7 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client)
+    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
 
     // Create a block
     await createBlock(stream, {
@@ -57,7 +57,7 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client)
+    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
 
     // Create 100 blocks - this will sync all of them
     for (let i = 0; i < 100; i++) {
@@ -81,7 +81,7 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client)
+    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
 
     // Create 5 blocks
     for (let i = 0; i < 5; i++) {
@@ -102,7 +102,7 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client)
+    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
 
     // Create 5 blocks
     for (let i = 0; i < 5; i++) {

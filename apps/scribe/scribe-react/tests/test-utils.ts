@@ -11,7 +11,7 @@ import { TestFakeServer } from './test-server'
  * Returns the client, stream, and routing prefix
  * Backwards compatible: destructure only what you need
  */
-export async function createTestClientWithStream(): Promise<{
+export async function createTestClientWithStream(name: string = 'Test Stream'): Promise<{
   client: TributaryClient,
   stream: TributaryStream,
   streamId: string,
@@ -21,7 +21,7 @@ export async function createTestClientWithStream(): Promise<{
   // Create test client (this uses createTestServer internally)
   const { client, server } = createTestTributaryClient()
 
-  const { stream, prefix, streamId } = await createStream(client)
+  const { stream, prefix, streamId } = await createStream(client, name)
 
   // Return server only if it's a TestFakeServer for extended functionality
   const testServer = server as TestFakeServer | null

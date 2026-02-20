@@ -112,8 +112,8 @@ describe('HomePage', () => {
     const { client } = createTestTributaryClient()
     
     // Create a stream using the real createStream action
-    const { streamId } = await createStream(client)
-    
+    const { streamId } = await createStream(client, 'Test Stream')
+
     // Verify the stream was created
     const createdStreams = await getStreams(client)
     expect(createdStreams.length).toBe(1)
@@ -162,7 +162,7 @@ describe('HomePage', () => {
     // Create multiple streams using the real createStream action
     const streamIds: string[] = []
     for (let i = 0; i < 3; i++) {
-      const { streamId } = await createStream(client)
+      const { streamId } = await createStream(client, `Stream ${i + 1}`)
       streamIds.push(streamId)
     }
     

@@ -5,6 +5,7 @@ import NewStreamPage from '../src/pages/NewStreamPage'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
 import { createTestClientWithStream } from './test-utils'
+import { getStreamDisplayName } from 'scribe-data'
 
 // Mock the useNavigate hook from react-router
 const mockNavigate = vi.fn()
@@ -39,24 +40,28 @@ describe('NewStreamPage', () => {
     // Use getAllByText to handle multiple matching elements
     expect(screen.getAllByText(/end-to-end encryption/i).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Create New Stream' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Stream Name')).toBeInTheDocument()
   })
 
   it('should show loading state when button is clicked', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
-    
+
     const { client } = createTestTributaryClient()
-    
+
     render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
     )
-    
+
+    // Fill in the name first
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+
     const button = screen.getByRole('button', { name: 'Create New Stream' })
     fireEvent.click(button)
-    
+
     // Check that loading state is displayed immediately
     expect(screen.getByText('Creating...')).toBeInTheDocument()
     // Button should be disabled during loading
@@ -67,15 +72,18 @@ describe('NewStreamPage', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
-    
+
     const { client } = createTestTributaryClient()
-    
+
     render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
     )
-    
+
+    // Fill in the name first
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'My Notes' } })
+
     const button = screen.getByRole('button', { name: 'Create New Stream' })
     fireEvent.click(button)
     
@@ -103,19 +111,22 @@ describe('NewStreamPage', () => {
   it('should generate navigation paths without URL-encoded slashes', async () => {
     // This test verifies the fix: navigation paths should NOT contain %2F
     // The bug was encodeURIComponent('pk/abc') -> 'pk%2Fabc' which breaks routing
-    
+
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
-    
+
     const { client } = createTestTributaryClient()
-    
+
     render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
     )
-    
+
+    // Fill in the name first
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+
     const button = screen.getByRole('button', { name: 'Create New Stream' })
     fireEvent.click(button)
     
@@ -154,25 +165,24 @@ describe('NewStreamPage', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
-    
-    // This test needs to be adjusted since we're using a real test client now
-    // which should actually work. Let's skip this test for now or adjust it
-    // to test a different error condition.
-    
+
     // For now we'll test with a client that has its addWriteKey method mocked to fail
     const { client } = createTestTributaryClient()
-    
+
     // Mock the addWriteKey method to throw an error
     if (client) {
       vi.spyOn(client, 'addWriteKey').mockRejectedValue(new Error('Stream creation failed'))
     }
-    
+
     render(
       <TributaryProvider client={client}>
         <RouterProvider router={router} />
       </TributaryProvider>
     )
-    
+
+    // Fill in the name first
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+
     const button = screen.getByRole('button', { name: 'Create New Stream' })
     fireEvent.click(button)
     
@@ -186,13 +196,16 @@ describe('NewStreamPage', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
-    
+
     render(
       <TributaryProvider client={null}>
         <RouterProvider router={router} />
       </TributaryProvider>
     )
-    
+
+    // Fill in the name first
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+
     const button = screen.getByRole('button', { name: 'Create New Stream' })
     fireEvent.click(button)
     
@@ -200,5 +213,41 @@ describe('NewStreamPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Tributary client not available')).toBeInTheDocument()
     }, { timeout: 2000 })
+  })
+
+  it('should disable create button when name is empty', () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/new']
+    })
+
+    const { client } = createTestTributaryClient()
+
+    render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
+
+    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    expect(button).toBeDisabled()
+
+    // Fill in a name and verify button becomes enabled
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'My Stream' } })
+    expect(button).toBeEnabled()
+
+    // Clear the name and verify button becomes disabled again
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: '' } })
+    expect(button).toBeDisabled()
+
+    // Whitespace-only should also keep button disabled
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: '   ' } })
+    expect(button).toBeDisabled()
+  })
+
+  it('should create stream with the correct name', async () => {
+    const { client, stream } = await createTestClientWithStream('Named Stream')
+
+    const displayName = await getStreamDisplayName(stream)
+    expect(displayName).toBe('Named Stream')
   })
 })

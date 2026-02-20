@@ -32,7 +32,7 @@ describe('BlockListPage', () => {
     
     // Wait for the component to finish loading
     await waitFor(() => {
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
     
     // Check that the empty state is displayed
@@ -74,7 +74,7 @@ describe('BlockListPage', () => {
     
     // Wait for the component to finish loading and show the list
     await waitFor(() => {
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
     
     // Check that we have at least 4 document links (there may also be
@@ -123,7 +123,7 @@ describe('BlockListPage', () => {
     
     // Wait for the component to finish loading
     await waitFor(() => {
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
     
     // Check that the untitled document is displayed
@@ -154,7 +154,7 @@ describe('BlockListPage', () => {
     // Wait for the page to fully load
     await waitFor(() => {
       // Should show "Documents" heading (BlockListPage content)
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 5000 })
     
     // Verify NO "Error loading blocks" error
@@ -187,7 +187,7 @@ describe('BlockListPage', () => {
     
     // Wait for the component to finish loading
     await waitFor(() => {
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
       expect(screen.getByText('new-document')).toBeInTheDocument()
     }, { timeout: 3000 })
     
@@ -234,7 +234,7 @@ describe('BlockListPage', () => {
     
     // Wait for the block list page to load
     await waitFor(() => {
-      expect(screen.getByText('Documents')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
       expect(screen.getByText('test-document')).toBeInTheDocument()
     }, { timeout: 3000 })
     

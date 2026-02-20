@@ -7,6 +7,7 @@ import { ShieldCheckIcon } from '@heroicons/react/24/outline'
 const NewStreamPage: React.FC = () => {
   const navigate = useNavigate()
   const { client } = useTributary()
+  const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -16,11 +17,16 @@ const NewStreamPage: React.FC = () => {
       return
     }
 
+    if (!name.trim()) {
+      setError('Please enter a stream name')
+      return
+    }
+
     setIsLoading(true)
     setError(null)
-    
+
     try {
-      const { prefix } = await createStream(client)
+      const { prefix } = await createStream(client, name.trim())
       
       // Navigate to the new stream
       // The prefix is already formatted as "pk/<key>" where key is base64url encoded
@@ -55,8 +61,20 @@ const NewStreamPage: React.FC = () => {
             {/* Left side - Information */}
             <div className="p-8 lg:p-10">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Stream Information</h2>
-              
+
               <div className="space-y-6">
+                <div>
+                  <label htmlFor="stream-name" className="block text-lg font-semibold text-gray-900 mb-2">Stream Name</label>
+                  <input
+                    id="stream-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter a name for your collection"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">About This Stream</h3>
                   <p className="text-gray-600 leading-relaxed">
@@ -117,7 +135,7 @@ const NewStreamPage: React.FC = () => {
               
               <button
                 onClick={onCreateStream}
-                disabled={isLoading}
+                disabled={isLoading || !name.trim()}
                 className={`w-full bg-white text-blue-700 hover:bg-blue-50 font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${
                   isLoading ? 'cursor-wait' : ''
                 }`}

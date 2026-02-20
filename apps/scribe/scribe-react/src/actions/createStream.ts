@@ -1,18 +1,17 @@
 import { TributaryClient } from 'tributary-client'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { ensureMigrations } from 'scribe-data'
+import { initializeStream } from 'scribe-data'
 
-export async function createStream(client: TributaryClient) {
+export async function createStream(client: TributaryClient, name: string) {
   // Generate a new key pair
   const keyPair = nacl.sign.keyPair()
-  
+
   // Add the write key to create a new stream
   const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-  // Run migrations for a NEW stream (creates stream tables + local tables)
-  // Pass isNew=true to ensure stream tables get created and added to the stream
-  await ensureMigrations(stream, true)
+  // Run migrations and create root collection
+  await initializeStream(stream, name)
 
   // Sync the stream to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
