@@ -1,82 +1,59 @@
 #!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import { TributaryClient } from 'tributary-client';
+import { TributaryClient, deriveStreamSeed } from 'tributary-client';
 import { createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client/cli';
-import { indexSlugs, ensureMigrations } from '@tributary/scribe-data';
+import { ensureMigrations } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import readline from 'readline';
+import * as base64url from 'urlsafe-base64';
 
 // Import the sync function
 import { sync } from './sync.js';
 
-/**
- * Generate a new key pair for testing
- */
-function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } {
-  return nacl.sign.keyPair();
-}
+// Import extracted modules
+import { syncHomeLibrary, getLibraryWriteKey, listLinkedLibraries } from './home.js';
+import { resolveLibraryPk, writeStoredLibraryPk } from './libraryPk.js';
+
+const SCRIBE_HOME_DIR = path.join(os.homedir(), '.scribe');
+const HOME_DB_PATH = path.join(SCRIBE_HOME_DIR, 'home-db');
+const CONFIG_APP_ID = 'scribe';
 
 /**
- * Create a TributaryClient and library for the given directory and keys
+ * Create a TributaryClient and stream for a sync directory using the home library.
+ * The write key is looked up from the home library's linked collections.
  */
-async function createClient(directory: string, readKeyPath?: string, writeKeyPath?: string, dbPath?: string) {
-  // Read keys from files
-  let readKeyBase64: string | undefined;
-  let writeKeyBase64: string | undefined;
-
-  if (readKeyPath) {
-    readKeyBase64 = fs.readFileSync(readKeyPath, 'utf8').trim();
-  }
-
-  if (writeKeyPath) {
-    writeKeyBase64 = fs.readFileSync(writeKeyPath, 'utf8').trim();
-  }
-
+async function createSyncClient(directory: string, libraryPk: string, dbPath?: string) {
   // Use db/ directory within the checkout if dbPath is not explicitly provided
   let pglitePath: string;
   if (dbPath) {
     pglitePath = dbPath;
   } else {
-    // Use db/ directory within the checkout directory
     pglitePath = path.join(directory, 'db');
   }
 
-  // Ensure the database directory exists
   await fs.promises.mkdir(pglitePath, { recursive: true });
-
-  // Create PGlite instance with persistent storage
   const pglite = new PGlite(pglitePath);
-
-  // Create server instance (auto-attaches auth token if logged in)
   const server = await createCliServer();
+  const client = new TributaryClient({ server, db: pglite as any });
 
-  // Create TributaryClient
-  const client = new TributaryClient({
-    server,
-    db: pglite as any  // Type cast to avoid PGlite version mismatch
-  });
-  
-  // Determine which key to use
-  let privateKeyArray: Uint8Array;
-  
-  if (writeKeyBase64) {
-    privateKeyArray = Uint8Array.from(Buffer.from(writeKeyBase64, 'base64'));
-  } else if (readKeyBase64) {
-    privateKeyArray = Uint8Array.from(Buffer.from(readKeyBase64, 'base64'));
-  } else {
-    // Generate a temporary key pair for local operations only
-    const keyPair = generateKeyPair();
-    privateKeyArray = keyPair.secretKey;
+  // Look up the write key from the home library
+  const homeClient = await getHomeClient();
+  const writeKey = await getLibraryWriteKey(homeClient, libraryPk);
+
+  if (!writeKey) {
+    throw new Error(
+      `Library with public key '${libraryPk}' not found in home library. ` +
+      `Run \`scribe library list\` to see available libraries.`
+    );
   }
-  
-  // Add the write key to get or create the library
-  const stream = await client.addWriteKey('scribe', privateKeyArray);
-  
+
+  const stream = await client.addWriteKey(CONFIG_APP_ID, writeKey);
   return { client, stream };
 }
 
@@ -91,29 +68,32 @@ program
   .command('sync')
   .description('Synchronize notes between a local directory and a Tributary Scribe library')
   .argument('<directory>', 'Local directory to sync with')
-  .option('--read-key <file>', 'File containing the read key for the library')
-  .option('--write-key <file>', 'File containing the write key for the library')
+  .option('--library-pk <public-key>', 'Public key of the library to sync (stored for future use)')
   .option('--db <path>', 'Local database directory that is synced with the server')
   .option('--dry-run', 'Show what would be synced without making changes')
   .option('-l, --limit <number>', 'Maximum number of notes to process in this run', '100')
   .action(async (directory, options) => {
     try {
-      // Create client and stream (auth token is auto-attached if logged in)
-      const { client, stream } = await createClient(directory, options.readKey, options.writeKey, options.db);
+      const libraryPk = resolveLibraryPk(directory, options.libraryPk);
+
+      // Store the library PK for future use
+      await writeStoredLibraryPk(directory, libraryPk);
+
+      const { client, stream } = await createSyncClient(directory, libraryPk, options.db);
 
       // Sync FIRST to get existing data from server
       const syncStatus = await stream.sync(1000);
       console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
-      
+
       // Ensure migrations are run (creates local tables only for existing libraries)
-      await ensureMigrations(stream, true);
-      
+      await ensureMigrations(stream, false);
+
       // Parse limit option
       const limit = parseInt(options.limit);
-      
+
       // Now sync the local directory with the database
       await sync(stream, client, directory, { dryRun: options.dryRun, limit });
-      
+
       console.log(`Synced with directory: ${directory}`);
       if (options.dryRun) {
         console.log('Dry run completed - no changes made');
@@ -126,42 +106,43 @@ program
 
 program
   .command('init')
-  .description('Initialize the database with required tables and a seed "howto" note')
+  .description('Initialize a local directory for syncing with a Tributary Scribe library')
   .argument('<directory>', 'Local directory to initialize for Scribe')
-  .option('--write-key <file>', 'File containing the write key for the library (required for creating the seed note)')
+  .option('--library-pk <public-key>', 'Public key of the library to sync (stored for future use)')
   .option('--db <path>', 'Local database directory that is synced with the server')
   .option('--empty', 'Initialize database tables only, without creating a seed note')
   .action(async (directory, options) => {
     try {
+      const libraryPk = resolveLibraryPk(directory, options.libraryPk);
+
       // Ensure the directory exists
       await fs.promises.mkdir(directory, { recursive: true });
-      
+
       // Use db/ directory within the checkout if dbPath is not explicitly provided
       let pglitePath: string;
       if (options.db) {
         pglitePath = options.db;
       } else {
-        // Use db/ directory within the checkout directory
         pglitePath = path.join(directory, 'db');
       }
-      
+
       // Create the db directory
       await fs.promises.mkdir(pglitePath, { recursive: true });
-      
+
       // Create the slugs directory
       const slugsDir = path.join(directory, 'slugs');
       await fs.promises.mkdir(slugsDir, { recursive: true });
-      
+
       // Create the indexed directory and its subdirectories
       const indexedDir = path.join(directory, 'indexed');
       await fs.promises.mkdir(indexedDir, { recursive: true });
-      
+
       const tagsDir = path.join(indexedDir, 'tags');
       await fs.promises.mkdir(tagsDir, { recursive: true });
-      
+
       const linksDir = path.join(indexedDir, 'links');
       await fs.promises.mkdir(linksDir, { recursive: true });
-      
+
       // Create the READ-ONLY warning file
       const readOnlyContent = `# READ-ONLY
 
@@ -170,29 +151,40 @@ They will be overwritten or removed during sync operations.
 Do not manually edit or add files here.
 `;
       await fs.promises.writeFile(path.join(indexedDir, 'READ-ONLY.md'), readOnlyContent);
-      
-      // Create client and stream (auth token is auto-attached if logged in)
-      const { client, stream } = await createClient(directory, undefined, options.writeKey, options.db);
-      
-      // Ensure migrations are run for a NEW library (creates library + local tables)
-      await ensureMigrations(stream, true);
+
+      // Store the library PK for future use
+      await writeStoredLibraryPk(directory, libraryPk);
+
+      // Create client and stream using the home library
+      const { client, stream } = await createSyncClient(directory, libraryPk, options.db);
+
+      // Sync to get existing data from server
+      const syncStatus = await stream.sync(1000);
+      console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
+
+      // Ensure migrations are run for an EXISTING library (local tables only)
+      await ensureMigrations(stream, false);
       console.log('Database tables initialized');
-      
-      // Only create seed note if --empty is not specified
+
+      // Only create seed note if --empty is not specified and library is empty
       if (!options.empty) {
-        // Insert a seed "howto" note
-        const now = new Date();
-        await stream.exec(
-          `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            uuidv4(),
-            'scribe/markdown',
-            uuidv4(),
-            null,
-            now.toISOString(),
-            'scribe-cli',
-            `# Scribe Howto
+        // Check if library already has notes
+        try {
+          const result = await stream.query('SELECT COUNT(*) as count FROM block', []);
+          const count = parseInt((result.rows[0] as any).count);
+          if (count === 0) {
+            const now = new Date();
+            await stream.exec(
+              `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                uuidv4(),
+                'scribe/markdown',
+                uuidv4(),
+                null,
+                now.toISOString(),
+                'scribe-cli',
+                `# Scribe Howto
 
 Welcome to Scribe! This is a sample note to help you get started.
 
@@ -213,23 +205,32 @@ Scribe supports standard Markdown features:
 
 ## Tags
 
-You can tag notes using the format \`[#tagname](#tagname)\`. 
+You can tag notes using the format \`[#tagname](#tagname)\`.
 For example: [#example](#example) [#getting-started](#getting-started)
 
 ## Syncing
 
 Use \`scribe sync <directory>\` to synchronize your local directory with the Tributary library.
 `
-          ]
-        );
-        console.log('Seed "howto" note created successfully');
+              ]
+            );
+            console.log('Seed "howto" note created successfully');
+          } else {
+            console.log(`Library already has ${count} note(s), skipping seed note`);
+          }
+        } catch {
+          // Block table may not exist yet if library is truly new
+          console.log('Skipping seed note check (library may be empty)');
+        }
       } else {
         console.log('Database initialized with no seed note (empty initialization)');
       }
-      
+
       console.log(`Initialized Scribe directory: ${directory}`);
       console.log(`Directory structure:`);
       console.log(`  ${directory}/`);
+      console.log(`    .scribe/`);
+      console.log(`      library-pk`);
       console.log(`    db/`);
       console.log(`    slugs/`);
       console.log(`    indexed/`);
@@ -283,19 +284,46 @@ function promptPassword(question: string): Promise<string> {
 
 program
   .command('login')
-  .description('Log in to Scribe with your email and password')
+  .description('Log in to Scribe and sync home library')
   .action(async () => {
     try {
-      // Skip if already authenticated
+      // Check if already authenticated
       const existing = await getCliAuthToken();
+      let email: string;
+      let password: string;
+
       if (existing) {
-        console.log('Already logged in.');
-        return;
+        console.log('Already logged in. Syncing home library...');
+        // We still need email/password to derive the home stream seed.
+        // If already logged in, prompt for them to derive the seed.
+        email = await prompt('Email (to sync home library): ');
+        password = await promptPassword('Password: ');
+      } else {
+        email = await prompt('Email: ');
+        password = await promptPassword('Password: ');
+        await cliLogin(email, password);
+        console.log('Logged in successfully.');
       }
-      const email = await prompt('Email: ');
-      const password = await promptPassword('Password: ');
-      await cliLogin(email, password);
-      console.log('Logged in successfully.');
+
+      // Derive the home stream seed and sync the home library
+      const streamSeed = await deriveStreamSeed(password, email, CONFIG_APP_ID);
+      const keyPair = nacl.sign.keyPair.fromSeed(streamSeed);
+
+      const homeClient = await getHomeClient();
+      const homeStream = await homeClient.addWriteKey(CONFIG_APP_ID, keyPair.secretKey);
+
+      // Set the home stream ID using urlsafe-base64 to match the rest of the codebase
+      const streamId = base64url.encode(Buffer.from(keyPair.publicKey));
+      await homeClient.setHomeStream(streamId);
+
+      // Sync the home library
+      const syncStatus = await homeStream.sync(1000);
+      console.log(`Home library synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
+
+      // Ensure local tables exist
+      await ensureMigrations(homeStream, false);
+
+      console.log('Home library is up to date.');
     } catch (error) {
       console.error('Error:', (error as Error).message);
       process.exit(1);
@@ -308,6 +336,42 @@ program
   .action(async () => {
     await cliLogout();
     console.log('Logged out.');
+  });
+
+// Library management commands
+const libraryCmd = program
+  .command('library')
+  .description('Library management commands');
+
+libraryCmd
+  .command('list')
+  .description('List all libraries linked in your home library')
+  .action(async () => {
+    try {
+      const homeClient = await getHomeClient();
+      const linkedLibraries = await listLinkedLibraries(homeClient);
+
+      if (!linkedLibraries) {
+        console.error('No home library found. Run `scribe login` first.');
+        process.exit(1);
+      }
+
+      if (linkedLibraries.length === 0) {
+        console.log('No linked libraries found.');
+        return;
+      }
+
+      console.log('Libraries:');
+      console.log('');
+      for (const lib of linkedLibraries) {
+        console.log(`  ${lib.title}`);
+        console.log(`    pk: ${lib.linked_stream_id}`);
+        console.log('');
+      }
+    } catch (error) {
+      console.error('Error:', (error as Error).message);
+      process.exit(1);
+    }
   });
 
 program.parse();
