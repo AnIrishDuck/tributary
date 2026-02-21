@@ -8,6 +8,7 @@ export { createTestServer } from './testUtils.js';
 export type { Server } from './server.js';
 export type { SyncStatus } from './tributaryStream.js';
 export { computeHash } from './hashUtils.js';
+export { deriveAuthKey, deriveStreamSeed } from './kdf.js';
 export {
   createNodeFileReader,
   createBrowserFileReader,

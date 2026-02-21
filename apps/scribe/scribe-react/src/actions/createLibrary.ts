@@ -3,12 +3,16 @@ import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { initializeLibrary } from 'scribe-data'
 
-export async function createLibrary(client: TributaryClient, name: string) {
-  // Generate a new key pair
-  const keyPair = nacl.sign.keyPair()
+export async function createLibrary(
+  client: TributaryClient,
+  name: string,
+  keyPair?: { publicKey: Uint8Array; secretKey: Uint8Array }
+) {
+  // Use provided key pair or generate a new one
+  const kp = keyPair ?? nacl.sign.keyPair()
 
   // Add the write key to create a new library
-  const stream = await client.addWriteKey('scribe', keyPair.secretKey)
+  const stream = await client.addWriteKey('scribe', kp.secretKey)
 
   // Run migrations and create root collection
   await initializeLibrary(stream, name)
@@ -19,9 +23,9 @@ export async function createLibrary(client: TributaryClient, name: string) {
   console.log(`Library created and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
   
   // Create prefix from public key
-  const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
+  const publicKeyBase64 = base64url.encode(Buffer.from(kp.publicKey))
   const prefix = `pk/${publicKeyBase64}`
-  const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey))
+  const privateKeyBase64 = base64url.encode(Buffer.from(kp.secretKey))
   
   return { stream, prefix, streamId: publicKeyBase64, privateKeyBase64 }
 }

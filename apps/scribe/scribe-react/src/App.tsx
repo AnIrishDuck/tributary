@@ -3,17 +3,26 @@ import { RouterProvider, createHashRouter } from 'react-router'
 import { routes } from './route'
 import { TributaryProvider } from './context/tributaryContext'
 import { SyncStatusProvider } from './context/syncStatusContext'
-import { TributaryClient, TributaryServer } from 'tributary-client'
+import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed } from 'tributary-client'
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
+import nacl from 'tweetnacl'
+import * as base64url from 'urlsafe-base64'
 import { getPGlite } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
+import SetPasswordPage from './pages/SetPasswordPage'
 
 // Create a Supabase auth client (only if project URL is configured)
 let supabaseAuth: SupabaseClient | null = null
 if (CONFIG.SUPABASE_PROJECT_URL && CONFIG.API_KEY) {
   supabaseAuth = createSupabaseClient(CONFIG.SUPABASE_PROJECT_URL, CONFIG.API_KEY)
 }
+
+// Detect password recovery redirect before Supabase processes the hash.
+// Supabase redirects back with: #access_token=xxx&type=recovery
+// The PASSWORD_RECOVERY event fires during createSupabaseClient() above,
+// before any React listener is registered, so we detect it here instead.
+const initialPasswordRecovery = window.location.hash.includes('type=recovery')
 
 // Singleton to prevent multiple PGlite instances (WASM can only load once)
 let clientPromise: Promise<{ client: TributaryClient; server: TributaryServer }> | null = null
@@ -44,12 +53,18 @@ async function createTributaryClient(session: Session | null) {
 
 const router = createHashRouter(routes)
 
+interface DerivedKeyPair {
+  publicKey: Uint8Array
+  secretKey: Uint8Array
+}
+
 // Login screen shown when Supabase auth is configured but user is not signed in
-function LoginScreen() {
+function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPair) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resetSent, setResetSent] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -57,9 +72,42 @@ function LoginScreen() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabaseAuth.auth.signInWithPassword({ email, password })
+    try {
+      // Derive auth key from password
+      const authKey = await deriveAuthKey(password, email)
+      const { error: signInError } = await supabaseAuth.auth.signInWithPassword({ email, password: authKey })
+      if (signInError) {
+        setError(signInError.message)
+        setLoading(false)
+        return
+      }
+
+      // Derive stream seed and keypair for home library registration
+      const streamSeed = await deriveStreamSeed(password, email, CONFIG.APP_ID)
+      const keyPair = nacl.sign.keyPair.fromSeed(streamSeed)
+      onDerivedKeyPair(keyPair)
+    } catch (err: any) {
+      setError(err.message || 'Login failed')
+    }
+    setLoading(false)
+  }
+
+  async function handleForgotPassword(e: React.MouseEvent) {
+    e.preventDefault()
+    if (!supabaseAuth || !email) {
+      setError('Please enter your email address first')
+      return
+    }
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    })
     if (error) {
       setError(error.message)
+    } else {
+      setResetSent(true)
     }
     setLoading(false)
   }
@@ -74,6 +122,11 @@ function LoginScreen() {
             </div>
             <h1 className="text-xl font-bold text-gray-900">Sign in to Scribe</h1>
           </div>
+          {resetSent ? (
+            <div className="text-center">
+              <p className="text-sm text-gray-700">Check your email for a password reset link.</p>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -105,7 +158,17 @@ function LoginScreen() {
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
+            <div className="text-center">
+              <a
+                href="#"
+                onClick={handleForgotPassword}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Forgot password?
+              </a>
+            </div>
           </form>
+          )}
         </div>
       </div>
     </div>
@@ -117,6 +180,8 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(!supabaseAuth) // skip auth gate if no supabase auth
   const [error, setError] = useState<string | null>(null)
+  const [passwordRecovery, setPasswordRecovery] = useState(initialPasswordRecovery)
+  const [derivedKeyPair, setDerivedKeyPair] = useState<DerivedKeyPair | null>(null)
 
   // Listen for auth state changes
   useEffect(() => {
@@ -128,9 +193,12 @@ function App() {
       setAuthReady(true)
     })
 
-    const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setAuthReady(true)
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -176,9 +244,61 @@ function App() {
     }
   }, [authReady, session])
 
+  // Post-login home stream registration: re-derive and register the home key
+  useEffect(() => {
+    if (!client || !derivedKeyPair || !session) return
+
+    let mounted = true
+
+    async function registerHomeKey() {
+      try {
+        // Register the derived key with the client
+        await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
+
+        // Set home stream if not already set
+        const existingHome = await client!.getHomeStream()
+        if (!existingHome) {
+          const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
+          await client!.setHomeStream(publicKeyBase64)
+        }
+
+        // Sync the home stream
+        const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
+        const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
+        if (stream) {
+          await stream.sync(1000)
+        }
+      } catch (err) {
+        console.error('Failed to register home key:', err)
+      }
+
+      if (mounted) {
+        setDerivedKeyPair(null)
+      }
+    }
+
+    registerHomeKey()
+
+    return () => {
+      mounted = false
+    }
+  }, [client, derivedKeyPair, session])
+
+  // Show SetPasswordPage during password recovery flow (wait for client to be ready)
+  if (passwordRecovery && session && supabaseAuth && client) {
+    return (
+      <SetPasswordPage
+        supabase={supabaseAuth}
+        session={session}
+        client={client}
+        onComplete={() => setPasswordRecovery(false)}
+      />
+    )
+  }
+
   // Show login screen if auth is configured but user is not signed in
   if (supabaseAuth && authReady && !session) {
-    return <LoginScreen />
+    return <LoginScreen onDerivedKeyPair={setDerivedKeyPair} />
   }
 
   if (error) {

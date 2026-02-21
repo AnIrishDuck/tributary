@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll } from 'scribe-data'
+import { indexAll, localMigrations } from 'scribe-data'
 
 export interface SyncStatus {
   synced: boolean
@@ -169,8 +169,10 @@ export const SyncStatusProvider: React.FC<{
         for (const { stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
           try {
-            const localDb = stream.local()
-            await indexAll(localDb)
+            // Ensure local-only tables exist (idempotent; needed for streams
+            // loaded via sync that never went through initializeLibrary)
+            await localMigrations(stream.local())
+            await indexAll(stream.local())
           } catch (error) {
             console.error('Error reindexing library:', error)
           }

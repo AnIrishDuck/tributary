@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Server } from './server.js';
 import { TributaryServer } from './tributaryServer.js';
+import { deriveAuthKey } from './kdf.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -50,7 +51,8 @@ function writeAuthFile(auth: StoredAuth) {
 
 export async function cliLogin(email: string, password: string): Promise<void> {
   const supabase = createSupabase();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const authKey = await deriveAuthKey(password, email);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password: authKey });
   if (error) {
     throw new Error(`Login failed: ${error.message}`);
   }

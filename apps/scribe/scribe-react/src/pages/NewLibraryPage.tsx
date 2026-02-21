@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { createLibrary } from '../actions/createLibrary'
+import { createCollection, getLibrary } from 'scribe-data'
+import { CONFIG } from '../config'
 import { ShieldCheckIcon } from '@heroicons/react/24/outline'
 
 const NewLibraryPage: React.FC = () => {
@@ -26,12 +28,28 @@ const NewLibraryPage: React.FC = () => {
     setError(null)
 
     try {
-      const { prefix } = await createLibrary(client, name.trim())
-      
+      const { prefix, streamId, privateKeyBase64 } = await createLibrary(client, name.trim())
+
+      // Link the new library into the home stream so it appears on the home page
+      const homeStreamId = await client.getHomeStream()
+      if (homeStreamId) {
+        const homeStream = await client.get(CONFIG.APP_ID, homeStreamId)
+        if (homeStream) {
+          const rootCollection = await getLibrary(homeStream)
+          if (rootCollection) {
+            await createCollection(homeStream, {
+              title: name.trim(),
+              parent_collection_uuid: rootCollection.collection_uuid,
+              inserter: 'user',
+              linked_stream_id: streamId,
+              linked_stream_key: privateKeyBase64,
+            })
+            await homeStream.sync(1000)
+          }
+        }
+      }
+
       // Navigate to the new library
-      // The prefix is already formatted as "pk/<key>" where key is base64url encoded
-      // (already URL-safe, no encoding needed). We must NOT encode the entire prefix
-      // because that would turn "/pk/" into "/pk%2F" which breaks route matching.
       navigate(`/${prefix}/`)
     } catch (err: any) {
       setError('Failed to create new library. Please try again.')
