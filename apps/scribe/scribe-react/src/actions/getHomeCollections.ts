@@ -1,18 +1,12 @@
 import { TributaryClient } from 'tributary-client'
-import { getLinkedCollections, getLastEditedTime, getStreamDisplayName } from 'scribe-data'
-
-export interface HomeCollection {
-  title: string
-  linkedStreamId: string
-  lastEdited: string | null
-  synced: boolean
-}
+import { getLinkedCollections, getLastEditedTime, ensureMigrations } from 'scribe-data'
+import { StreamInfo } from './getStreams'
 
 /**
  * Load the home collections from the configured home stream.
  * Returns null if no home stream is configured (signals fallback to getStreams).
  */
-export async function getHomeCollections(client: TributaryClient): Promise<HomeCollection[] | null> {
+export async function getHomeCollections(client: TributaryClient): Promise<StreamInfo[] | null> {
   const homeStreamId = await client.getHomeStream()
   if (!homeStreamId) {
     return null
@@ -25,41 +19,39 @@ export async function getHomeCollections(client: TributaryClient): Promise<HomeC
 
   const linkedCollections = await getLinkedCollections(homeStream)
 
-  const homeCollections: HomeCollection[] = await Promise.all(
+  const streamInfos: StreamInfo[] = await Promise.all(
     linkedCollections.map(async (collection) => {
       const linkedStreamId = collection.linked_stream_id!
       const linkedStreamKey = collection.linked_stream_key
 
-      // Ensure the linked stream is registered with the client
+      // Register the linked stream and ensure local tables exist
       if (linkedStreamKey) {
         try {
-          await client.addWriteKey('scribe', linkedStreamKey)
+          const stream = await client.addWriteKey('scribe', linkedStreamKey)
+          await ensureMigrations(stream, false)
         } catch (err) {
           console.error(`Failed to register linked stream ${linkedStreamId}:`, err)
         }
       }
 
-      // Look up last-edited time and sync status
+      // Look up last-edited time from the linked stream's local DB
       let lastEdited: string | null = null
-      let synced = false
       try {
-        const localDb = await client.getLocal('scribe', linkedStreamId)
-        if (localDb) {
-          lastEdited = await getLastEditedTime(localDb)
-          synced = true
+        const linkedLocalDb = await client.getLocal('scribe', linkedStreamId)
+        if (linkedLocalDb) {
+          lastEdited = await getLastEditedTime(linkedLocalDb)
         }
       } catch (err) {
         console.error(`Error getting info for linked stream ${linkedStreamId}:`, err)
       }
 
       return {
-        title: collection.title,
-        linkedStreamId,
+        streamId: linkedStreamId,
         lastEdited,
-        synced
+        rootCollectionTitle: collection.title
       }
     })
   )
 
-  return homeCollections
+  return streamInfos
 }
