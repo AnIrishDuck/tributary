@@ -11,6 +11,7 @@ jobs:
       tributary-client: ${{ steps.filter.outputs.tributary-client }}
       scribe-data: ${{ steps.filter.outputs.scribe-data }}
       scribe-react: ${{ steps.filter.outputs.scribe-react }}
+      scribe-cli: ${{ steps.filter.outputs.scribe-cli }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -25,6 +26,8 @@ jobs:
               - 'apps/scribe/scribe-data/**'
             scribe-react:
               - 'apps/scribe/scribe-react/**'
+            scribe-cli:
+              - 'apps/scribe/scribe-cli/**'
 
   test-tributary-client:
     needs: changes
@@ -88,3 +91,25 @@ jobs:
         working-directory: apps/scribe/scribe-react
       - run: npm test
         working-directory: apps/scribe/scribe-react
+
+  test-scribe-cli:
+    needs: changes
+    if: >-
+      needs.changes.outputs.scribe-cli == 'true' ||
+      needs.changes.outputs.scribe-data == 'true' ||
+      needs.changes.outputs.tributary-client == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: tributary-client
+      - run: npm ci
+        working-directory: apps/scribe/scribe-data
+      - run: npm ci
+        working-directory: apps/scribe/scribe-cli
+      - run: npm test
+        working-directory: apps/scribe/scribe-cli
