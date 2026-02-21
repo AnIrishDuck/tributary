@@ -21,6 +21,8 @@ export async function createCollection(
     title: string
     parent_collection_uuid?: string | null
     inserter: string
+    linked_stream_id?: string | null
+    linked_stream_key?: string | null
   }
 ): Promise<Collection> {
   const now = new Date()
@@ -30,18 +32,22 @@ export async function createCollection(
     title: data.title,
     parent_collection_uuid: data.parent_collection_uuid ?? null,
     insert_datetime: now.toISOString(),
-    inserter: data.inserter
+    inserter: data.inserter,
+    linked_stream_id: data.linked_stream_id ?? null,
+    linked_stream_key: data.linked_stream_key ?? null
   }
 
   await db.exec(
-    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       newCollection.collection_uuid,
       newCollection.title,
       newCollection.parent_collection_uuid,
       newCollection.insert_datetime,
-      newCollection.inserter
+      newCollection.inserter,
+      newCollection.linked_stream_id,
+      newCollection.linked_stream_key
     ]
   )
 
@@ -176,6 +182,28 @@ export async function getCollectionBySlug(
   }
 
   return result.rows[0] as CollectionSlug
+}
+
+/**
+ * Get all named collections that have a linked stream.
+ * Returns collections where parent_collection_uuid IS NOT NULL and
+ * linked_stream_id IS NOT NULL, sorted by title.
+ *
+ * @param db The TributaryStream database instance
+ * @returns Array of linked collection records, sorted by title
+ */
+export async function getLinkedCollections(
+  db: TributaryStream
+): Promise<Collection[]> {
+  const result = await db.query(
+    `SELECT * FROM collection
+     WHERE parent_collection_uuid IS NOT NULL
+       AND linked_stream_id IS NOT NULL
+     ORDER BY title`,
+    []
+  )
+
+  return (result.rows || []) as Collection[]
 }
 
 /**

@@ -34,7 +34,9 @@ export async function streamMigrations(stream: TributaryStream): Promise<void> {
       title TEXT NOT NULL,
       parent_collection_uuid TEXT,
       insert_datetime TEXT NOT NULL,
-      inserter TEXT NOT NULL
+      inserter TEXT NOT NULL,
+      linked_stream_id TEXT,
+      linked_stream_key TEXT
     )
   `)
 
@@ -190,7 +192,9 @@ async function incrementalStreamMigrations(stream: TributaryStream): Promise<voi
           title TEXT NOT NULL,
           parent_collection_uuid TEXT,
           insert_datetime TEXT NOT NULL,
-          inserter TEXT NOT NULL
+          inserter TEXT NOT NULL,
+          linked_stream_id TEXT,
+          linked_stream_key TEXT
         )
       `)
     } else {
@@ -203,6 +207,30 @@ async function incrementalStreamMigrations(stream: TributaryStream): Promise<voi
     CREATE UNIQUE INDEX IF NOT EXISTS collection_one_root
     ON collection ((1)) WHERE parent_collection_uuid IS NULL
   `)
+
+  // Check if collection.linked_stream_id column exists
+  try {
+    await stream.query(`SELECT linked_stream_id FROM collection LIMIT 1`, [])
+  } catch (error: any) {
+    if (error.message && error.message.includes('does not exist')) {
+      console.log('Adding linked_stream_id column to collection table')
+      await stream.exec(`ALTER TABLE collection ADD COLUMN linked_stream_id TEXT`)
+    } else {
+      throw error
+    }
+  }
+
+  // Check if collection.linked_stream_key column exists
+  try {
+    await stream.query(`SELECT linked_stream_key FROM collection LIMIT 1`, [])
+  } catch (error: any) {
+    if (error.message && error.message.includes('does not exist')) {
+      console.log('Adding linked_stream_key column to collection table')
+      await stream.exec(`ALTER TABLE collection ADD COLUMN linked_stream_key TEXT`)
+    } else {
+      throw error
+    }
+  }
 
   // Check if block.collection_id column exists
   try {

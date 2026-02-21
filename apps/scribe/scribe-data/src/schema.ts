@@ -162,6 +162,16 @@ export interface CollectionTable {
    * User or device that created this collection
    */
   inserter: string
+
+  /**
+   * Base64url-encoded public key of the linked stream (null if not a linked collection)
+   */
+  linked_stream_id: string | null
+
+  /**
+   * Base64url-encoded private write key of the linked stream (null if not a linked collection)
+   */
+  linked_stream_key: string | null
 }
 
 /**

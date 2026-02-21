@@ -60,6 +60,14 @@ export class TributaryClient {
           last_sync_index INTEGER
         )`
       );
+
+      // Create the config table for client-local key-value storage
+      await this.pglite.exec(
+        `CREATE TABLE IF NOT EXISTS tributary.config (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )`
+      );
     } catch (err: unknown) {
       warn('Could not initialize tributary schema:', err as Error);
     }
@@ -372,6 +380,35 @@ export class TributaryClient {
     }
     
     return undefined;
+  }
+
+  private async setConfig(key: string, value: string): Promise<void> {
+    await this.initialized;
+    await this.pglite.query(
+      `INSERT INTO tributary.config (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = $2`,
+      [key, value]
+    );
+  }
+
+  private async getConfig(key: string): Promise<string | null> {
+    await this.initialized;
+    const result: any = await this.pglite.query(
+      `SELECT value FROM tributary.config WHERE key = $1`,
+      [key]
+    );
+    if (result.rows.length > 0) {
+      return result.rows[0].value;
+    }
+    return null;
+  }
+
+  async setHomeStream(streamId: string): Promise<void> {
+    await this.setConfig('home_stream', streamId);
+  }
+
+  async getHomeStream(): Promise<string | null> {
+    return this.getConfig('home_stream');
   }
 
   /**

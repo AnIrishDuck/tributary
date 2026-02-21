@@ -50,6 +50,8 @@ export interface Collection {
   parent_collection_uuid: string | null
   insert_datetime: string
   inserter: string
+  linked_stream_id: string | null
+  linked_stream_key: string | null
 }
 
 /**

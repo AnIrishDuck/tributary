@@ -6,6 +6,7 @@ import {
   createCollection,
   getCollectionByUuid,
   getAllCollections,
+  getLinkedCollections,
   getRootCollection,
   getBlocksInCollection,
   getStreamDisplayName
@@ -617,6 +618,125 @@ describe('Collection Operations', () => {
 
       const name = await getStreamDisplayName(localDb)
       expect(name).toBe('My Cookbook')
+    })
+  })
+
+  describe('Linked Collections', () => {
+    test('should create a linked collection with linked_stream_id and linked_stream_key', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Home',
+        inserter: 'test-user'
+      })
+
+      const linked = await createCollection(syncedDb, {
+        title: 'My Cookbook',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        linked_stream_id: 'abc123streamid',
+        linked_stream_key: 'xyz789writekey'
+      })
+
+      expect(linked.linked_stream_id).toBe('abc123streamid')
+      expect(linked.linked_stream_key).toBe('xyz789writekey')
+    })
+
+    test('getLinkedCollections returns only linked collections', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Home',
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Linked Cookbook',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        linked_stream_id: 'stream-id-1',
+        linked_stream_key: 'write-key-1'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Linked Journal',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        linked_stream_id: 'stream-id-2',
+        linked_stream_key: 'write-key-2'
+      })
+
+      const linked = await getLinkedCollections(syncedDb)
+      expect(linked).toHaveLength(2)
+      expect(linked[0].title).toBe('Linked Cookbook')
+      expect(linked[0].linked_stream_id).toBe('stream-id-1')
+      expect(linked[0].linked_stream_key).toBe('write-key-1')
+      expect(linked[1].title).toBe('Linked Journal')
+      expect(linked[1].linked_stream_id).toBe('stream-id-2')
+      expect(linked[1].linked_stream_key).toBe('write-key-2')
+    })
+
+    test('getLinkedCollections excludes normal (non-linked) collections', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Home',
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Normal Collection',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Linked Collection',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        linked_stream_id: 'stream-id-1',
+        linked_stream_key: 'write-key-1'
+      })
+
+      const linked = await getLinkedCollections(syncedDb)
+      expect(linked).toHaveLength(1)
+      expect(linked[0].title).toBe('Linked Collection')
+    })
+
+    test('getAllCollections still returns all named collections (linked or not)', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Home',
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Normal Collection',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Linked Collection',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        linked_stream_id: 'stream-id-1',
+        linked_stream_key: 'write-key-1'
+      })
+
+      const all = await getAllCollections(syncedDb)
+      expect(all).toHaveLength(2)
+      expect(all.map(c => c.title)).toContain('Normal Collection')
+      expect(all.map(c => c.title)).toContain('Linked Collection')
+    })
+
+    test('collections without linked fields default to null', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Home',
+        inserter: 'test-user'
+      })
+
+      const normal = await createCollection(syncedDb, {
+        title: 'Regular',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      expect(normal.linked_stream_id).toBeNull()
+      expect(normal.linked_stream_key).toBeNull()
     })
   })
 
