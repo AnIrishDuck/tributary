@@ -1,7 +1,7 @@
 /**
  * Link Utilities for Scribe
  * 
- * Handles link resolution for block slugs (hashtag-style links without protocol)
+ * Handles link resolution for note slugs (hashtag-style links without protocol)
  * vs. external/absolute links.
  */
 
@@ -21,10 +21,10 @@ export const isSlugLink = (link: string): boolean => {
 };
 
 /**
- * Determines if a link is already a resolved block URL
- * 
+ * Determines if a link is already a resolved note URL
+ *
  * @param link - The link URL to check
- * @returns true if the link is already a resolved block URL
+ * @returns true if the link is already a resolved note URL
  */
 export const isResolvedBlockUrl = (link: string): boolean => {
   // Check if the link starts with #/ or /# (which indicates it's already resolved)
@@ -32,13 +32,13 @@ export const isResolvedBlockUrl = (link: string): boolean => {
 };
 
 /**
- * Resolves a slug link to a block URL
- * 
+ * Resolves a slug link to a note URL
+ *
  * Takes a slug link (like "link-target" or "#some-slug") and resolves it
- * to the proper block URL format using the current stream prefix.
- * 
+ * to the proper note URL format using the current library prefix.
+ *
  * @param link - The link to resolve
- * @param streamPrefix - The base64url-encoded stream prefix (e.g., "_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0")
+ * @param streamPrefix - The base64url-encoded library prefix (e.g., "_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0")
  * @returns The fully resolved URL
  */
 export const resolveSlugLink = (link: string, streamPrefix: string): string => {
@@ -50,20 +50,20 @@ export const resolveSlugLink = (link: string, streamPrefix: string): string => {
     return link;
   }
   
-  // Build the block URL: /#/pk/{streamPrefix}/{slug}
+  // Build the note URL: /#/pk/{streamPrefix}/{slug}
   // Note: We use #/ to maintain client-side routing
   return `/#/pk/${streamPrefix}/${cleanLink}`;
 };
 
 /**
- * Resolves a link relative to a document's base URL
- * 
+ * Resolves a link relative to a note's base URL
+ *
  * This function handles both relative links (which should be treated as slugs)
  * and absolute links (which should be preserved).
- * 
+ *
  * @param link - The link to resolve
- * @param streamPrefix - The base64url-encoded stream prefix
- * @param currentSlug - The current document's slug (for relative link resolution)
+ * @param streamPrefix - The base64url-encoded library prefix
+ * @param currentSlug - The current note's slug (for relative link resolution)
  * @returns The fully resolved URL
  */
 export const resolveLink = (link: string, streamPrefix: string, currentSlug?: string): string => {
@@ -117,10 +117,10 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
 };
 
 /**
- * Extracts the stream prefix from a full block URL
- * 
- * @param url - The full block URL (e.g., "#/pk/_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0/slug")
- * @returns The stream prefix (base64url-encoded public key) or null if not found
+ * Extracts the library prefix from a full note URL
+ *
+ * @param url - The full note URL (e.g., "#/pk/_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0/slug")
+ * @returns The library prefix (base64url-encoded public key) or null if not found
  */
 export const extractStreamPrefixFromUrl = (url: string): string | null => {
   const regex = /#\/pk\/([^\/]+)\//;
@@ -129,9 +129,9 @@ export const extractStreamPrefixFromUrl = (url: string): string | null => {
 };
 
 /**
- * Extracts the slug from a full block URL
- * 
- * @param url - The full block URL
+ * Extracts the slug from a full note URL
+ *
+ * @param url - The full note URL
  * @returns The slug or null if not found
  */
 export const extractSlugFromUrl = (url: string): string | null => {

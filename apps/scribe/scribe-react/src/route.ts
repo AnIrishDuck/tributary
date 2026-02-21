@@ -1,22 +1,22 @@
 import { RouteObject } from 'react-router'
-import NewStreamPage from './pages/NewStreamPage'
-import ImportStreamPage from './pages/ImportStreamPage'
+import NewLibraryPage from './pages/NewLibraryPage'
+import ImportLibraryPage from './pages/ImportLibraryPage'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
 import EditorPage from './pages/EditorPage'
-import BlockViewPage from './pages/BlockViewPage'
+import NoteViewPage from './pages/NoteViewPage'
 import HomePage from './pages/HomePage'
-import BlockListPage from './pages/BlockListPage'
+import NoteListPage from './pages/NoteListPage'
 import SearchPage from './pages/SearchPage'
 import Layout from './components/Layout'
 import React from 'react'
 
 // Error components for routes
-function NewDocumentError() {
-  return React.createElement('div', null, 'ERROR: NEW DOCUMENT')
+function NewNoteError() {
+  return React.createElement('div', null, 'ERROR: NEW NOTE')
 }
 
-function DocumentError() {
-  return React.createElement('div', null, 'ERROR: DOCUMENT')
+function NoteError() {
+  return React.createElement('div', null, 'ERROR: NOTE')
 }
 
 export const routes: RouteObject[] = [
@@ -29,46 +29,46 @@ export const routes: RouteObject[] = [
       },
       {
         path: '/new',
-        Component: NewStreamPage,
+        Component: NewLibraryPage,
       },
       {
         path: '/import',
-        Component: ImportStreamPage,
+        Component: ImportLibraryPage,
       },
       {
         path: '/import/write/:writeKey',
-        Component: ImportStreamPage,
+        Component: ImportLibraryPage,
       },
       {
         // Route for granting write access via encoded private key
         path: '/pk/:prefix/grant/write/:encodedPrivateKey',
         Component: GrantWriteAccessPage,
-        ErrorBoundary: DocumentError
+        ErrorBoundary: NoteError
       },
       {
         path: '/pk/:prefix/new',
         Component: EditorPage,
-        ErrorBoundary: NewDocumentError
+        ErrorBoundary: NewNoteError
       },
       {
         path: '/pk/:prefix/',
-        Component: BlockListPage,
-        ErrorBoundary: DocumentError
+        Component: NoteListPage,
+        ErrorBoundary: NoteError
       },
       {
         path: '/pk/:prefix/search',
         Component: SearchPage,
-        ErrorBoundary: DocumentError
+        ErrorBoundary: NoteError
       },
       {
         path: '/pk/:prefix/:slug/edit',
         Component: EditorPage,
-        ErrorBoundary: DocumentError
+        ErrorBoundary: NoteError
       },
       {
         path: '/pk/:prefix/:slug',
-        Component: BlockViewPage,
-        ErrorBoundary: DocumentError
+        Component: NoteViewPage,
+        ErrorBoundary: NoteError
       }
     ]
   }

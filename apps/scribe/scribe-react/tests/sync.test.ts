@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { TestFakeServer } from './test-server'
-import { createBlock } from 'scribe-data'
+import { createNote } from 'scribe-data'
 import { PGlite } from '@electric-sql/pglite'
 import { TributaryClient } from 'tributary-client'
-import { createStream } from '../src/actions/createStream'
+import { createLibrary } from '../src/actions/createLibrary'
 
 /**
  * Helper to check if all streams in a sync result are fully synced.
@@ -24,10 +24,10 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
+    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
 
-    // Create a block
-    await createBlock(stream, {
+    // Create a note
+    await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nContent',
       inserter: 'test'
@@ -57,11 +57,11 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
+    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
 
-    // Create 100 blocks - this will sync all of them
+    // Create 100 notes - this will sync all of them
     for (let i = 0; i < 100; i++) {
-      await createBlock(stream, {
+      await createNote(stream, {
         block_type: 'scribe/markdown',
         body: `# Document ${i}\n\nContent ${i}`,
         inserter: 'test'
@@ -81,11 +81,11 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
+    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
 
-    // Create 5 blocks
+    // Create 5 notes
     for (let i = 0; i < 5; i++) {
-      await createBlock(stream, {
+      await createNote(stream, {
         block_type: 'scribe/markdown',
         body: `# Document ${i}\n\nContent ${i}`,
         inserter: 'test'
@@ -102,11 +102,11 @@ describe('Background Sync with TestFakeServer', () => {
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server: testServer, db: pglite })
 
-    const { stream, prefix, streamId } = await createStream(client, 'Test Stream')
+    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
 
-    // Create 5 blocks
+    // Create 5 notes
     for (let i = 0; i < 5; i++) {
-      await createBlock(stream, {
+      await createNote(stream, {
         block_type: 'scribe/markdown',
         body: `# Document ${i}\n\nContent ${i}`,
         inserter: 'test'

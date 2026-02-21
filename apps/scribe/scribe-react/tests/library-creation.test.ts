@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { generateKeyPair, createPrefixFromPublicKey } from '../src/utils/crypto'
 import * as base64url from 'urlsafe-base64'
 
-describe('Stream Creation Integration Tests', () => {
+describe('Library Creation Integration Tests', () => {
   it('should generate key pairs with valid prefixes', () => {
     // Test generating a key pair and creating a prefix from it
     const keyPair = generateKeyPair()
@@ -43,7 +43,7 @@ describe('Stream Creation Integration Tests', () => {
   })
 
   it('should properly generate key pairs and prefixes', () => {
-    // Test the underlying functions that would be used in stream creation
+    // Test the underlying functions that would be used in library creation
     const keyPair = generateKeyPair()
     
     // Verify that we got both public and private keys

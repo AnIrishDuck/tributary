@@ -5,14 +5,14 @@ import { TributaryLocal } from 'tributary-client'
  */
 export interface IndexSearchOptions {
   /**
-   * Maximum number of blocks to index in one call
+   * Maximum number of notes to index in one call
    * Defaults to 100
    */
   limit?: number
 
   /**
-   * Optional list of block UUIDs to index.
-   * When provided, only these blocks are indexed (skipping the scan for unindexed blocks).
+   * Optional list of note UUIDs to index.
+   * When provided, only these notes are indexed (skipping the scan for unindexed notes).
    * Typically populated from the result of indexSlugs().
    */
   blockUuids?: string[]
@@ -23,18 +23,18 @@ export interface IndexSearchOptions {
  */
 export interface IndexSearchResult {
   /**
-   * Number of blocks that were indexed
+   * Number of notes that were indexed
    */
   indexedCount: number
   
   /**
-   * Whether there are more blocks to index
+   * Whether there are more notes to index
    */
   hasMore: boolean
 }
 
 /**
- * Options for searching blocks
+ * Options for searching notes
  */
 export interface SearchOptions {
   /**
@@ -55,17 +55,17 @@ export interface SearchOptions {
  */
 export interface SearchResult {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
   
   /**
-   * URL-friendly slug (null if block has no title)
+   * URL-friendly slug (null if note has no title)
    */
   slug: string | null
   
   /**
-   * Block title (null if block has no title)
+   * Note title (null if note has no title)
    */
   title: string | null
   
@@ -80,7 +80,7 @@ export interface SearchResult {
   rank: number
 }
 
-interface UnindexedSearchBlock {
+interface UnindexedSearchNote {
   block_uuid: string
   version_uuid: string
   body: string
@@ -142,17 +142,17 @@ export function extractSearchableText(body: string): string {
 }
 
 /**
- * Index search vectors for unindexed blocks
+ * Index search vectors for unindexed notes
  * 
  * This function:
- * 1. Finds blocks that are indexed in authoritative_version but not in block_search_index
- * 2. Extracts searchable text from each block's markdown body
+ * 1. Finds notes that are indexed in authoritative_version but not in block_search_index
+ * 2. Extracts searchable text from each note's markdown body
  * 3. Creates a PostgreSQL tsvector for full-text search
  * 4. Stores the search vector in the block_search_index table
  * 
  * @param localDb The TributaryLocal database instance
  * @param options Indexing options
- * @returns Result indicating how many blocks were indexed and if there are more
+ * @returns Result indicating how many notes were indexed and if there are more
  */
 export async function indexSearchVectors(
   localDb: TributaryLocal,
@@ -161,11 +161,11 @@ export async function indexSearchVectors(
   const limit = options.limit ?? 100
   const { blockUuids } = options
 
-  let unindexedBlocks: UnindexedSearchBlock[]
+  let unindexedNotes: UnindexedSearchNote[]
 
   if (blockUuids && blockUuids.length > 0) {
-    // Fast path: caller already knows which blocks need indexing (e.g. from indexSlugs).
-    // Just fetch their authoritative content directly – no scan required.
+    // Fast path: caller already knows which notes need indexing (e.g. from indexSlugs).
+    // Just fetch their authoritative content directly -- no scan required.
     const placeholders = blockUuids.map((_, i) => `$${i + 1}`).join(', ')
     const result = await localDb.query(`
       SELECT
@@ -179,9 +179,9 @@ export async function indexSearchVectors(
       WHERE b.block_uuid IN (${placeholders})
     `, blockUuids)
 
-    unindexedBlocks = (result.rows || []) as UnindexedSearchBlock[]
+    unindexedNotes = (result.rows || []) as UnindexedSearchNote[]
   } else {
-    // Fallback: scan for blocks that are authoritative but not yet search-indexed
+    // Fallback: scan for notes that are authoritative but not yet search-indexed
     const result = await localDb.query(`
       SELECT
         b.block_uuid,
@@ -199,25 +199,25 @@ export async function indexSearchVectors(
       LIMIT $1
     `, [limit])
 
-    unindexedBlocks = (result.rows || []) as UnindexedSearchBlock[]
+    unindexedNotes = (result.rows || []) as UnindexedSearchNote[]
   }
 
-  if (unindexedBlocks.length === 0) {
+  if (unindexedNotes.length === 0) {
     return {
       indexedCount: 0,
       hasMore: false
     }
   }
 
-  console.log(`indexSearchVectors: ${unindexedBlocks.length} blocks to update`)
+  console.log(`indexSearchVectors: ${unindexedNotes.length} notes to update`)
   const searchStartTime = performance.now()
 
-  // Index all blocks in a single transaction for atomicity and performance
+  // Index all notes in a single transaction for atomicity and performance
   let indexedCount = 0
 
   await localDb.transaction(async (tx: any) => {
-    for (const block of unindexedBlocks) {
-      const searchableText = extractSearchableText(block.body)
+    for (const note of unindexedNotes) {
+      const searchableText = extractSearchableText(note.body)
       const now = new Date().toISOString()
 
       if (searchableText.trim().length > 0) {
@@ -229,13 +229,13 @@ export async function indexSearchVectors(
              version_uuid = $2,
              search_vector = to_tsvector('english', $3),
              indexed_at = $4`,
-          [block.block_uuid, block.version_uuid, searchableText, now]
+          [note.block_uuid, note.version_uuid, searchableText, now]
         )
         indexedCount++
       } else {
         await tx.query(
           `DELETE FROM block_search_index WHERE block_uuid = $1`,
-          [block.block_uuid]
+          [note.block_uuid]
         )
       }
     }
@@ -247,14 +247,14 @@ export async function indexSearchVectors(
   return {
     indexedCount,
     // When blockUuids was provided, hasMore is always false (caller gave us the exact set)
-    hasMore: blockUuids ? false : unindexedBlocks.length === limit
+    hasMore: blockUuids ? false : unindexedNotes.length === limit
   }
 }
 
 /**
- * Search blocks using full-text search
+ * Search notes using full-text search
  * 
- * Uses PostgreSQL's full-text search capabilities to find blocks matching the query.
+ * Uses PostgreSQL's full-text search capabilities to find notes matching the query.
  * Returns results ranked by relevance with highlighted snippets.
  * 
  * @param localDb The TributaryLocal database instance
@@ -263,10 +263,10 @@ export async function indexSearchVectors(
  * @returns Array of search results ordered by relevance
  * 
  * @example
- * const results = await searchBlocks(db, 'javascript tutorial')
- * // Returns blocks containing "javascript" and "tutorial", ranked by relevance
+ * const results = await searchNotes(db, 'javascript tutorial')
+ * // Returns notes containing "javascript" and "tutorial", ranked by relevance
  */
-export async function searchBlocks(
+export async function searchNotes(
   localDb: TributaryLocal,
   query: string,
   options: SearchOptions = {}
@@ -314,7 +314,7 @@ export async function searchBlocks(
       rank: parseFloat(row.rank) || 0
     }))
   } catch (error) {
-    console.error('Error searching blocks:', error)
+    console.error('Error searching notes:', error)
     // Return empty results on error (e.g., invalid query syntax)
     return []
   }

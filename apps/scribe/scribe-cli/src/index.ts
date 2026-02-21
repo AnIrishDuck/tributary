@@ -22,7 +22,7 @@ function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } {
 }
 
 /**
- * Create a TributaryClient and stream for the given directory and keys
+ * Create a TributaryClient and library for the given directory and keys
  */
 async function createClient(directory: string, readKeyPath?: string, writeKeyPath?: string, dbPath?: string) {
   // Read keys from files
@@ -74,7 +74,7 @@ async function createClient(directory: string, readKeyPath?: string, writeKeyPat
     privateKeyArray = keyPair.secretKey;
   }
   
-  // Add the write key to get or create the stream
+  // Add the write key to get or create the library
   const stream = await client.addWriteKey('scribe', privateKeyArray);
   
   return { client, stream };
@@ -89,13 +89,13 @@ program
 
 program
   .command('sync')
-  .description('Synchronize documents between a local directory and a Tributary Scribe collection')
+  .description('Synchronize notes between a local directory and a Tributary Scribe library')
   .argument('<directory>', 'Local directory to sync with')
-  .option('--read-key <file>', 'File containing the read key for the collection')
-  .option('--write-key <file>', 'File containing the write key for the collection')
+  .option('--read-key <file>', 'File containing the read key for the library')
+  .option('--write-key <file>', 'File containing the write key for the library')
   .option('--db <path>', 'Local database directory that is synced with the server')
   .option('--dry-run', 'Show what would be synced without making changes')
-  .option('-l, --limit <number>', 'Maximum number of blocks to process in this run', '100')
+  .option('-l, --limit <number>', 'Maximum number of notes to process in this run', '100')
   .action(async (directory, options) => {
     try {
       // Create client and stream (auth token is auto-attached if logged in)
@@ -105,7 +105,7 @@ program
       const syncStatus = await stream.sync(1000);
       console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
       
-      // Ensure migrations are run (creates local tables only for existing streams)
+      // Ensure migrations are run (creates local tables only for existing libraries)
       await ensureMigrations(stream, true);
       
       // Parse limit option
@@ -126,11 +126,11 @@ program
 
 program
   .command('init')
-  .description('Initialize the database with required tables and a seed "howto" block')
+  .description('Initialize the database with required tables and a seed "howto" note')
   .argument('<directory>', 'Local directory to initialize for Scribe')
-  .option('--write-key <file>', 'File containing the write key for the collection (required for creating the seed document)')
+  .option('--write-key <file>', 'File containing the write key for the library (required for creating the seed note)')
   .option('--db <path>', 'Local database directory that is synced with the server')
-  .option('--empty', 'Initialize database tables only, without creating a seed document')
+  .option('--empty', 'Initialize database tables only, without creating a seed note')
   .action(async (directory, options) => {
     try {
       // Ensure the directory exists
@@ -174,13 +174,13 @@ Do not manually edit or add files here.
       // Create client and stream (auth token is auto-attached if logged in)
       const { client, stream } = await createClient(directory, undefined, options.writeKey, options.db);
       
-      // Ensure migrations are run for a NEW stream (creates stream + local tables)
+      // Ensure migrations are run for a NEW library (creates library + local tables)
       await ensureMigrations(stream, true);
       console.log('Database tables initialized');
       
-      // Only create seed document if --empty is not specified
+      // Only create seed note if --empty is not specified
       if (!options.empty) {
-        // Insert a seed "howto" block
+        // Insert a seed "howto" note
         const now = new Date();
         await stream.exec(
           `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
@@ -194,13 +194,13 @@ Do not manually edit or add files here.
             'scribe-cli',
             `# Scribe Howto
 
-Welcome to Scribe! This is a sample document to help you get started.
+Welcome to Scribe! This is a sample note to help you get started.
 
 ## Basic Usage
 
-1. Edit documents in the \`slugs/\` directory
+1. Edit notes in the \`slugs/\` directory
 2. Use \`scribe sync\` to synchronize your changes
-3. Link to other documents using [Document Title](document-title) syntax
+3. Link to other notes using [Note Title](note-title) syntax
 
 ## Markdown Features
 
@@ -213,18 +213,18 @@ Scribe supports standard Markdown features:
 
 ## Tags
 
-You can tag documents using the format \`[#tagname](#tagname)\`. 
+You can tag notes using the format \`[#tagname](#tagname)\`. 
 For example: [#example](#example) [#getting-started](#getting-started)
 
 ## Syncing
 
-Use \`scribe sync <directory>\` to synchronize your local directory with the Tributary collection.
+Use \`scribe sync <directory>\` to synchronize your local directory with the Tributary library.
 `
           ]
         );
-        console.log('Seed "howto" document created successfully');
+        console.log('Seed "howto" note created successfully');
       } else {
-        console.log('Database initialized with no seed document (empty initialization)');
+        console.log('Database initialized with no seed note (empty initialization)');
       }
       
       console.log(`Initialized Scribe directory: ${directory}`);

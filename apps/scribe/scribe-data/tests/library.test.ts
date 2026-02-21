@@ -1,43 +1,43 @@
 import { test, expect, describe } from 'vitest'
 import { createTestDB } from './test-utils.js'
-import { initializeStream } from '../src/stream.js'
-import { getRootCollection } from '../src/collection.js'
-import { createBlock } from '../src/block.js'
+import { initializeLibrary } from '../src/library.js'
+import { getLibrary } from '../src/collection.js'
+import { createNote } from '../src/note.js'
 
-describe('initializeStream', () => {
-  test('should run migrations and create root collection with the given name', async () => {
+describe('initializeLibrary', () => {
+  test('should run migrations and create library with the given name', async () => {
     const { stream } = await createTestDB()
 
-    await initializeStream(stream, 'My Notes')
+    await initializeLibrary(stream, 'My Notes')
 
-    // Root collection should exist with the given name
-    const root = await getRootCollection(stream)
+    // Library should exist with the given name
+    const root = await getLibrary(stream)
     expect(root).toBeDefined()
     expect(root?.title).toBe('My Notes')
     expect(root?.parent_collection_uuid).toBeNull()
     expect(root?.inserter).toBe('user')
   })
 
-  test('should create working tables that accept blocks', async () => {
+  test('should create working tables that accept notes', async () => {
     const { stream } = await createTestDB()
 
-    await initializeStream(stream, 'Test Stream')
+    await initializeLibrary(stream, 'Test Library')
 
-    // Should be able to create blocks after initialization
-    const block = await createBlock(stream, {
+    // Should be able to create notes after initialization
+    const note = await createNote(stream, {
       block_type: 'scribe/markdown',
-      body: '# Hello\n\nFirst block.',
+      body: '# Hello\n\nFirst note.',
       inserter: 'test-user'
     })
 
-    expect(block).toBeDefined()
-    expect(block.block_uuid).toBeDefined()
+    expect(note).toBeDefined()
+    expect(note.block_uuid).toBeDefined()
   })
 
   test('should create local tables for indexing', async () => {
     const { stream } = await createTestDB()
 
-    await initializeStream(stream, 'Test Stream')
+    await initializeLibrary(stream, 'Test Library')
 
     // Local tables should exist — verify by inserting into indexed_block
     const local = stream.local()

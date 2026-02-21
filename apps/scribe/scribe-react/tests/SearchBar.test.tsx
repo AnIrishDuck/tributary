@@ -8,14 +8,14 @@ describe('SearchBar', () => {
     const onSearch = vi.fn()
     render(<SearchBar onSearch={onSearch} />)
     
-    expect(screen.getByPlaceholderText(/Search documents/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Search notes/i)).toBeInTheDocument()
   })
 
   it('should call onSearch with debounced value', async () => {
     const onSearch = vi.fn()
     render(<SearchBar onSearch={onSearch} />)
     
-    const input = screen.getByPlaceholderText(/Search documents/i)
+    const input = screen.getByPlaceholderText(/Search notes/i)
     fireEvent.change(input, { target: { value: 'test query' } })
     
     // Should not call immediately
@@ -42,7 +42,7 @@ describe('SearchBar', () => {
     const clearButton = screen.getByLabelText(/Clear search/i)
     fireEvent.click(clearButton)
     
-    const input = screen.getByPlaceholderText(/Search documents/i) as HTMLInputElement
+    const input = screen.getByPlaceholderText(/Search notes/i) as HTMLInputElement
     expect(input.value).toBe('')
     
     // Should call onSearch with empty string after debounce
@@ -70,7 +70,7 @@ describe('SearchBar', () => {
     const onSearch = vi.fn()
     render(<SearchBar onSearch={onSearch} autoFocus={true} />)
     
-    const input = screen.getByPlaceholderText(/Search documents/i)
+    const input = screen.getByPlaceholderText(/Search notes/i)
     expect(document.activeElement).toBe(input)
   })
 
@@ -94,7 +94,7 @@ describe('SearchBar', () => {
     const onSearch = vi.fn()
     render(<SearchBar onSearch={onSearch} />)
     
-    const input = screen.getByPlaceholderText(/Search documents/i) as HTMLInputElement
+    const input = screen.getByPlaceholderText(/Search notes/i) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'new value' } })
     
     expect(input.value).toBe('new value')

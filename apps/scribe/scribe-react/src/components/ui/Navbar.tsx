@@ -35,7 +35,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const navigate = useNavigate();
   const { syncStatus, globalSyncStatus } = useSyncStatus();
 
-  // Extract prefix from current path if in stream context
+  // Extract prefix from current path if in library context
   const getPrefix = (): string | null => {
     const match = location.pathname.match(/^\/pk\/([^/]+)/);
     return match ? match[1] : null;
@@ -43,9 +43,9 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const prefix = getPrefix();
 
-  // Use per-stream status when viewing a stream, fall back to global
-  const streamStatus = prefix ? syncStatus[prefix] : undefined;
-  const activeStatus = streamStatus || globalSyncStatus;
+  // Use per-library status when viewing a library, fall back to global
+  const libraryStatus = prefix ? syncStatus[prefix] : undefined;
+  const activeStatus = libraryStatus || globalSyncStatus;
 
   // Determine navbar background color based on sync status
   const getNavbarBgClass = () => {
@@ -63,12 +63,12 @@ const Navbar: React.FC<NavbarProps> = ({
     
     if (currentPath === '/') {
       return [
-        { name: 'New Stream', href: '/new', icon: PlusIcon, description: 'Create a new encrypted document stream' },
-        { name: 'Import Stream', href: '/import', icon: DocumentTextIcon, description: 'Import an existing stream' },
+        { name: 'New Library', href: '/new', icon: PlusIcon, description: 'Create a new encrypted note library' },
+        { name: 'Import Library', href: '/import', icon: DocumentTextIcon, description: 'Import an existing library' },
       ];
     }
     
-    // Check if we're in a stream context (starts with /pk/)
+    // Check if we're in a library context (starts with /pk/)
     if (currentPath.startsWith('/pk/')) {
       return [
         { name: 'Back to Home', href: '/', icon: ArrowLeftIcon, isBack: true },
@@ -144,8 +144,8 @@ const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={() => navigate(`/pk/${prefix}/search`)}
                   className="p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"
-                  title="Search documents"
-                  aria-label="Search documents"
+                  title="Search notes"
+                  aria-label="Search notes"
                 >
                   <MagnifyingGlassIcon className="w-4 h-4" />
                 </button>

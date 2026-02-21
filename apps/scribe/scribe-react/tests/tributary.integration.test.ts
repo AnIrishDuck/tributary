@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createTestDB } from 'scribe-data/tests/test-utils'
 import { up } from 'scribe-data/src/migrations'
-import { createBlock } from 'scribe-data/src/block'
+import { createNote } from 'scribe-data/src/note'
 
 describe('Tributary Integration', () => {
   it('should create a Tributary client and initialize database', async () => {
@@ -31,7 +31,7 @@ describe('Tributary Integration', () => {
     }
   })
 
-  it('should be able to store and retrieve blocks through Tributary', async () => {
+  it('should be able to store and retrieve notes through Tributary', async () => {
     // Use the scribe-data test utility which sets up everything properly
     const { syncedDb, localDb, client, stream, server } = await createTestDB()
     
@@ -39,14 +39,14 @@ describe('Tributary Integration', () => {
       // Run migrations to create the required tables
       await up(syncedDb, localDb)
       
-      // Insert a test block using the scribe-data block module
-      const block = await createBlock(stream, {
+      // Insert a test note using the scribe-data note module
+      const block = await createNote(stream, {
         block_type: 'scribe/markdown',
         body: '# Test Document\n\nThis is a test document.',
         inserter: 'test-user'
       })
       
-      // Retrieve the block using raw SQL
+      // Retrieve the note using raw SQL
       const queryResult = await syncedDb.query(
         `SELECT * FROM block WHERE block_uuid = $1`,
         [block.block_uuid]
@@ -59,7 +59,7 @@ describe('Tributary Integration', () => {
       expect(retrievedBlock.block_uuid).toBe(block.block_uuid)
       expect(retrievedBlock.body).toBe('# Test Document\n\nThis is a test document.')
       
-      // Check that the block was stored in the fake server
+      // Check that the note was stored in the fake server
       const allBlobs = server.getAllBlobs()
       expect(allBlobs.length).toBeGreaterThan(0)
     } finally {

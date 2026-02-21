@@ -21,7 +21,7 @@ describe('App', () => {
 
     // Wait for sync to complete and page to render
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /no streams yet/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /no libraries yet/i })).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 })

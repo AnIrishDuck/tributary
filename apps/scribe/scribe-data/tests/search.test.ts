@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { up } from '../src/migrations.js'
 import { 
-  searchBlocks, 
+  searchNotes, 
   indexSearchVectors,
   extractSearchableText,
   type SearchResult
@@ -10,7 +10,7 @@ import {
 import { indexSlugs, indexAll } from '../src/indexing.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { createBlock, createBlockVersion } from '../src/block.js'
+import { createNote, createNoteVersion } from '../src/note.js'
 
 describe('Full-text search', () => {
   let syncedDb: TributaryStream
@@ -100,9 +100,9 @@ describe('Full-text search', () => {
   })
 
   describe('Search vector indexing', () => {
-    test('should index search vectors for new blocks', async () => {
-      // Create test block
-      const block = await createBlock(syncedDb, {
+    test('should index search vectors for new notes', async () => {
+      // Create test note
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
@@ -120,16 +120,16 @@ describe('Full-text search', () => {
       // Verify search vector was created
       const searchResult = await localDb.query(
         'SELECT * FROM block_search_index WHERE block_uuid = $1',
-        [block.block_uuid]
+        [note.block_uuid]
       )
       
       expect(searchResult.rows).toHaveLength(1)
-      expect(searchResult.rows![0].version_uuid).toBe(block.version_uuid)
+      expect(searchResult.rows![0].version_uuid).toBe(note.version_uuid)
     })
 
-    test('should update search vector when block version changes', async () => {
-      // Create initial block
-      const blockV1 = await createBlock(syncedDb, {
+    test('should update search vector when note version changes', async () => {
+      // Create initial note
+      const noteV1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Original Content\n\nThis is the first version.',
         inserter: 'test-user'
@@ -140,7 +140,7 @@ describe('Full-text search', () => {
       await indexSearchVectors(localDb)
 
       // Create new version
-      const blockV2 = await createBlockVersion(syncedDb, blockV1.block_uuid, {
+      const noteV2 = await createNoteVersion(syncedDb, noteV1.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Updated Content\n\nThis is the updated version.',
         inserter: 'test-user'
@@ -155,16 +155,16 @@ describe('Full-text search', () => {
       // Verify search vector was updated
       const searchResult = await localDb.query(
         'SELECT * FROM block_search_index WHERE block_uuid = $1',
-        [blockV1.block_uuid]
+        [noteV1.block_uuid]
       )
       
       expect(searchResult.rows).toHaveLength(1)
-      expect(searchResult.rows![0].version_uuid).toBe(blockV2.version_uuid)
+      expect(searchResult.rows![0].version_uuid).toBe(noteV2.version_uuid)
     })
 
-    test('should handle blocks without content', async () => {
-      // Create block with only markdown syntax (no actual text)
-      const block = await createBlock(syncedDb, {
+    test('should handle notes without content', async () => {
+      // Create note with only markdown syntax (no actual text)
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '```\ncode\n```',
         inserter: 'test-user'
@@ -179,16 +179,16 @@ describe('Full-text search', () => {
       // Verify no search vector was created
       const searchResult = await localDb.query(
         'SELECT * FROM block_search_index WHERE block_uuid = $1',
-        [block.block_uuid]
+        [note.block_uuid]
       )
       
       expect(searchResult.rows).toHaveLength(0)
     })
 
     test('should respect indexing limit', async () => {
-      // Create multiple blocks
+      // Create multiple notes
       for (let i = 0; i < 5; i++) {
-        await createBlock(syncedDb, {
+        await createNote(syncedDb, {
           block_type: 'scribe/markdown',
           body: `# Document ${i}\n\nContent for document ${i}.`,
           inserter: 'test-user'
@@ -208,9 +208,9 @@ describe('Full-text search', () => {
       expect(result2.hasMore).toBe(false)
     })
 
-    test('should delete search vector for blocks with no searchable text', async () => {
-      // Create block with text
-      const block = await createBlock(syncedDb, {
+    test('should delete search vector for notes with no searchable text', async () => {
+      // Create note with text
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Title\n\nSome content.',
         inserter: 'test-user'
@@ -222,12 +222,12 @@ describe('Full-text search', () => {
       // Verify search vector exists
       let searchResult = await localDb.query(
         'SELECT * FROM block_search_index WHERE block_uuid = $1',
-        [block.block_uuid]
+        [note.block_uuid]
       )
       expect(searchResult.rows).toHaveLength(1)
 
       // Update to version with no searchable text
-      await createBlockVersion(syncedDb, block.block_uuid, {
+      await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '```\nonly code\n```',
         inserter: 'test-user'
@@ -239,22 +239,22 @@ describe('Full-text search', () => {
       // Verify search vector was deleted
       searchResult = await localDb.query(
         'SELECT * FROM block_search_index WHERE block_uuid = $1',
-        [block.block_uuid]
+        [note.block_uuid]
       )
       expect(searchResult.rows).toHaveLength(0)
     })
   })
 
   describe('Search queries', () => {
-    test('should find blocks matching single word query', async () => {
-      // Create test blocks
-      const block1 = await createBlock(syncedDb, {
+    test('should find notes matching single word query', async () => {
+      // Create test notes
+      const note1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
       })
       
-      const block2 = await createBlock(syncedDb, {
+      const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Python Guide\n\nPython programming essentials.',
         inserter: 'test-user'
@@ -263,22 +263,22 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search for "JavaScript"
-      const results = await searchBlocks(localDb, 'JavaScript')
+      const results = await searchNotes(localDb, 'JavaScript')
       
       expect(results).toHaveLength(1)
-      expect(results[0].block_uuid).toBe(block1.block_uuid)
+      expect(results[0].block_uuid).toBe(note1.block_uuid)
       expect(results[0].title).toBe('JavaScript Tutorial')
     })
 
-    test('should find blocks matching multi-word query', async () => {
-      // Create test blocks
-      const block1 = await createBlock(syncedDb, {
+    test('should find notes matching multi-word query', async () => {
+      // Create test notes
+      const note1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics and advanced concepts.',
         inserter: 'test-user'
       })
       
-      const block2 = await createBlock(syncedDb, {
+      const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Python Guide\n\nPython programming essentials.',
         inserter: 'test-user'
@@ -287,21 +287,21 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search for "JavaScript advanced" (both words must match)
-      const results = await searchBlocks(localDb, 'JavaScript advanced')
+      const results = await searchNotes(localDb, 'JavaScript advanced')
       
       expect(results).toHaveLength(1)
-      expect(results[0].block_uuid).toBe(block1.block_uuid)
+      expect(results[0].block_uuid).toBe(note1.block_uuid)
     })
 
     test('should rank results by relevance', async () => {
-      // Create blocks with different relevance
-      const block1 = await createBlock(syncedDb, {
+      // Create notes with different relevance
+      const note1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript\n\nJavaScript JavaScript JavaScript',
         inserter: 'test-user'
       })
       
-      const block2 = await createBlock(syncedDb, {
+      const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Web Dev\n\nSome JavaScript here.',
         inserter: 'test-user'
@@ -309,17 +309,17 @@ describe('Full-text search', () => {
       
       await indexAll(localDb)
       
-      const results = await searchBlocks(localDb, 'JavaScript')
+      const results = await searchNotes(localDb, 'JavaScript')
       
       expect(results).toHaveLength(2)
-      // block1 should rank higher (more occurrences)
-      expect(results[0].block_uuid).toBe(block1.block_uuid)
+      // note1 should rank higher (more occurrences)
+      expect(results[0].block_uuid).toBe(note1.block_uuid)
       expect(results[0].rank).toBeGreaterThan(results[1].rank)
     })
 
     test('should return empty results for non-matching query', async () => {
-      // Create test block
-      await createBlock(syncedDb, {
+      // Create test note
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
@@ -328,14 +328,14 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search for something that doesn't exist
-      const results = await searchBlocks(localDb, 'Nonexistent')
+      const results = await searchNotes(localDb, 'Nonexistent')
       
       expect(results).toHaveLength(0)
     })
 
     test('should handle empty query gracefully', async () => {
-      // Create test block
-      await createBlock(syncedDb, {
+      // Create test note
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
@@ -344,17 +344,17 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search with empty query
-      const results1 = await searchBlocks(localDb, '')
+      const results1 = await searchNotes(localDb, '')
       expect(results1).toHaveLength(0)
       
-      const results2 = await searchBlocks(localDb, '   ')
+      const results2 = await searchNotes(localDb, '   ')
       expect(results2).toHaveLength(0)
     })
 
     test('should support pagination with limit and offset', async () => {
-      // Create multiple blocks
+      // Create multiple notes
       for (let i = 0; i < 5; i++) {
-        await createBlock(syncedDb, {
+        await createNote(syncedDb, {
           block_type: 'scribe/markdown',
           body: `# Document ${i}\n\nThis document contains the word tutorial.`,
           inserter: 'test-user'
@@ -364,24 +364,24 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Get first page
-      const page1 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 0 })
+      const page1 = await searchNotes(localDb, 'tutorial', { limit: 2, offset: 0 })
       expect(page1).toHaveLength(2)
       
       // Get second page
-      const page2 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 2 })
+      const page2 = await searchNotes(localDb, 'tutorial', { limit: 2, offset: 2 })
       expect(page2).toHaveLength(2)
       
       // Should be different results
       expect(page1[0].block_uuid).not.toBe(page2[0].block_uuid)
       
       // Get third page
-      const page3 = await searchBlocks(localDb, 'tutorial', { limit: 2, offset: 4 })
+      const page3 = await searchNotes(localDb, 'tutorial', { limit: 2, offset: 4 })
       expect(page3).toHaveLength(1)
     })
 
     test('should include title and slug in results', async () => {
-      // Create test block with title
-      const block = await createBlock(syncedDb, {
+      // Create test note with title
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# My Tutorial\n\nLearn about tutorials.',
         inserter: 'test-user'
@@ -389,7 +389,7 @@ describe('Full-text search', () => {
       
       await indexAll(localDb)
       
-      const results = await searchBlocks(localDb, 'tutorial')
+      const results = await searchNotes(localDb, 'tutorial')
       
       expect(results).toHaveLength(1)
       expect(results[0].title).toBe('My Tutorial')
@@ -397,8 +397,8 @@ describe('Full-text search', () => {
     })
 
     test('should generate snippet in results', async () => {
-      // Create test block
-      await createBlock(syncedDb, {
+      // Create test note
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Tutorial\n\nThis is a comprehensive tutorial about JavaScript programming.',
         inserter: 'test-user'
@@ -406,16 +406,16 @@ describe('Full-text search', () => {
       
       await indexAll(localDb)
       
-      const results = await searchBlocks(localDb, 'JavaScript')
+      const results = await searchNotes(localDb, 'JavaScript')
       
       expect(results).toHaveLength(1)
       expect(results[0].snippet).toBeTruthy()
       expect(results[0].snippet.toLowerCase()).toContain('javascript')
     })
 
-    test('should handle blocks without titles', async () => {
-      // Create test block without title
-      const block = await createBlock(syncedDb, {
+    test('should handle notes without titles', async () => {
+      // Create test note without title
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: 'This document has no title but contains searchable content.',
         inserter: 'test-user'
@@ -423,31 +423,31 @@ describe('Full-text search', () => {
       
       await indexAll(localDb)
       
-      const results = await searchBlocks(localDb, 'searchable')
+      const results = await searchNotes(localDb, 'searchable')
       
       expect(results).toHaveLength(1)
-      expect(results[0].block_uuid).toBe(block.block_uuid)
+      expect(results[0].block_uuid).toBe(note.block_uuid)
       expect(results[0].title).toBeNull()
       expect(results[0].slug).toBeNull()
     })
   })
 
   describe('Integration tests', () => {
-    test('should search blocks after full indexing', async () => {
-      // Create multiple blocks
-      const block1 = await createBlock(syncedDb, {
+    test('should search notes after full indexing', async () => {
+      // Create multiple notes
+      const note1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Basics\n\nIntroduction to JavaScript programming.',
         inserter: 'test-user'
       })
       
-      const block2 = await createBlock(syncedDb, {
+      const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Advanced JavaScript\n\nDeep dive into JavaScript concepts.',
         inserter: 'test-user'
       })
       
-      const block3 = await createBlock(syncedDb, {
+      const note3 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Python Basics\n\nIntroduction to Python programming.',
         inserter: 'test-user'
@@ -458,19 +458,19 @@ describe('Full-text search', () => {
       expect(result.indexedCount).toBe(3)
       
       // Search should work
-      const jsResults = await searchBlocks(localDb, 'JavaScript')
+      const jsResults = await searchNotes(localDb, 'JavaScript')
       expect(jsResults).toHaveLength(2)
       
-      const pythonResults = await searchBlocks(localDb, 'Python')
+      const pythonResults = await searchNotes(localDb, 'Python')
       expect(pythonResults).toHaveLength(1)
       
-      const basicsResults = await searchBlocks(localDb, 'Basics')
+      const basicsResults = await searchNotes(localDb, 'Basics')
       expect(basicsResults).toHaveLength(2)
     })
 
-    test('should find updated content after block version change', async () => {
-      // Create initial block
-      const block = await createBlock(syncedDb, {
+    test('should find updated content after note version change', async () => {
+      // Create initial note
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Original\n\nThis is about Python.',
         inserter: 'test-user'
@@ -479,15 +479,15 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Should find Python
-      let results = await searchBlocks(localDb, 'Python')
+      let results = await searchNotes(localDb, 'Python')
       expect(results).toHaveLength(1)
       
       // Should not find JavaScript
-      results = await searchBlocks(localDb, 'JavaScript')
+      results = await searchNotes(localDb, 'JavaScript')
       expect(results).toHaveLength(0)
       
-      // Update block
-      await createBlockVersion(syncedDb, block.block_uuid, {
+      // Update note
+      await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Updated\n\nThis is now about JavaScript.',
         inserter: 'test-user'
@@ -496,11 +496,11 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Should now find JavaScript
-      results = await searchBlocks(localDb, 'JavaScript')
+      results = await searchNotes(localDb, 'JavaScript')
       expect(results).toHaveLength(1)
       
       // Should not find Python anymore
-      results = await searchBlocks(localDb, 'Python')
+      results = await searchNotes(localDb, 'Python')
       expect(results).toHaveLength(0)
     })
 
@@ -515,7 +515,7 @@ describe('Full-text search', () => {
       ]
       
       for (const topic of topics) {
-        await createBlock(syncedDb, {
+        await createNote(syncedDb, {
           block_type: 'scribe/markdown',
           body: `# ${topic.title}\n\n${topic.content}`,
           inserter: 'test-user'
@@ -525,25 +525,25 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search for different terms
-      const webResults = await searchBlocks(localDb, 'JavaScript')
+      const webResults = await searchNotes(localDb, 'JavaScript')
       expect(webResults.length).toBeGreaterThan(0)
       
-      const dbResults = await searchBlocks(localDb, 'PostgreSQL')
+      const dbResults = await searchNotes(localDb, 'PostgreSQL')
       expect(dbResults.length).toBeGreaterThan(0)
       
-      const devopsResults = await searchBlocks(localDb, 'Docker')
+      const devopsResults = await searchNotes(localDb, 'Docker')
       expect(devopsResults.length).toBeGreaterThan(0)
     })
 
     test('should work with indexAll function', async () => {
-      // Create test blocks
-      const block1 = await createBlock(syncedDb, {
+      // Create test notes
+      const note1 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
       })
       
-      const block2 = await createBlock(syncedDb, {
+      const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Python Guide\n\nPython programming essentials.',
         inserter: 'test-user'
@@ -558,20 +558,20 @@ describe('Full-text search', () => {
       // Verify slugs were created
       const slugResult1 = await localDb.query(
         'SELECT * FROM block_slug WHERE block_uuid = $1',
-        [block1.block_uuid]
+        [note1.block_uuid]
       )
       expect(slugResult1.rows).toHaveLength(1)
       expect(slugResult1.rows![0].slug).toBe('javascript-tutorial')
       
       // Verify search vectors were created
-      const searchResults = await searchBlocks(localDb, 'JavaScript')
+      const searchResults = await searchNotes(localDb, 'JavaScript')
       expect(searchResults).toHaveLength(1)
-      expect(searchResults[0].block_uuid).toBe(block1.block_uuid)
+      expect(searchResults[0].block_uuid).toBe(note1.block_uuid)
     })
 
     test('should handle case-insensitive search', async () => {
-      // Create test block
-      await createBlock(syncedDb, {
+      // Create test note
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
@@ -580,13 +580,13 @@ describe('Full-text search', () => {
       await indexAll(localDb)
       
       // Search with different cases
-      const results1 = await searchBlocks(localDb, 'javascript')
+      const results1 = await searchNotes(localDb, 'javascript')
       expect(results1).toHaveLength(1)
       
-      const results2 = await searchBlocks(localDb, 'JAVASCRIPT')
+      const results2 = await searchNotes(localDb, 'JAVASCRIPT')
       expect(results2).toHaveLength(1)
       
-      const results3 = await searchBlocks(localDb, 'JavaScript')
+      const results3 = await searchNotes(localDb, 'JavaScript')
       expect(results3).toHaveLength(1)
     })
   })

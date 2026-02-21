@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { searchBlocks, SearchResult } from 'scribe-data'
+import { searchNotes, SearchResult } from 'scribe-data'
 import { SearchBar } from '../components/SearchBar'
 import { SearchResultCard } from '../components/SearchResultCard'
 import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
@@ -13,16 +13,16 @@ const SearchPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { setFocusedStream } = useSyncStatus()
+  const { setFocusedLibrary } = useSyncStatus()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Focus sync on this stream while the page is mounted
+  // Focus sync on this library while the page is mounted
   useEffect(() => {
     if (prefix) {
-      setFocusedStream(prefix)
-      return () => setFocusedStream(null)
+      setFocusedLibrary(prefix)
+      return () => setFocusedLibrary(null)
     }
-  }, [prefix, setFocusedStream])
+  }, [prefix, setFocusedLibrary])
   
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -55,7 +55,7 @@ const SearchPage: React.FC = () => {
         throw new Error('Could not get local database')
       }
       
-      const searchResults = await searchBlocks(localDb, searchQuery, {
+      const searchResults = await searchNotes(localDb, searchQuery, {
         limit: RESULTS_PER_PAGE,
         offset: pageNum * RESULTS_PER_PAGE
       })
@@ -94,7 +94,7 @@ const SearchPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   
-  const handleNewDocument = () => {
+  const handleNewNote = () => {
     if (prefix) {
       navigate(`/pk/${prefix}/new`)
     }
@@ -111,9 +111,9 @@ const SearchPage: React.FC = () => {
               className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               <ArrowLeftIcon className="w-4 h-4 mr-1" />
-              Documents
+              Notes
             </button>
-            <h1 className="text-xl font-bold text-gray-900">Search Documents</h1>
+            <h1 className="text-xl font-bold text-gray-900">Search Notes</h1>
           </div>
           
           <SearchBar
@@ -147,9 +147,9 @@ const SearchPage: React.FC = () => {
             <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
               <MagnifyingGlassIcon className="w-8 h-8 text-blue-600" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Search Your Documents</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Search Your Notes</h3>
             <p className="text-gray-600 mb-6 text-sm">
-              Enter keywords to find documents across your collection
+              Enter keywords to find notes across your collection
             </p>
             <div className="text-xs text-gray-500">
               <kbd className="px-2 py-1 bg-gray-100 rounded border border-gray-200">⌘K</kbd>
@@ -168,14 +168,14 @@ const SearchPage: React.FC = () => {
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">No Results Found</h3>
             <p className="text-gray-600 mb-6 text-sm">
-              Try different keywords or create a new document
+              Try different keywords or create a new note
             </p>
             <button
-              onClick={handleNewDocument}
+              onClick={handleNewNote}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
             >
               <PlusIcon className="w-4 h-4 mr-1.5" />
-              Create New Document
+              Create New Note
             </button>
           </div>
         )}

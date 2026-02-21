@@ -1,6 +1,6 @@
 import React from 'react'
 import { TributaryClient, TributaryStream, Server } from 'tributary-client'
-import { createStream } from '../src/actions/createStream'
+import { createLibrary } from '../src/actions/createLibrary'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { TributaryProvider } from '../src/context/tributaryContext'
 import { SyncStatusProvider } from '../src/context/syncStatusContext'
@@ -21,7 +21,7 @@ export async function createTestClientWithStream(name: string = 'Test Stream'): 
   // Create test client (this uses createTestServer internally)
   const { client, server } = createTestTributaryClient()
 
-  const { stream, prefix, streamId } = await createStream(client, name)
+  const { stream, prefix, streamId } = await createLibrary(client, name)
 
   // Return server only if it's a TestFakeServer for extended functionality
   const testServer = server as TestFakeServer | null

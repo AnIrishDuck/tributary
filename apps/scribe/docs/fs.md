@@ -1,7 +1,7 @@
 # Local Layout
 
 A core feature of `scribe` is support for "syncing" a local directory to and
-from a scribe block collection via `scribe-cli`.
+from a scribe note collection via `scribe-cli`.
 
 ## Example
 
@@ -13,7 +13,7 @@ Here's an example directory layout:
     - gumbo-431c.md
     - beef-stew.md
   - .scribe
-    - config.json - contains the stream id
+    - config.json - contains the library id
     - GOOSE: update the sync code to generate and use this file
   - indexed
     - READ-ONLY.md - a small document warning the user that files and
@@ -27,10 +27,10 @@ Here's an example directory layout:
 
 ## Slug Deduplication
 
-On sync, documents with filenames that don't match their computed slug name are
+On sync, notes with filenames that don't match their computed slug name are
 moved to the correct unique slug name.
 
-When a local doc is updated in slugs we match it to the underlying block via
+When a local note is updated in slugs we match it to the underlying note via
 slug name.
 
 We update the created and modified times for all files in slugs for easy change

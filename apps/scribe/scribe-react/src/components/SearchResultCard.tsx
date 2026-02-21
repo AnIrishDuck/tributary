@@ -25,15 +25,15 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   prefix,
   onClick
 }) => {
-  // Generate the link to the document
+  // Generate the link to the note
   // If no slug, use the block UUID as fallback
-  const documentPath = result.slug 
+  const notePath = result.slug 
     ? `/pk/${prefix}/${result.slug}`
     : `/pk/${prefix}/block/${result.block_uuid}`
 
   return (
     <Link
-      to={documentPath}
+      to={notePath}
       onClick={onClick}
       className="block group"
     >
@@ -47,7 +47,7 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
           
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-1">
-              {result.title || 'Untitled Document'}
+              {result.title || 'Untitled Note'}
             </h3>
             
             {result.snippet && (

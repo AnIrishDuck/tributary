@@ -24,28 +24,28 @@ interface BlockResultRow {
   body: string;
 }
 
-const BlockViewPage: React.FC = () => {
+const NoteViewPage: React.FC = () => {
   const [content, setContent] = useState<string>('')
   const [title, setTitle] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { setFocusedStream } = useSyncStatus()
+  const { setFocusedLibrary } = useSyncStatus()
 
-  // Extract the streamId and slug from params
+  // Extract the library prefix and slug from params
   const { prefix, slug } = useParams()
 
-  // Focus sync on this stream while the page is mounted
+  // Focus sync on this library while the page is mounted
   useEffect(() => {
     if (prefix) {
-      setFocusedStream(prefix)
-      return () => setFocusedStream(null)
+      setFocusedLibrary(prefix)
+      return () => setFocusedLibrary(null)
     }
-  }, [prefix, setFocusedStream])
+  }, [prefix, setFocusedLibrary])
 
   useEffect(() => {
-    const loadDocument = async () => {
+    const loadNote = async () => {
       if (!client || !prefix || !slug) {
         setError('Missing required parameters')
         setIsLoading(false)
@@ -53,44 +53,44 @@ const BlockViewPage: React.FC = () => {
       }
 
       try {
-        // Extract streamId from prefix (format: base64url-public-key)
+        // Extract library ID from prefix (format: base64url-public-key)
         const streamId = prefix
-        
-        // Get the stream
+
+        // Get the library
         const stream = await client.get('scribe', streamId)
-        
+
         if (!stream) {
-          throw new Error('Failed to get stream')
+          throw new Error('Failed to get library')
         }
         
         // Create local database for querying
         const localDb = stream.local()
         
         // Import scribe-data functions
-        const { getBlockBySlug, getAuthoritativeVersionByBlockUuid } = await import('scribe-data')
+        const { getNoteBySlug, getAuthoritativeVersionByNoteUuid } = await import('scribe-data')
         
-        // Get the block slug info
-        const blockSlugInfo = await getBlockBySlug(localDb, slug) as BlockSlugInfo | null
+        // Get the note slug info
+        const blockSlugInfo = await getNoteBySlug(localDb, slug) as BlockSlugInfo | null
         
         if (!blockSlugInfo) {
-          throw new Error('Document not found')
+          throw new Error('Note not found')
         }
         
         // Get the authoritative version
-        const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
+        const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
         
         if (!authoritativeVersion) {
-          throw new Error('Document version not found')
+          throw new Error('Note version not found')
         }
         
-        // Get the actual block content
+        // Get the actual note content
         const blockResult = await localDb.query(
           `SELECT body FROM block WHERE block_uuid = $1 AND version_uuid = $2`,
           [blockSlugInfo.block_uuid, authoritativeVersion.version_uuid]
         )
         
         if (!blockResult.rows || blockResult.rows.length === 0) {
-          throw new Error('Document content not found')
+          throw new Error('Note content not found')
         }
         
         const blockContent = (blockResult.rows[0] as BlockResultRow).body
@@ -98,14 +98,14 @@ const BlockViewPage: React.FC = () => {
         setContent(blockContent)
         setTitle(blockSlugInfo.title || slug || '')
       } catch (err: any) {
-        setError('Failed to load document: ' + (err.message || 'Unknown error'))
-        console.error('Error loading document:', err)
+        setError('Failed to load note: ' + (err.message || 'Unknown error'))
+        console.error('Error loading note:', err)
       } finally {
         setIsLoading(false)
       }
     }
 
-    loadDocument()
+    loadNote()
   }, [client, prefix, slug])
 
   const handleEdit = () => {
@@ -114,7 +114,7 @@ const BlockViewPage: React.FC = () => {
     }
   }
 
-  const handleNewDocument = () => {
+  const handleNewNote = () => {
     if (prefix) {
       navigate(`/pk/${prefix}/new`)
     }
@@ -158,7 +158,7 @@ const BlockViewPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
         <div className="text-center">
           <div className="mx-auto w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-2"></div>
-          <p className="text-sm text-gray-600">Loading document...</p>
+          <p className="text-sm text-gray-600">Loading note...</p>
         </div>
       </div>
     )
@@ -174,7 +174,7 @@ const BlockViewPage: React.FC = () => {
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
               <div>
-                <h3 className="text-sm font-medium text-red-900">Error loading document</h3>
+                <h3 className="text-sm font-medium text-red-900">Error loading note</h3>
                 <p className="text-red-700 mt-1 text-sm">{error}</p>
               </div>
             </div>
@@ -217,7 +217,7 @@ const BlockViewPage: React.FC = () => {
               </button>
               
               <button 
-                onClick={handleNewDocument}
+                onClick={handleNewNote}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <PlusIcon className="w-4 h-4 mr-1.5" />
@@ -240,4 +240,4 @@ const BlockViewPage: React.FC = () => {
   )
 }
 
-export default BlockViewPage
+export default NoteViewPage

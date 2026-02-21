@@ -4,9 +4,9 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
-import { getBlockCount, getBlockVersionCount } from 'scribe-data/src/block'
-import { createBlock } from 'scribe-data/src/block'
-import { indexSlugs, getBlockSlugByUuid } from 'scribe-data/src/indexing'
+import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
+import { createNote } from 'scribe-data/src/note'
+import { indexSlugs, getNoteSlugByUuid } from 'scribe-data/src/indexing'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -14,12 +14,12 @@ describe('EditorPage', () => {
     vi.clearAllMocks()
   })
 
-  it('should render the editor page with document title', async () => {
-    // Create a test stream with an actual document
+  it('should render the editor page with note title', async () => {
+    // Create a test stream with an actual note
     const { client, stream, prefix } = await createTestClientWithStream()
     
-    // Create a block in the stream
-    const block = await createBlock(stream, {
+    // Create a note in the stream
+    const block = await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document.',
       inserter: 'test'
@@ -36,9 +36,9 @@ describe('EditorPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Get the slug for this block using scribe-data function
-    const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
-    const slug = blockSlug ? blockSlug.slug : 'test-document'
+    // Get the slug for this note using scribe-data function
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'test-document'
     
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/${slug}/edit`]
@@ -52,11 +52,11 @@ describe('EditorPage', () => {
     
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
     })
   })
 
-  it('should render the editor page for new document', async () => {
+  it('should render the editor page for new note', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/pk/test-prefix/new']
     })
@@ -71,7 +71,7 @@ describe('EditorPage', () => {
     
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     })
   })
 
@@ -94,25 +94,25 @@ describe('EditorPage', () => {
     
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     })
     
-    const saveButton = screen.getByRole('button', { name: 'Add Document' })
+    const saveButton = screen.getByRole('button', { name: 'Add Note' })
     fireEvent.click(saveButton)
     
     // Check that loading state is displayed immediately
     expect(saveButton).toBeDisabled()
 
-    // Wait for the save operation to complete and verify a block was created
+    // Wait for the save operation to complete and verify a note was created
     await waitFor(async () => {
-      // Check that the client has blocks in the stream
+      // Check that the client has notes in the stream
       if (client && prefix) {
         const parts = prefix.split('/')
         const base64Part = parts[1]
         const stream = await client.get('scribe', base64Part)
         if (stream) {
-          // Use the appropriate operation from the scribe-data block module
-          const count = await getBlockCount(stream)
+          // Use the appropriate operation from the scribe-data note module
+          const count = await getNoteCount(stream)
           expect(count).toBeGreaterThan(0)
         }
       }
@@ -147,7 +147,7 @@ describe('EditorPage', () => {
     // so mocking it before render causes the sync to fail and the editor
     // shows the "syncing" screen instead of the editor form.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     })
 
     // NOW mock client.get to throw an error so the save operation fails
@@ -155,12 +155,12 @@ describe('EditorPage', () => {
       vi.spyOn(client, 'get').mockRejectedValue(new Error('Stream error'))
     }
 
-    const saveButton = screen.getByRole('button', { name: 'Add Document' })
+    const saveButton = screen.getByRole('button', { name: 'Add Note' })
     fireEvent.click(saveButton)
 
     // Wait for error message to appear
     await waitFor(() => {
-      expect(screen.getByText(/Failed to save document/)).toBeInTheDocument()
+      expect(screen.getByText(/Failed to save note/)).toBeInTheDocument()
     }, { timeout: 2000 })
 
     // Restore the spy and unmount to prevent navigation issues
@@ -168,12 +168,12 @@ describe('EditorPage', () => {
     unmount()
   })
 
-  it('should edit an existing block and show updated content', async () => {
-    // Create a test stream with an actual document
+  it('should edit an existing note and show updated content', async () => {
+    // Create a test stream with an actual note
     const { client, stream, prefix } = await createTestClientWithStream()
     
-    // Create a block in the stream
-    const block = await createBlock(stream, {
+    // Create a note in the stream
+    const block = await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Original Document\n\nThis is the original content.',
       inserter: 'test'
@@ -186,14 +186,14 @@ describe('EditorPage', () => {
     const localDb = stream.local()
     await indexSlugs(localDb)
     
-    // Get the slug for this block using scribe-data function
+    // Get the slug for this note using scribe-data function
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
-    const slug = blockSlug ? blockSlug.slug : 'original-document'
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'original-document'
     
-    // First, edit the document
+    // First, edit the note
     const editRouter = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/${slug}/edit`]
     })
@@ -204,13 +204,13 @@ describe('EditorPage', () => {
       </WithProviders>
     )
     
-    // Wait for the editor to load and show it's editing existing document
+    // Wait for the editor to load and show it's editing existing note
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
     })
     
     // Test that the save button exists and is properly labeled for editing
-    const saveButton = screen.getByRole('button', { name: 'Update Document' })
+    const saveButton = screen.getByRole('button', { name: 'Update Note' })
     expect(saveButton).toBeInTheDocument()
     
     // Test that editor is loaded - we won't try to interact with CodeMirror directly as it's complex
@@ -218,7 +218,7 @@ describe('EditorPage', () => {
     expect(editor).toBeInTheDocument()
     
     // Check initial version count using scribe-data function
-    const initialVersionCount = await getBlockVersionCount(stream, block.block_uuid)
+    const initialVersionCount = await getNoteVersionCount(stream, block.block_uuid)
     expect(initialVersionCount).toBe(1)
   })
 })
@@ -244,9 +244,9 @@ describe('EditorPage Additional Tests', () => {
       </WithProviders>
     )
     
-    // Wait for the page to fully load - check for "New Document" heading
+    // Wait for the page to fully load - check for "New Note" heading
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Document' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     }, { timeout: 5000 })
     
     // Verify NO errors

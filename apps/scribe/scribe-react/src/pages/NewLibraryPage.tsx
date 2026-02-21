@@ -1,24 +1,24 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { createStream } from '../actions/createStream'
+import { createLibrary } from '../actions/createLibrary'
 import { ShieldCheckIcon } from '@heroicons/react/24/outline'
 
-const NewStreamPage: React.FC = () => {
+const NewLibraryPage: React.FC = () => {
   const navigate = useNavigate()
   const { client } = useTributary()
   const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const onCreateStream = async () => {
+  const onCreateLibrary = async () => {
     if (!client) {
       setError('Tributary client not available')
       return
     }
 
     if (!name.trim()) {
-      setError('Please enter a stream name')
+      setError('Please enter a library name')
       return
     }
 
@@ -26,16 +26,16 @@ const NewStreamPage: React.FC = () => {
     setError(null)
 
     try {
-      const { prefix } = await createStream(client, name.trim())
+      const { prefix } = await createLibrary(client, name.trim())
       
-      // Navigate to the new stream
+      // Navigate to the new library
       // The prefix is already formatted as "pk/<key>" where key is base64url encoded
       // (already URL-safe, no encoding needed). We must NOT encode the entire prefix
       // because that would turn "/pk/" into "/pk%2F" which breaks route matching.
       navigate(`/${prefix}/`)
     } catch (err: any) {
-      setError('Failed to create new stream. Please try again.')
-      console.error('Error creating new stream:', err)
+      setError('Failed to create new library. Please try again.')
+      console.error('Error creating new library:', err)
     } finally {
       setIsLoading(false)
     }
@@ -47,9 +47,9 @@ const NewStreamPage: React.FC = () => {
       <div className="bg-white border-b border-gray-200 py-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Scribe Stream</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Library</h1>
             <p className="text-gray-600">
-              Generate a new encrypted document stream with secure keys
+              Generate a new encrypted library with secure keys
             </p>
           </div>
         </div>
@@ -60,13 +60,13 @@ const NewStreamPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2">
             {/* Left side - Information */}
             <div className="p-8 lg:p-10">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Stream Information</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Library Information</h2>
 
               <div className="space-y-6">
                 <div>
-                  <label htmlFor="stream-name" className="block text-lg font-semibold text-gray-900 mb-2">Stream Name</label>
+                  <label htmlFor="library-name" className="block text-lg font-semibold text-gray-900 mb-2">Library Name</label>
                   <input
-                    id="stream-name"
+                    id="library-name"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -76,10 +76,10 @@ const NewStreamPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">About This Stream</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">About This Library</h3>
                   <p className="text-gray-600 leading-relaxed">
-                    Create a new encrypted document stream. This will generate a new key pair 
-                    for end-to-end encryption of your documents.
+                    Create a new encrypted library. This will generate a new key pair 
+                    for end-to-end encryption of your notes.
                   </p>
                 </div>
                 
@@ -130,11 +130,11 @@ const NewStreamPage: React.FC = () => {
             <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-8 lg:p-10 flex flex-col justify-center">
               <h3 className="text-2xl font-bold mb-6">Ready to create?</h3>
               <p className="text-blue-100 text-lg mb-8 leading-relaxed">
-                Click the button below to generate a new encrypted stream with secure keys. Your data will be protected from the moment it's created.
+                Click the button below to generate a new encrypted library with secure keys. Your data will be protected from the moment it's created.
               </p>
               
               <button
-                onClick={onCreateStream}
+                onClick={onCreateLibrary}
                 disabled={isLoading || !name.trim()}
                 className={`w-full bg-white text-blue-700 hover:bg-blue-50 font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${
                   isLoading ? 'cursor-wait' : ''
@@ -149,13 +149,13 @@ const NewStreamPage: React.FC = () => {
                     Creating...
                   </span>
                 ) : (
-                  'Create New Stream'
+                  'Create New Library'
                 )}
               </button>
               
               <div className="mt-8 pt-8 border-t border-blue-500/30">
                 <p className="text-sm text-blue-100">
-                  Already have a stream?{' '}
+                  Already have a library?{' '}
                   <Link
                     to="/import"
                     className="text-white font-semibold hover:underline inline-flex items-center"
@@ -175,4 +175,4 @@ const NewStreamPage: React.FC = () => {
   )
 }
 
-export default NewStreamPage
+export default NewLibraryPage

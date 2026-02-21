@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import NewStreamPage from '../src/pages/NewStreamPage'
+import NewLibraryPage from '../src/pages/NewLibraryPage'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
 import { routes } from '../src/route'
 import { createTestClientWithStream } from './test-utils'
-import { getStreamDisplayName } from 'scribe-data'
+import { getLibraryDisplayName } from 'scribe-data'
 
 // Mock the useNavigate hook from react-router
 const mockNavigate = vi.fn()
@@ -17,13 +17,13 @@ vi.mock('react-router', async () => {
   }
 })
 
-describe('NewStreamPage', () => {
+describe('NewLibraryPage', () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks()
   })
 
-  it('should render the new stream form', () => {
+  it('should render the new library form', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
@@ -36,11 +36,11 @@ describe('NewStreamPage', () => {
       </TributaryProvider>
     )
     
-    expect(screen.getByText('Create New Scribe Stream')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Create New Library' })).toBeInTheDocument()
     // Use getAllByText to handle multiple matching elements
     expect(screen.getAllByText(/end-to-end encryption/i).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Create New Stream' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Stream Name')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create New Library' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Library Name')).toBeInTheDocument()
   })
 
   it('should show loading state when button is clicked', async () => {
@@ -57,9 +57,9 @@ describe('NewStreamPage', () => {
     )
 
     // Fill in the name first
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'Test Stream' } })
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     fireEvent.click(button)
 
     // Check that loading state is displayed immediately
@@ -68,7 +68,7 @@ describe('NewStreamPage', () => {
     expect(button).toBeDisabled()
   })
 
-  it('should create a new stream and navigate to it using TributaryClient', async () => {
+  it('should create a new library and navigate to it using TributaryClient', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
@@ -82,9 +82,9 @@ describe('NewStreamPage', () => {
     )
 
     // Fill in the name first
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'My Notes' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'My Notes' } })
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     fireEvent.click(button)
     
     // Wait for loading state to appear
@@ -98,7 +98,7 @@ describe('NewStreamPage', () => {
     // Wait for navigation to occur (async operation) or error to show
     await waitFor(() => {
       // Either navigation was called, or an error occurred
-      const errorElement = screen.queryByText('Failed to create new stream. Please try again.')
+      const errorElement = screen.queryByText('Failed to create new library. Please try again.')
       return mockNavigate.mock.calls.length > 0 || errorElement !== null
     }, { timeout: 3000 })
     
@@ -125,9 +125,9 @@ describe('NewStreamPage', () => {
     )
 
     // Fill in the name first
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'Test Stream' } })
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     fireEvent.click(button)
     
     // Wait for navigation to occur or error to appear
@@ -138,7 +138,7 @@ describe('NewStreamPage', () => {
         return true
       }
       // Also succeed if error appears (nav didn't happen but test can still verify)
-      const errorEl = screen.queryByText('Failed to create new stream. Please try again.')
+      const errorEl = screen.queryByText('Failed to create new library. Please try again.')
       return errorEl !== null
     }, { timeout: 5000 })
     
@@ -161,7 +161,7 @@ describe('NewStreamPage', () => {
     expect(segments[1]).not.toContain('=')
   })
 
-  it('should handle stream creation errors gracefully', async () => {
+  it('should handle library creation errors gracefully', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/new']
     })
@@ -171,7 +171,7 @@ describe('NewStreamPage', () => {
 
     // Mock the addWriteKey method to throw an error
     if (client) {
-      vi.spyOn(client, 'addWriteKey').mockRejectedValue(new Error('Stream creation failed'))
+      vi.spyOn(client, 'addWriteKey').mockRejectedValue(new Error('Library creation failed'))
     }
 
     render(
@@ -181,14 +181,14 @@ describe('NewStreamPage', () => {
     )
 
     // Fill in the name first
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'Test Stream' } })
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     fireEvent.click(button)
     
     // Wait for error message to appear
     await waitFor(() => {
-      expect(screen.getByText('Failed to create new stream. Please try again.')).toBeInTheDocument()
+      expect(screen.getByText('Failed to create new library. Please try again.')).toBeInTheDocument()
     }, { timeout: 2000 })
   })
 
@@ -204,9 +204,9 @@ describe('NewStreamPage', () => {
     )
 
     // Fill in the name first
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Test Stream' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'Test Stream' } })
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     fireEvent.click(button)
     
     // Wait for error message to appear
@@ -228,26 +228,26 @@ describe('NewStreamPage', () => {
       </TributaryProvider>
     )
 
-    const button = screen.getByRole('button', { name: 'Create New Stream' })
+    const button = screen.getByRole('button', { name: 'Create New Library' })
     expect(button).toBeDisabled()
 
     // Fill in a name and verify button becomes enabled
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'My Stream' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: 'My Stream' } })
     expect(button).toBeEnabled()
 
     // Clear the name and verify button becomes disabled again
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: '' } })
     expect(button).toBeDisabled()
 
     // Whitespace-only should also keep button disabled
-    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: '   ' } })
+    fireEvent.change(screen.getByLabelText('Library Name'), { target: { value: '   ' } })
     expect(button).toBeDisabled()
   })
 
-  it('should create stream with the correct name', async () => {
+  it('should create library with the correct name', async () => {
     const { client, stream } = await createTestClientWithStream('Named Stream')
 
-    const displayName = await getStreamDisplayName(stream)
+    const displayName = await getLibraryDisplayName(stream)
     expect(displayName).toBe('Named Stream')
   })
 })

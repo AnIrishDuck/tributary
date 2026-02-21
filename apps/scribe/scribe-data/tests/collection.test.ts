@@ -6,12 +6,12 @@ import {
   createCollection,
   getCollectionByUuid,
   getAllCollections,
-  getLinkedCollections,
-  getRootCollection,
-  getBlocksInCollection,
-  getStreamDisplayName
+  getLinkedLibraries,
+  getLibrary,
+  getNotesInCollection,
+  getLibraryDisplayName
 } from '../src/collection.js'
-import { createBlock, createBlockVersion } from '../src/block.js'
+import { createNote, createNoteVersion } from '../src/note.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 describe('Collection Operations', () => {
@@ -34,13 +34,13 @@ describe('Collection Operations', () => {
     }
   })
 
-  describe('Root Collection', () => {
-    test('getRootCollection returns null when no root collection exists', async () => {
-      const root = await getRootCollection(syncedDb)
+  describe('Library', () => {
+    test('getLibrary returns null when no library exists', async () => {
+      const root = await getLibrary(syncedDb)
       expect(root).toBeNull()
     })
 
-    test('should create a root collection (parent_collection_uuid = null)', async () => {
+    test('should create a library (parent_collection_uuid = null)', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -53,45 +53,45 @@ describe('Collection Operations', () => {
       expect(root.inserter).toBe('test-user')
     })
 
-    test('getRootCollection returns the root collection after creation', async () => {
+    test('getLibrary returns the library after creation', async () => {
       const created = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
       })
 
-      const root = await getRootCollection(syncedDb)
+      const root = await getLibrary(syncedDb)
 
       expect(root).toBeDefined()
       expect(root?.collection_uuid).toBe(created.collection_uuid)
       expect(root?.title).toBe('My Stream')
     })
 
-    test('getRootCollection works via TributaryLocal (for listing)', async () => {
+    test('getLibrary works via TributaryLocal (for listing)', async () => {
       const created = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
       })
 
-      // localDb shares the same schema, so getRootCollection should work
-      const root = await getRootCollection(localDb)
+      // localDb shares the same schema, so getLibrary should work
+      const root = await getLibrary(localDb)
 
       expect(root).toBeDefined()
       expect(root?.collection_uuid).toBe(created.collection_uuid)
       expect(root?.title).toBe('My Stream')
     })
 
-    test('getRootCollection via TributaryLocal returns null when no root exists', async () => {
-      const root = await getRootCollection(localDb)
+    test('getLibrary via TributaryLocal returns null when no library exists', async () => {
+      const root = await getLibrary(localDb)
       expect(root).toBeNull()
     })
 
-    test('should enforce at most one root collection (constraint)', async () => {
+    test('should enforce at most one library (constraint)', async () => {
       await createCollection(syncedDb, {
         title: 'First Root',
         inserter: 'test-user'
       })
 
-      // Attempting to create a second root collection should fail
+      // Attempting to create a second library should fail
       await expect(
         createCollection(syncedDb, {
           title: 'Second Root',
@@ -100,7 +100,7 @@ describe('Collection Operations', () => {
       ).rejects.toThrow()
     })
 
-    test('should allow creating a root collection with a specified UUID', async () => {
+    test('should allow creating a library with a specified UUID', async () => {
       const uuid = uuidv4()
       const root = await createCollection(syncedDb, {
         collection_uuid: uuid,
@@ -113,7 +113,7 @@ describe('Collection Operations', () => {
   })
 
   describe('Named Collections', () => {
-    test('should create a named collection under the root', async () => {
+    test('should create a named collection under the library', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -130,7 +130,7 @@ describe('Collection Operations', () => {
       expect(cajun.parent_collection_uuid).toBe(root.collection_uuid)
     })
 
-    test('should create multiple named collections under the root', async () => {
+    test('should create multiple named collections under the library', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -180,7 +180,7 @@ describe('Collection Operations', () => {
       expect(collections).toEqual([])
     })
 
-    test('should return empty array when only root collection exists', async () => {
+    test('should return empty array when only library exists', async () => {
       await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -190,7 +190,7 @@ describe('Collection Operations', () => {
       expect(collections).toEqual([])
     })
 
-    test('should return named collections (not the root)', async () => {
+    test('should return named collections (not the library)', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -213,7 +213,7 @@ describe('Collection Operations', () => {
       expect(collections).toHaveLength(2)
       expect(collections.map(c => c.title)).toContain('Cajun Recipes')
       expect(collections.map(c => c.title)).toContain('Desserts')
-      // Root should not be included
+      // Library should not be included
       expect(collections.map(c => c.title)).not.toContain('My Stream')
     })
 
@@ -249,18 +249,18 @@ describe('Collection Operations', () => {
     })
   })
 
-  describe('Block-Collection Relationship', () => {
-    test('blocks without collection_id belong to root collection (null)', async () => {
-      const block = await createBlock(syncedDb, {
+  describe('Note-Collection Relationship', () => {
+    test('notes without collection_id belong to library (null)', async () => {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
-        body: '# Root Block\n\nThis block belongs to the root collection.',
+        body: '# Root Note\n\nThis note belongs to the library.',
         inserter: 'test-user'
       })
 
-      expect(block.collection_id).toBeNull()
+      expect(note.collection_id).toBeNull()
     })
 
-    test('should create a block assigned to a named collection', async () => {
+    test('should create a note assigned to a named collection', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -272,14 +272,14 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const block = await createBlock(syncedDb, {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Gumbo\n\nA classic cajun dish.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      expect(block.collection_id).toBe(cajun.collection_uuid)
+      expect(note.collection_id).toBe(cajun.collection_uuid)
     })
 
     test('should carry forward collection_id when creating a new version', async () => {
@@ -294,23 +294,23 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const block = await createBlock(syncedDb, {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Gumbo\n\nOriginal recipe.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      const updatedBlock = await createBlockVersion(syncedDb, block.block_uuid, {
+      const updatedNote = await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Gumbo\n\nUpdated recipe with more spice.',
         inserter: 'test-user'
       })
 
-      expect(updatedBlock.collection_id).toBe(cajun.collection_uuid)
+      expect(updatedNote.collection_id).toBe(cajun.collection_uuid)
     })
 
-    test('should allow moving a block to a different collection via new version', async () => {
+    test('should allow moving a note to a different collection via new version', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -328,16 +328,16 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const block = await createBlock(syncedDb, {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Bread Pudding\n\nIs it cajun or dessert?',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      expect(block.collection_id).toBe(cajun.collection_uuid)
+      expect(note.collection_id).toBe(cajun.collection_uuid)
 
-      const moved = await createBlockVersion(syncedDb, block.block_uuid, {
+      const moved = await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Bread Pudding\n\nIs it cajun or dessert?',
         inserter: 'test-user',
@@ -347,7 +347,7 @@ describe('Collection Operations', () => {
       expect(moved.collection_id).toBe(desserts.collection_uuid)
     })
 
-    test('should allow removing a block from a collection (move to root)', async () => {
+    test('should allow removing a note from a collection (move to library)', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -359,14 +359,14 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const block = await createBlock(syncedDb, {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Misplaced Note\n\nThis does not belong here.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      const moved = await createBlockVersion(syncedDb, block.block_uuid, {
+      const moved = await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Misplaced Note\n\nThis does not belong here.',
         inserter: 'test-user',
@@ -377,26 +377,26 @@ describe('Collection Operations', () => {
     })
   })
 
-  describe('getBlocksInCollection', () => {
-    test('should return root-level blocks (collection_id IS NULL)', async () => {
-      await createBlock(syncedDb, {
+  describe('getNotesInCollection', () => {
+    test('should return library-level notes (collection_id IS NULL)', async () => {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
-        body: '# Root Block A\n\nFirst root block.',
+        body: '# Root Note A\n\nFirst root note.',
         inserter: 'test-user'
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
-        body: '# Root Block B\n\nSecond root block.',
+        body: '# Root Note B\n\nSecond root note.',
         inserter: 'test-user'
       })
 
-      const blocks = await getBlocksInCollection(syncedDb, null)
+      const notes = await getNotesInCollection(syncedDb, null)
 
-      expect(blocks).toHaveLength(2)
+      expect(notes).toHaveLength(2)
     })
 
-    test('should return blocks in a named collection', async () => {
+    test('should return notes in a named collection', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -408,31 +408,31 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Gumbo\n\nA classic cajun stew.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Jambalaya\n\nRice-based cajun dish.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      // Also create a root block that should NOT appear
-      await createBlock(syncedDb, {
+      // Also create a root note that should NOT appear
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Random Note\n\nNot in cajun.',
         inserter: 'test-user'
       })
 
-      const cajunBlocks = await getBlocksInCollection(syncedDb, cajun.collection_uuid)
+      const cajunNotes = await getNotesInCollection(syncedDb, cajun.collection_uuid)
 
-      expect(cajunBlocks).toHaveLength(2)
-      expect(cajunBlocks.every(b => b.collection_id === cajun.collection_uuid)).toBe(true)
+      expect(cajunNotes).toHaveLength(2)
+      expect(cajunNotes.every(b => b.collection_id === cajun.collection_uuid)).toBe(true)
     })
 
     test('should return empty array for an empty collection', async () => {
@@ -447,11 +447,11 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const blocks = await getBlocksInCollection(syncedDb, empty.collection_uuid)
-      expect(blocks).toEqual([])
+      const notes = await getNotesInCollection(syncedDb, empty.collection_uuid)
+      expect(notes).toEqual([])
     })
 
-    test('should return only the latest version of each block', async () => {
+    test('should return only the latest version of each note', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'
@@ -463,36 +463,36 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const block = await createBlock(syncedDb, {
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Gumbo v1\n\nOriginal.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      await createBlockVersion(syncedDb, block.block_uuid, {
+      await createNoteVersion(syncedDb, note.block_uuid, {
         block_type: 'scribe/markdown',
         body: '# Gumbo v2\n\nUpdated.',
         inserter: 'test-user'
       })
 
-      const blocks = await getBlocksInCollection(syncedDb, cajun.collection_uuid)
+      const notes = await getNotesInCollection(syncedDb, cajun.collection_uuid)
 
-      expect(blocks).toHaveLength(1)
-      expect(blocks[0].body).toContain('Gumbo v2')
+      expect(notes).toHaveLength(1)
+      expect(notes[0].body).toContain('Gumbo v2')
     })
   })
 
-  describe('Stream Structure (per docs)', () => {
+  describe('Library Structure (per docs)', () => {
     test('should model the example structure from the docs', async () => {
-      // Stream (root collection)
-      // ├── block-a               (root-level block, collection_id = null)
-      // ├── block-b               (root-level block, collection_id = null)
+      // Library (root collection)
+      // ├── note-a               (library-level note, collection_id = null)
+      // ├── note-b               (library-level note, collection_id = null)
       // ├── cajun-recipes/         (named collection)
-      // │   ├── gumbo             (block in collection)
-      // │   └── jambalaya         (block in collection)
+      // │   ├── gumbo             (note in collection)
+      // │   └── jambalaya         (note in collection)
       // └── desserts/              (named collection)
-      //     └── chocolate-cake    (block in collection)
+      //     └── chocolate-cake    (note in collection)
 
       const root = await createCollection(syncedDb, {
         title: 'My Cookbook Stream',
@@ -511,118 +511,118 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
-        body: '# Block A\n\nRoot-level block.',
+        body: '# Note A\n\nLibrary-level note.',
         inserter: 'test-user'
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
-        body: '# Block B\n\nAnother root-level block.',
+        body: '# Note B\n\nAnother library-level note.',
         inserter: 'test-user'
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Gumbo\n\nA classic cajun stew.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Jambalaya\n\nRice-based cajun dish.',
         inserter: 'test-user',
         collection_id: cajun.collection_uuid
       })
 
-      await createBlock(syncedDb, {
+      await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Chocolate Cake\n\nA rich chocolate dessert.',
         inserter: 'test-user',
         collection_id: desserts.collection_uuid
       })
 
-      // Verify root collection
-      const rootCol = await getRootCollection(syncedDb)
+      // Verify library
+      const rootCol = await getLibrary(syncedDb)
       expect(rootCol?.title).toBe('My Cookbook Stream')
 
       // Verify named collections
       const collections = await getAllCollections(syncedDb)
       expect(collections).toHaveLength(2)
 
-      // Verify blocks per collection using getBlocksInCollection
-      const rootBlocks = await getBlocksInCollection(syncedDb, null)
-      expect(rootBlocks).toHaveLength(2)
+      // Verify notes per collection using getNotesInCollection
+      const rootNotes = await getNotesInCollection(syncedDb, null)
+      expect(rootNotes).toHaveLength(2)
 
-      const cajunBlocks = await getBlocksInCollection(syncedDb, cajun.collection_uuid)
-      expect(cajunBlocks).toHaveLength(2)
+      const cajunNotes = await getNotesInCollection(syncedDb, cajun.collection_uuid)
+      expect(cajunNotes).toHaveLength(2)
 
-      const dessertBlocks = await getBlocksInCollection(syncedDb, desserts.collection_uuid)
-      expect(dessertBlocks).toHaveLength(1)
+      const dessertNotes = await getNotesInCollection(syncedDb, desserts.collection_uuid)
+      expect(dessertNotes).toHaveLength(1)
     })
   })
 
   describe('Default Collection Behavior', () => {
-    test('stream with no root collection implies "Notes"', async () => {
-      // Before creating a root collection, getRootCollection returns null
-      const root = await getRootCollection(syncedDb)
+    test('library with no root collection implies "Notes"', async () => {
+      // Before creating a library, getLibrary returns null
+      const root = await getLibrary(syncedDb)
       expect(root).toBeNull()
 
-      // Blocks can still be created — they belong to the implied root
-      const block = await createBlock(syncedDb, {
+      // Notes can still be created — they belong to the implied library
+      const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# My Note\n\nJust a regular note.',
         inserter: 'test-user'
       })
 
-      expect(block.collection_id).toBeNull()
+      expect(note.collection_id).toBeNull()
 
       // No collections in the table
       const collections = await getAllCollections(syncedDb)
       expect(collections).toHaveLength(0)
 
-      // Root blocks can still be queried
-      const rootBlocks = await getBlocksInCollection(syncedDb, null)
-      expect(rootBlocks).toHaveLength(1)
+      // Library notes can still be queried
+      const rootNotes = await getNotesInCollection(syncedDb, null)
+      expect(rootNotes).toHaveLength(1)
     })
   })
 
-  describe('getStreamDisplayName', () => {
-    test('returns null when no root collection exists (via TributaryStream)', async () => {
-      const name = await getStreamDisplayName(syncedDb)
+  describe('getLibraryDisplayName', () => {
+    test('returns null when no library exists (via TributaryStream)', async () => {
+      const name = await getLibraryDisplayName(syncedDb)
       expect(name).toBeNull()
     })
 
-    test('returns null when no root collection exists (via TributaryLocal)', async () => {
-      const name = await getStreamDisplayName(localDb)
+    test('returns null when no library exists (via TributaryLocal)', async () => {
+      const name = await getLibraryDisplayName(localDb)
       expect(name).toBeNull()
     })
 
-    test('returns root collection title when one exists (via TributaryStream)', async () => {
+    test('returns library title when one exists (via TributaryStream)', async () => {
       await createCollection(syncedDb, {
         title: 'My Cookbook',
         inserter: 'test-user'
       })
 
-      const name = await getStreamDisplayName(syncedDb)
+      const name = await getLibraryDisplayName(syncedDb)
       expect(name).toBe('My Cookbook')
     })
 
-    test('returns root collection title when one exists (via TributaryLocal)', async () => {
+    test('returns library title when one exists (via TributaryLocal)', async () => {
       await createCollection(syncedDb, {
         title: 'My Cookbook',
         inserter: 'test-user'
       })
 
-      const name = await getStreamDisplayName(localDb)
+      const name = await getLibraryDisplayName(localDb)
       expect(name).toBe('My Cookbook')
     })
   })
 
-  describe('Linked Collections', () => {
-    test('should create a linked collection with linked_stream_id and linked_stream_key', async () => {
+  describe('Linked Libraries', () => {
+    test('should create a linked library with linked_stream_id and linked_stream_key', async () => {
       const root = await createCollection(syncedDb, {
         title: 'Home',
         inserter: 'test-user'
@@ -640,7 +640,7 @@ describe('Collection Operations', () => {
       expect(linked.linked_stream_key).toBe('xyz789writekey')
     })
 
-    test('getLinkedCollections returns only linked collections', async () => {
+    test('getLinkedLibraries returns only linked libraries', async () => {
       const root = await createCollection(syncedDb, {
         title: 'Home',
         inserter: 'test-user'
@@ -662,7 +662,7 @@ describe('Collection Operations', () => {
         linked_stream_key: 'write-key-2'
       })
 
-      const linked = await getLinkedCollections(syncedDb)
+      const linked = await getLinkedLibraries(syncedDb)
       expect(linked).toHaveLength(2)
       expect(linked[0].title).toBe('Linked Cookbook')
       expect(linked[0].linked_stream_id).toBe('stream-id-1')
@@ -672,7 +672,7 @@ describe('Collection Operations', () => {
       expect(linked[1].linked_stream_key).toBe('write-key-2')
     })
 
-    test('getLinkedCollections excludes normal (non-linked) collections', async () => {
+    test('getLinkedLibraries excludes normal (non-linked) collections', async () => {
       const root = await createCollection(syncedDb, {
         title: 'Home',
         inserter: 'test-user'
@@ -692,7 +692,7 @@ describe('Collection Operations', () => {
         linked_stream_key: 'write-key-1'
       })
 
-      const linked = await getLinkedCollections(syncedDb)
+      const linked = await getLinkedLibraries(syncedDb)
       expect(linked).toHaveLength(1)
       expect(linked[0].title).toBe('Linked Collection')
     })
@@ -750,7 +750,7 @@ describe('Collection Operations', () => {
       expect(collection.parent_collection_uuid).toBeNull()
     })
 
-    test('named collections are direct children of the root (one level deep)', async () => {
+    test('named collections are direct children of the library (one level deep)', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Stream',
         inserter: 'test-user'

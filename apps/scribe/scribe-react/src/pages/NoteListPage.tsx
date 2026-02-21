@@ -2,33 +2,33 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { getAllBlocksWithTitles, BlockSlugRow, getStreamDisplayName } from 'scribe-data'
+import { getAllNotesWithTitles, NoteSlugRow, getLibraryDisplayName } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
 import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
-const BlockListPage: React.FC = () => {
+const NoteListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { syncStatus, setFocusedStream } = useSyncStatus()
-  const [blocks, setBlocks] = useState<BlockSlugRow[]>([])
-  const [streamName, setStreamName] = useState<string | null>(null)
+  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const [notes, setNotes] = useState<NoteSlugRow[]>([])
+  const [libraryName, setLibraryName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Focus sync on this stream while the page is mounted
+  // Focus sync on this library while the page is mounted
   useEffect(() => {
     if (prefix) {
-      setFocusedStream(prefix)
-      return () => setFocusedStream(null)
+      setFocusedLibrary(prefix)
+      return () => setFocusedLibrary(null)
     }
-  }, [prefix, setFocusedStream])
+  }, [prefix, setFocusedLibrary])
 
-  // Only re-render when this stream's sync status changes
-  const streamSyncStatusDep = prefix ? syncStatus[prefix] : undefined
+  // Only re-render when this library's sync status changes
+  const librarySyncStatusDep = prefix ? syncStatus[prefix] : undefined
 
   useEffect(() => {
-    const loadBlocks = async () => {
+    const loadNotes = async () => {
       if (!client || !prefix) {
         setError('Client or prefix not available')
         setLoading(false)
@@ -36,33 +36,33 @@ const BlockListPage: React.FC = () => {
       }
 
       try {
-        // Get the local database for this stream
+        // Get the local database for this library
         const localDb = await client.getLocal('scribe', prefix)
         if (!localDb) {
           throw new Error('Could not get local database')
         }
 
-        // Get all blocks with titles
-        const blockList = await getAllBlocksWithTitles(localDb)
-        setBlocks(blockList)
+        // Get all notes with titles
+        const noteList = await getAllNotesWithTitles(localDb)
+        setNotes(noteList)
 
-        // Get stream display name
-        const name = await getStreamDisplayName(localDb)
-        setStreamName(name)
+        // Get library display name
+        const name = await getLibraryDisplayName(localDb)
+        setLibraryName(name)
 
         setError(null)
       } catch (err) {
-        console.error('Error loading blocks:', err)
-        setError(`Failed to load blocks: ${(err as Error).message}`)
+        console.error('Error loading notes:', err)
+        setError(`Failed to load notes: ${(err as Error).message}`)
       } finally {
         setLoading(false)
       }
     }
 
-    loadBlocks()
-  }, [client, prefix, streamSyncStatusDep])
+    loadNotes()
+  }, [client, prefix, librarySyncStatusDep])
 
-  const handleNewBlock = () => {
+  const handleNewNote = () => {
     if (prefix) {
       navigate(`/pk/${prefix}/new`)
     }
@@ -73,7 +73,7 @@ const BlockListPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
         <div className="text-center">
           <div className="mx-auto w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-2"></div>
-          <p className="text-sm text-gray-600">Loading documents...</p>
+          <p className="text-sm text-gray-600">Loading notes...</p>
         </div>
       </div>
     )
@@ -95,9 +95,9 @@ const BlockListPage: React.FC = () => {
     )
   }
 
-  // Get sync status for this stream
-  const streamSyncStatus = prefix ? syncStatus[prefix] : undefined
-  const showProgress = streamSyncStatus && !streamSyncStatus.synced
+  // Get sync status for this library
+  const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
+  const showProgress = librarySyncStatus && !librarySyncStatus.synced
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,7 +108,7 @@ const BlockListPage: React.FC = () => {
             <div className="flex items-center justify-center gap-2 text-sm">
               <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               <span className="text-blue-900 font-medium">
-                Syncing: {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex} blocks
+                Syncing: {librarySyncStatus.currentIndex}/{librarySyncStatus.finalIndex} blocks
               </span>
             </div>
           </div>
@@ -125,11 +125,11 @@ const BlockListPage: React.FC = () => {
                 className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <ArrowLeftIcon className="w-4 h-4 mr-1" />
-                Streams
+                Libraries
               </button>
-              <h1 className="text-xl font-bold text-gray-900">{streamName || 'Documents'}</h1>
+              <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
               <span className="text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
-                {blocks.length} document{blocks.length !== 1 ? 's' : ''}
+                {notes.length} note{notes.length !== 1 ? 's' : ''}
               </span>
             </div>
             
@@ -143,7 +143,7 @@ const BlockListPage: React.FC = () => {
               </button>
               
               <button
-                onClick={handleNewBlock}
+                onClick={handleNewNote}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <PlusIcon className="w-4 h-4 mr-1.5" />
@@ -155,37 +155,37 @@ const BlockListPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {blocks.length === 0 ? (
+        {notes.length === 0 ? (
           showProgress ? (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
               <div className="mx-auto w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">
-                Syncing {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex} blocks
+                Syncing {librarySyncStatus.currentIndex}/{librarySyncStatus.finalIndex} blocks
               </h3>
-              <p className="text-gray-600 text-sm">Documents will appear as they are synced</p>
+              <p className="text-gray-600 text-sm">Notes will appear as they are synced</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
               <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                 <DocumentTextIcon className="w-8 h-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">No documents found</h3>
-              <p className="text-gray-600 mb-6 text-sm">Create your first encrypted document to get started</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No notes found</h3>
+              <p className="text-gray-600 mb-6 text-sm">Create your first encrypted note to get started</p>
               <button
-                onClick={handleNewBlock}
+                onClick={handleNewNote}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <PlusIcon className="w-4 h-4 mr-1.5" />
-                Create first document
+                Create first note
               </button>
             </div>
           )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {blocks.map((block) => (
+            {notes.map((note) => (
               <Link
-                key={block.block_uuid}
-                to={`/pk/${prefix}/${block.slug}`}
+                key={note.block_uuid}
+                to={`/pk/${prefix}/${note.slug}`}
                 className="group block"
               >
                 <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
@@ -193,7 +193,7 @@ const BlockListPage: React.FC = () => {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1 min-w-0">
                         <h3 className="text-xl font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors mb-2">
-                          {block.title || 'Untitled'}
+                          {note.title || 'Untitled'}
                         </h3>
                       </div>
                       <div className="flex-shrink-0">
@@ -205,14 +205,14 @@ const BlockListPage: React.FC = () => {
                     
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <span className="text-sm text-gray-500">
-                        {new Date(block.insert_datetime).toLocaleDateString('en-US', {
+                        {new Date(note.insert_datetime).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
                         })}
                       </span>
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                        {block.slug}
+                        {note.slug}
                       </span>
                     </div>
                   </div>
@@ -222,14 +222,14 @@ const BlockListPage: React.FC = () => {
           </div>
         )}
 
-        {blocks.length > 0 && (
+        {notes.length > 0 && (
           <div className="mt-8 text-center">
             <button
-              onClick={handleNewBlock}
+              onClick={handleNewNote}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
             >
               <PlusIcon className="w-4 h-4 mr-1.5" />
-              Create New Document
+              Create New Note
             </button>
           </div>
         )}
@@ -238,4 +238,4 @@ const BlockListPage: React.FC = () => {
   )
 }
 
-export default BlockListPage
+export default NoteListPage

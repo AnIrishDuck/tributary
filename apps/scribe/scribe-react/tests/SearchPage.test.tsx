@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
-import { saveBlock } from '../src/actions/saveBlock'
+import { saveNote } from '../src/actions/saveNote'
 import { indexAll } from 'scribe-data'
 
 describe('SearchPage', () => {
@@ -28,7 +28,7 @@ describe('SearchPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Search documents/i)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Search notes/i)).toBeInTheDocument()
     })
   })
 
@@ -47,17 +47,17 @@ describe('SearchPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByText(/Search Your Documents/i)).toBeInTheDocument()
+      expect(screen.getByText(/Search Your Notes/i)).toBeInTheDocument()
     })
   })
 
-  it('should find and display matching documents', async () => {
+  it('should find and display matching notes', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create test documents
-    await saveBlock(stream, '# JavaScript Tutorial\n\nLearn JavaScript basics and advanced concepts.')
-    await saveBlock(stream, '# Python Guide\n\nPython programming essentials.')
+    // Create test notes
+    await saveNote(stream, '# JavaScript Tutorial\n\nLearn JavaScript basics and advanced concepts.')
+    await saveNote(stream, '# Python Guide\n\nPython programming essentials.')
     
     // Index search vectors
     const localDb = stream.local()
@@ -79,7 +79,7 @@ describe('SearchPage', () => {
       expect(screen.getByText('JavaScript Tutorial')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Should not show Python document
+    // Should not show Python note
     expect(screen.queryByText('Python Guide')).not.toBeInTheDocument()
   })
 
@@ -87,8 +87,8 @@ describe('SearchPage', () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create a document
-    await saveBlock(stream, '# JavaScript Tutorial\n\nLearn JavaScript.')
+    // Create a note
+    await saveNote(stream, '# JavaScript Tutorial\n\nLearn JavaScript.')
     
     // Index
     const localDb = stream.local()
@@ -124,7 +124,7 @@ describe('SearchPage', () => {
       </WithProviders>
     )
     
-    const searchInput = await screen.findByPlaceholderText(/Search documents/i)
+    const searchInput = await screen.findByPlaceholderText(/Search notes/i)
     
     // Type in search
     fireEvent.change(searchInput, { target: { value: 'test query' } })
@@ -135,12 +135,12 @@ describe('SearchPage', () => {
     }, { timeout: 1000 })
   })
 
-  it('should navigate to document when result clicked', async () => {
+  it('should navigate to note when result clicked', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create and index a document
-    const { blockSlug } = await saveBlock(stream, '# Test Document\n\nTest content.')
+    // Create and index a note
+    const { blockSlug } = await saveNote(stream, '# Test Document\n\nTest content.')
     const localDb = stream.local()
     await indexAll(localDb)
     
@@ -158,7 +158,7 @@ describe('SearchPage', () => {
     const resultLink = await screen.findByText('Test Document')
     fireEvent.click(resultLink)
     
-    // Should navigate to the document
+    // Should navigate to the note
     await waitFor(() => {
       expect(router.state.location.pathname).toContain(blockSlug?.slug)
     })
@@ -168,10 +168,10 @@ describe('SearchPage', () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create test documents
-    await saveBlock(stream, '# JavaScript Tutorial\n\nLearn JavaScript basics.')
-    await saveBlock(stream, '# Python Tutorial\n\nLearn Python basics.')
-    await saveBlock(stream, '# JavaScript Advanced\n\nAdvanced JavaScript concepts.')
+    // Create test notes
+    await saveNote(stream, '# JavaScript Tutorial\n\nLearn JavaScript basics.')
+    await saveNote(stream, '# Python Tutorial\n\nLearn Python basics.')
+    await saveNote(stream, '# JavaScript Advanced\n\nAdvanced JavaScript concepts.')
     
     // Index
     const localDb = stream.local()
@@ -198,9 +198,9 @@ describe('SearchPage', () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create test documents
-    await saveBlock(stream, '# JavaScript Tutorial\n\nLearn JavaScript.')
-    await saveBlock(stream, '# JavaScript Guide\n\nJavaScript programming.')
+    // Create test notes
+    await saveNote(stream, '# JavaScript Tutorial\n\nLearn JavaScript.')
+    await saveNote(stream, '# JavaScript Guide\n\nJavaScript programming.')
     
     // Index
     const localDb = stream.local()
@@ -223,12 +223,12 @@ describe('SearchPage', () => {
     }, { timeout: 3000 })
   })
 
-  it('should handle documents with no title', async () => {
+  it('should handle notes with no title', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create document without title
-    await saveBlock(stream, 'This document has no title but contains searchable text.')
+    // Create note without title
+    await saveNote(stream, 'This note has no title but contains searchable text.')
     
     // Index
     const localDb = stream.local()
@@ -245,18 +245,18 @@ describe('SearchPage', () => {
       </WithProviders>
     )
     
-    // Should show "Untitled Document"
+    // Should show "Untitled Note"
     await waitFor(() => {
-      expect(screen.getByText('Untitled Document')).toBeInTheDocument()
+      expect(screen.getByText('Untitled Note')).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 
-  it('should show create new document button in no results state', async () => {
+  it('should show create new note button in no results state', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create a document
-    await saveBlock(stream, '# Test Document\n\nTest content.')
+    // Create a note
+    await saveNote(stream, '# Test Document\n\nTest content.')
     
     // Index
     const localDb = stream.local()
@@ -274,16 +274,16 @@ describe('SearchPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Create New Document/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Create New Note/i })).toBeInTheDocument()
     })
   })
 
-  it('should navigate to new document page when create button clicked', async () => {
+  it('should navigate to new note page when create button clicked', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create a document
-    await saveBlock(stream, '# Test Document\n\nTest content.')
+    // Create a note
+    await saveNote(stream, '# Test Document\n\nTest content.')
     
     // Index
     const localDb = stream.local()
@@ -300,10 +300,10 @@ describe('SearchPage', () => {
       </WithProviders>
     )
     
-    const createButton = await screen.findByRole('button', { name: /Create New Document/i })
+    const createButton = await screen.findByRole('button', { name: /Create New Note/i })
     fireEvent.click(createButton)
     
-    // Should navigate to new document page
+    // Should navigate to new note page
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(`/pk/${base64Part}/new`)
     })

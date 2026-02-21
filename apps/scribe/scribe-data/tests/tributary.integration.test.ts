@@ -1,7 +1,7 @@
 import { test, expect, describe } from 'vitest'
 import { createTestDB } from './test-utils.js'
 import { up } from '../src/migrations.js'
-import { createBlock, createBlockVersion } from '../src/block.js'
+import { createNote, createNoteVersion } from '../src/note.js'
 
 describe('Tributary Integration Tests', () => {
   test('should create a new stream with Tributary integration', async () => {
@@ -15,26 +15,26 @@ describe('Tributary Integration Tests', () => {
     expect(client).toBeDefined()
     expect(stream).toBeDefined()
 
-    // Insert a test block using the block functions
-    const block = await createBlock(syncedDb, {
+    // Insert a test note using the note functions
+    const note = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document created through Tributary integration.',
       inserter: 'test-user'
     })
 
-    const blockUuid = block.block_uuid
+    const blockUuid = note.block_uuid
 
-    // Retrieve the block
+    // Retrieve the note
     const result = await syncedDb.query(
       `SELECT * FROM block WHERE block_uuid = $1`,
       [blockUuid]
     )
 
-    const retrievedBlock = result.rows && result.rows.length > 0 ? result.rows[0] : null
+    const retrievedNote = result.rows && result.rows.length > 0 ? result.rows[0] : null
 
-    expect(retrievedBlock).toBeDefined()
-    expect(retrievedBlock?.block_uuid).toBe(blockUuid)
-    expect(retrievedBlock?.body).toBe('# Test Document\n\nThis is a test document created through Tributary integration.')
+    expect(retrievedNote).toBeDefined()
+    expect(retrievedNote?.block_uuid).toBe(blockUuid)
+    expect(retrievedNote?.body).toBe('# Test Document\n\nThis is a test document created through Tributary integration.')
 
     // Check that we can retrieve blob metadata
     const allBlobs = server.getAllBlobs()
@@ -45,31 +45,31 @@ describe('Tributary Integration Tests', () => {
     expect(latestBlob).toBeDefined()
   })
 
-  test('should handle multiple blocks with proper versioning', async () => {
+  test('should handle multiple notes with proper versioning', async () => {
     // Create a test database with Tributary client
     const { syncedDb, localDb, client, stream, server } = await createTestDB()
     
     // Run migrations
     await up(syncedDb, localDb)
 
-    // Insert first version of a block using the block functions
-    const blockV1 = await createBlock(syncedDb, {
+    // Insert first version of a note using the note functions
+    const noteV1 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# First Version\n\nThis is the first version of the document.',
       inserter: 'test-user'
     })
 
-    const blockUuid = blockV1.block_uuid
-    const version1Uuid = blockV1.version_uuid
+    const blockUuid = noteV1.block_uuid
+    const version1Uuid = noteV1.version_uuid
 
-    // Insert second version of the same block using the block functions
-    const blockV2 = await createBlockVersion(syncedDb, blockUuid, {
+    // Insert second version of the same note using the note functions
+    const noteV2 = await createNoteVersion(syncedDb, blockUuid, {
       block_type: 'scribe/markdown',
       body: '# Second Version\n\nThis is the updated version of the document.',
       inserter: 'test-user'
     })
 
-    const version2Uuid = blockV2.version_uuid
+    const version2Uuid = noteV2.version_uuid
 
     // Retrieve both versions
     const result = await syncedDb.query(

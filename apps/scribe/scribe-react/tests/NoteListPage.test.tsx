@@ -4,14 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
-import { saveBlock } from '../src/actions/saveBlock'
+import { saveNote } from '../src/actions/saveNote'
 
-describe('BlockListPage', () => {
+describe('NoteListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should render empty state when no blocks exist', async () => {
+  it('should render empty state when no notes exist', async () => {
     // Create a test client with a stream
     const { client, prefix } = await createTestClientWithStream()
     
@@ -19,7 +19,7 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Navigate to the block list page
+    // Navigate to the note list page
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -36,11 +36,11 @@ describe('BlockListPage', () => {
     }, { timeout: 3000 })
     
     // Check that the empty state is displayed
-    expect(screen.getByText('No documents found')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Create first document' })).toBeInTheDocument()
+    expect(screen.getByText('No notes found')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create first note' })).toBeInTheDocument()
   })
 
-  it('should display a list of blocks after saving several documents', async () => {
+  it('should display a list of notes after saving several notes', async () => {
     // Create a test client with a stream
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -48,20 +48,20 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create several test blocks
-    const testBlocks = [
+    // Create several test notes
+    const testNotes = [
       '# First Document\n\nThis is the first test document.',
       '# Second Document\n\nThis is the second test document.',
       '# Third Document\n\nThis is the third test document.',
       '# Another Document\n\nThis is another test document.'
     ]
     
-    // Save each block
-    for (const content of testBlocks) {
-      await saveBlock(stream, content)
+    // Save each note
+    for (const content of testNotes) {
+      await saveNote(stream, content)
     }
     
-    // Navigate to the block list page
+    // Navigate to the note list page
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -77,7 +77,7 @@ describe('BlockListPage', () => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Check that we have at least 4 document links (there may also be
+    // Check that we have at least 4 note links (there may also be
     // navigation links from the Layout's bottom nav bar)
     const links = screen.getAllByRole('link')
     expect(links.length).toBeGreaterThanOrEqual(4)
@@ -94,11 +94,11 @@ describe('BlockListPage', () => {
     expect(screen.getByText('third-document')).toBeInTheDocument()
     expect(screen.getByText('another-document')).toBeInTheDocument()
     
-    // Check that the "Create New Document" button is present
-    expect(screen.getByRole('button', { name: 'Create New Document' })).toBeInTheDocument()
+    // Check that the "Create New Note" button is present
+    expect(screen.getByRole('button', { name: 'Create New Note' })).toBeInTheDocument()
   })
 
-  it('should handle blocks with no titles', async () => {
+  it('should handle notes with no titles', async () => {
     // Create a test client with a stream
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -106,11 +106,11 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create a block without a title (no H1 heading)
-    const contentWithoutTitle = 'This document has no title heading.'
-    await saveBlock(stream, contentWithoutTitle)
+    // Create a note without a title (no H1 heading)
+    const contentWithoutTitle = 'This note has no title heading.'
+    await saveNote(stream, contentWithoutTitle)
     
-    // Navigate to the block list page
+    // Navigate to the note list page
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -126,13 +126,13 @@ describe('BlockListPage', () => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Check that the untitled document is displayed
+    // Check that the untitled note is displayed
     expect(screen.getByText('Untitled')).toBeInTheDocument()
   })
 
-  it('should render BlockListPage at /pk/:prefix/ route and load without errors', async () => {
+  it('should render NoteListPage at /pk/:prefix/ route and load without errors', async () => {
     // This test verifies that the route /pk/:prefix/ actually renders and works
-    // by creating a stream and then directly rendering the BlockListPage at its route
+    // by creating a stream and then directly rendering the NoteListPage at its route
     
     const { client, prefix } = await createTestClientWithStream()
     
@@ -140,7 +140,7 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create router and render the BlockListPage at its route
+    // Create router and render the NoteListPage at its route
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -153,16 +153,16 @@ describe('BlockListPage', () => {
     
     // Wait for the page to fully load
     await waitFor(() => {
-      // Should show "Documents" heading (BlockListPage content)
+      // Should show "Notes" heading (NoteListPage content)
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 5000 })
     
-    // Verify NO "Error loading blocks" error
-    const errorEl = screen.queryByText(/Error loading blocks/)
+    // Verify NO "Error loading notes" error
+    const errorEl = screen.queryByText(/Error loading notes/)
     expect(errorEl).toBeNull()
   })
 
-  it('should navigate correctly to document without double hash in URL', async () => {
+  it('should navigate correctly to note without double hash in URL', async () => {
     // Create a test client with a stream
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -170,11 +170,11 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create a test document
-    const content = '# New Document\n\nThis is a test document.'
-    await saveBlock(stream, content)
+    // Create a test note
+    const content = '# New Document\n\nThis is a test note.'
+    await saveNote(stream, content)
     
-    // Navigate to the block list page
+    // Navigate to the note list page
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -191,13 +191,13 @@ describe('BlockListPage', () => {
       expect(screen.getByText('new-document')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Find the link to the document by selecting all links and finding the one with the title
+    // Find the link to the note by selecting all links and finding the one with the title
     const links = screen.getAllByRole('link')
-    const documentLink = links.find(link => link.textContent?.includes('New Document'))
-    expect(documentLink).toBeInTheDocument()
+    const noteLink = links.find(link => link.textContent?.includes('New Document'))
+    expect(noteLink).toBeInTheDocument()
     
     // Check the href attribute - it should NOT contain a double hash (/#/)
-    const href = documentLink?.getAttribute('href') || ''
+    const href = noteLink?.getAttribute('href') || ''
     
     // The bug: href will contain /#/ which causes double hash navigation
     // For example: #/pk/{prefix}/#/pk/{prefix}/{slug}
@@ -209,7 +209,7 @@ describe('BlockListPage', () => {
     expect(href).toBe(`/pk/${base64Part}/new-document`)
   })
 
-  it('should render document content when navigating to document view page', async () => {
+  it('should render note content when navigating to note view page', async () => {
     // Create a test client with a stream
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -217,11 +217,11 @@ describe('BlockListPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create a test document with unique content
-    const content = '# Test Document\n\nThis is the document content that should be visible after navigation.'
-    await saveBlock(stream, content)
+    // Create a test note with unique content
+    const content = '# Test Document\n\nThis is the note content that should be visible after navigation.'
+    await saveNote(stream, content)
     
-    // First, verify the link exists on the block list page
+    // First, verify the link exists on the note list page
     const listRouter = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
     })
@@ -232,26 +232,26 @@ describe('BlockListPage', () => {
       </WithProviders>
     )
     
-    // Wait for the block list page to load
+    // Wait for the note list page to load
     await waitFor(() => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
       expect(screen.getByText('test-document')).toBeInTheDocument()
     }, { timeout: 3000 })
     
-    // Find the link to the document
+    // Find the link to the note
     const links = screen.getAllByRole('link')
-    const documentLink = links.find(link => link.textContent?.includes('Test Document'))
-    expect(documentLink).toBeInTheDocument()
+    const noteLink = links.find(link => link.textContent?.includes('Test Document'))
+    expect(noteLink).toBeInTheDocument()
     
     // Verify the link has the correct href (without double hash)
-    const href = documentLink?.getAttribute('href') || ''
+    const href = noteLink?.getAttribute('href') || ''
     expect(href).toBe(`/pk/${base64Part}/test-document`)
     
     // Clean up the first render
     unmount()
     
-    // Now render the BlockViewPage directly to verify navigation would work
-    // This tests that the page renders correctly with the document content
+    // Now render the NoteViewPage directly to verify navigation would work
+    // This tests that the page renders correctly with the note content
     const viewRouter = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/test-document`]
     })
@@ -262,14 +262,14 @@ describe('BlockListPage', () => {
       </WithProviders>
     )
     
-    // Wait for the document view page to load and display the content
+    // Wait for the note view page to load and display the content
     await waitFor(() => {
       // There are multiple "Test Document" h1 elements (header and content), use getAllByText
       const headings = screen.getAllByText('Test Document')
       expect(headings.length).toBeGreaterThan(0)
       
       // Content is in HTML rendered by micromark, use a flexible matcher
-      expect(screen.getByText(/This is the document content that should be visible after navigation/)).toBeInTheDocument()
+      expect(screen.getByText(/This is the note content that should be visible after navigation/)).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 
@@ -277,8 +277,8 @@ describe('BlockListPage', () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
     
-    // Create a test block so the page loads
-    await saveBlock(stream, '# Test\n\nContent.')
+    // Create a test note so the page loads
+    await saveNote(stream, '# Test\n\nContent.')
     
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/`]
@@ -290,7 +290,7 @@ describe('BlockListPage', () => {
       </WithProviders>
     )
     
-    // Wait for page to fully load (not just the loading spinner which says "Loading documents...")
+    // Wait for page to fully load (not just the loading spinner which says "Loading notes...")
     // The header button "Search" only appears once loading is complete.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Search/i })).toBeInTheDocument()

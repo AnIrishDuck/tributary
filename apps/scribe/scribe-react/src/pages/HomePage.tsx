@@ -1,22 +1,22 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon, ShareIcon } from '@heroicons/react/24/outline'
-import { getStreams, StreamInfo } from '../actions/getStreams'
+import { getLibraries, LibraryInfo } from '../actions/getLibraries'
 import { getHomeCollections } from '../actions/getHomeCollections'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
-  const { syncStatus, setFocusedStream } = useSyncStatus()
-  const [streams, setStreams] = useState<StreamInfo[] | null>(null)
+  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
-  const [copiedStreamId, setCopiedStreamId] = useState<string | null>(null)
+  const [copiedLibraryId, setCopiedLibraryId] = useState<string | null>(null)
 
-  // Clear focused stream so all streams sync on the home page
+  // Clear focused library so all libraries sync on the home page
   useEffect(() => {
-    setFocusedStream(null)
-  }, [setFocusedStream])
+    setFocusedLibrary(null)
+  }, [setFocusedLibrary])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -24,10 +24,10 @@ const HomePage: React.FC = () => {
         try {
           const collections = await getHomeCollections(client)
           if (collections !== null) {
-            setStreams(collections)
+            setLibraries(collections)
           } else {
-            const streamIds = await getStreams(client)
-            setStreams(streamIds)
+            const libraryList = await getLibraries(client)
+            setLibraries(libraryList)
           }
         } catch (error) {
           console.error('Failed to fetch home data:', error)
@@ -50,34 +50,34 @@ const HomePage: React.FC = () => {
     try {
       const writeKey = await client.getWriteKey(streamId)
       if (!writeKey) {
-        console.error('No write key found for stream')
+        console.error('No write key found for library')
         return
       }
       const url = `${window.location.origin}${window.location.pathname}#/import/write/${writeKey}`
       await navigator.clipboard.writeText(url)
-      setCopiedStreamId(streamId)
-      setTimeout(() => setCopiedStreamId(null), 2000)
+      setCopiedLibraryId(streamId)
+      setTimeout(() => setCopiedLibraryId(null), 2000)
     } catch (err) {
       console.error('Failed to copy share link:', err)
     }
   }
 
-  const hasItems = streams !== null && streams.length > 0
-  const itemCount = streams?.length ?? 0
-  const itemLabel = itemCount === 1 ? 'stream' : 'streams'
+  const hasItems = libraries !== null && libraries.length > 0
+  const itemCount = libraries?.length ?? 0
+  const itemLabel = itemCount === 1 ? 'library' : 'libraries'
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {loading ? (
           <div className="text-center py-8">
-            <p className="text-gray-500">Loading your streams...</p>
+            <p className="text-gray-500">Loading your libraries...</p>
           </div>
         ) : hasItems ? (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-gray-900">Your Streams</h3>
+                <h3 className="text-xl font-semibold text-gray-900">Your Libraries</h3>
                 <p className="mt-2 text-gray-600">
                   You have {itemCount} {itemLabel} available.
                 </p>
@@ -86,14 +86,14 @@ const HomePage: React.FC = () => {
                 <Link
                   to="/new"
                   className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
-                  aria-label="Create new stream"
+                  aria-label="Create new library"
                 >
                   <PlusIcon className="h-6 w-6" />
                 </Link>
                 <Link
                   to="/import"
                   className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
-                  aria-label="Import existing stream"
+                  aria-label="Import existing library"
                 >
                   <ArrowDownIcon className="h-6 w-6" />
                 </Link>
@@ -101,24 +101,24 @@ const HomePage: React.FC = () => {
             </div>
             <div className="px-8 py-6 bg-gray-50">
               <div className="space-y-3">
-                {streams!.map((stream) => {
-                    const displayName = stream.rootCollectionTitle || 'Notes'
-                    const displayId = `pk/${stream.streamId.substring(0, 16)}...`
-                    const lastEditedText = stream.lastEdited
-                      ? new Date(stream.lastEdited).toLocaleDateString('en-US', {
+                {libraries!.map((library) => {
+                    const displayName = library.libraryTitle || 'Notes'
+                    const displayId = `pk/${library.libraryId.substring(0, 16)}...`
+                    const lastEditedText = library.lastEdited
+                      ? new Date(library.lastEdited).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
                         })
                       : 'No edits yet'
 
-                    const streamSyncStatus = syncStatus[stream.streamId]
-                    const showProgress = streamSyncStatus && !streamSyncStatus.synced
+                    const librarySyncStatus = syncStatus[library.libraryId]
+                    const showProgress = librarySyncStatus && !librarySyncStatus.synced
 
                     return (
                       <Link
-                        key={stream.streamId}
-                        to={`/pk/${stream.streamId}/`}
+                        key={library.libraryId}
+                        to={`/pk/${library.libraryId}/`}
                         className="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 group"
                       >
                         <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-purple-100 text-purple-600 group-hover:bg-purple-200">
@@ -134,18 +134,18 @@ const HomePage: React.FC = () => {
                             <p className="text-sm text-gray-500">{lastEditedText}</p>
                             {showProgress && (
                               <span className="text-xs text-blue-600 font-medium">
-                                Syncing {streamSyncStatus.currentIndex}/{streamSyncStatus.finalIndex}
+                                Syncing {librarySyncStatus.currentIndex}/{librarySyncStatus.finalIndex}
                               </span>
                             )}
                           </div>
                         </div>
                         <button
-                          onClick={(e) => handleShare(e, stream.streamId)}
+                          onClick={(e) => handleShare(e, library.libraryId)}
                           className="flex-shrink-0 mr-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          aria-label="Share stream"
+                          aria-label="Share library"
                           title="Copy share link"
                         >
-                          {copiedStreamId === stream.streamId ? (
+                          {copiedLibraryId === library.libraryId ? (
                             <span className="text-xs font-medium text-green-600">Copied!</span>
                           ) : (
                             <ShareIcon className="h-4 w-4" />
@@ -163,12 +163,12 @@ const HomePage: React.FC = () => {
             </div>
           </div>
         ) : (
-          // No streams - show empty state
+          // No libraries - show empty state
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16 text-center">
-              <h3 className="text-2xl font-semibold text-gray-900">No streams yet</h3>
+              <h3 className="text-2xl font-semibold text-gray-900">No libraries yet</h3>
               <p className="mt-2 text-gray-600">
-                Create a new encrypted document stream or import an existing one to begin managing your secure documents.
+                Create a new encrypted library or import an existing one to begin managing your secure notes.
               </p>
               <div className="mt-8 flex justify-center gap-4">
                 <Link
@@ -176,14 +176,14 @@ const HomePage: React.FC = () => {
                   className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
                   <PlusIcon className="h-5 w-5 mr-2" />
-                  Create New Stream
+                  Create New Library
                 </Link>
                 <Link
                   to="/import"
                   className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
                 >
                   <ArrowDownIcon className="h-5 w-5 mr-2" />
-                  Import Existing Stream
+                  Import Existing Library
                 </Link>
               </div>
             </div>

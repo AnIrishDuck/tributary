@@ -10,7 +10,7 @@ const Layout: React.FC = () => {
   const syncContext = useSyncStatusOptional()
   const globalSyncStatus = syncContext?.globalSyncStatus
 
-  // Extract prefix from current path if in stream context
+  // Extract prefix from current path if in library context
   const prefixMatch = location.pathname.match(/^\/pk\/([^/]+)/)
   const prefix = prefixMatch ? prefixMatch[1] : null
 

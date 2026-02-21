@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, Link, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { importStream } from '../actions/importStream'
+import { importLibrary } from '../actions/importLibrary'
 import { ShieldCheckIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 
 const GrantWriteAccessPage: React.FC = () => {
@@ -21,8 +21,8 @@ const GrantWriteAccessPage: React.FC = () => {
 
     const importKey = async () => {
       try {
-        // Import the stream using the provided key
-        const { prefix: newPrefix } = await importStream(client, encodedPrivateKey)
+        // Import the library using the provided key
+        const { prefix: newPrefix } = await importLibrary(client, encodedPrivateKey)
         
         // Set success and prepare to redirect
         setStatus('success')
@@ -32,9 +32,9 @@ const GrantWriteAccessPage: React.FC = () => {
           navigate(`/${newPrefix}/`)
         }, 1500)
       } catch (err) {
-        console.error('Error importing stream:', err)
+        console.error('Error importing library:', err)
         setStatus('error')
-        setErrorMessage((err as Error).message || 'Failed to import stream')
+        setErrorMessage((err as Error).message || 'Failed to import library')
       }
     }
 
@@ -54,7 +54,7 @@ const GrantWriteAccessPage: React.FC = () => {
                   <ShieldCheckIcon className="w-10 h-10 text-blue-600" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900 mb-3">Processing...</h2>
-                <p className="text-gray-600 mb-6">Granting write access to the stream</p>
+                <p className="text-gray-600 mb-6">Granting write access to the library</p>
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
                 <p className="text-sm text-gray-500">Please wait while we process your request</p>
               </>
@@ -68,10 +68,10 @@ const GrantWriteAccessPage: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-900 mb-3">Access Granted!</h2>
                 <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
                   <p className="text-green-800 text-sm">
-                    Write access has been saved to your local keyring. You can now write to this stream.
+                    Write access has been saved to your local keyring. You can now write to this library.
                   </p>
                 </div>
-                <p className="text-gray-600 mb-6">Redirecting you to the document collection...</p>
+                <p className="text-gray-600 mb-6">Redirecting you to the note collection...</p>
                 <div className="inline-flex items-center text-blue-600 text-sm font-medium animate-pulse">
                   <span>Redirecting...</span>
                   <ArrowRightIcon className="w-4 h-4 ml-1.5" />

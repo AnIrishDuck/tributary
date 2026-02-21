@@ -4,16 +4,16 @@ import { BlockUuid, VersionUuid } from '../src/types.js'
 import { up, down } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
 import { 
-  createBlock, 
-  createBlockVersion, 
-  getBlockByUuid, 
-  getBlockVersions, 
-  getLatestBlockVersion,
-  getBlockCount
-} from '../src/block.js'
+  createNote, 
+  createNoteVersion, 
+  getNoteByUuid, 
+  getNoteVersions, 
+  getLatestNoteVersion,
+  getNoteCount
+} from '../src/note.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
-describe('Block Operations', () => {
+describe('Note Operations', () => {
   let syncedDb: TributaryStream
   let localDb: TributaryLocal
   let cleanup: () => Promise<void>
@@ -38,57 +38,57 @@ describe('Block Operations', () => {
     }
   })
 
-  test('should create a new block with auto-generated UUIDs', async () => {
-    const blockData = {
+  test('should create a new note with auto-generated UUIDs', async () => {
+    const noteData = {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document.',
       inserter: 'test-user'
     }
     
-    const createdBlock = await createBlock(syncedDb, blockData)
+    const createdNote = await createNote(syncedDb, noteData)
     
-    expect(createdBlock).toBeDefined()
-    expect(createdBlock.block_uuid).toBeDefined()
-    expect(createdBlock.version_uuid).toBeDefined()
-    expect(createdBlock.block_type).toBe(blockData.block_type)
-    expect(createdBlock.body).toBe(blockData.body)
-    expect(createdBlock.inserter).toBe(blockData.inserter)
-    expect(createdBlock.prior_version_uuid).toBeNull()
-    expect(createdBlock.insert_datetime).toBeDefined()
+    expect(createdNote).toBeDefined()
+    expect(createdNote.block_uuid).toBeDefined()
+    expect(createdNote.version_uuid).toBeDefined()
+    expect(createdNote.block_type).toBe(noteData.block_type)
+    expect(createdNote.body).toBe(noteData.body)
+    expect(createdNote.inserter).toBe(noteData.inserter)
+    expect(createdNote.prior_version_uuid).toBeNull()
+    expect(createdNote.insert_datetime).toBeDefined()
   })
 
-  test('should create a new block with specified UUIDs', async () => {
+  test('should create a new note with specified UUIDs', async () => {
     const blockUuid = uuidv4() as BlockUuid
     
-    const blockData = {
+    const noteData = {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document.',
       inserter: 'test-user'
     }
     
-    const createdBlock = await createBlock(syncedDb, blockData)
+    const createdNote = await createNote(syncedDb, noteData)
     
-    expect(createdBlock).toBeDefined()
-    expect(createdBlock.block_uuid).toBe(blockUuid)
-    expect(createdBlock.version_uuid).toBeDefined()
-    expect(createdBlock.block_type).toBe(blockData.block_type)
-    expect(createdBlock.body).toBe(blockData.body)
-    expect(createdBlock.inserter).toBe(blockData.inserter)
-    expect(createdBlock.prior_version_uuid).toBeNull()
+    expect(createdNote).toBeDefined()
+    expect(createdNote.block_uuid).toBe(blockUuid)
+    expect(createdNote.version_uuid).toBeDefined()
+    expect(createdNote.block_type).toBe(noteData.block_type)
+    expect(createdNote.body).toBe(noteData.body)
+    expect(createdNote.inserter).toBe(noteData.inserter)
+    expect(createdNote.prior_version_uuid).toBeNull()
   })
 
-  test('should create a new version of an existing block', async () => {
-    // First create an initial block
+  test('should create a new version of an existing note', async () => {
+    // First create an initial note
     const blockUuid = uuidv4() as BlockUuid
-    const initialBlockData = {
+    const initialNoteData = {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Initial Version\n\nThis is the first version.',
       inserter: 'test-user'
     }
     
-    const initialBlock = await createBlock(syncedDb, initialBlockData)
+    const initialNote = await createNote(syncedDb, initialNoteData)
     
     // Now create a new version
     const newVersionData = {
@@ -97,38 +97,38 @@ describe('Block Operations', () => {
       inserter: 'test-user'
     }
     
-    const newVersion = await createBlockVersion(syncedDb, blockUuid, newVersionData)
+    const newVersion = await createNoteVersion(syncedDb, blockUuid, newVersionData)
     
     expect(newVersion).toBeDefined()
     expect(newVersion.block_uuid).toBe(blockUuid)
-    expect(newVersion.version_uuid).not.toBe(initialBlock.version_uuid)
-    expect(newVersion.prior_version_uuid).toBe(initialBlock.version_uuid)
+    expect(newVersion.version_uuid).not.toBe(initialNote.version_uuid)
+    expect(newVersion.prior_version_uuid).toBe(initialNote.version_uuid)
     expect(newVersion.body).toBe(newVersionData.body)
   })
 
-  test('should retrieve a block by UUID', async () => {
-    // Create a block
-    const blockData = {
+  test('should retrieve a note by UUID', async () => {
+    // Create a note
+    const noteData = {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document.',
       inserter: 'test-user'
     }
     
-    const createdBlock = await createBlock(syncedDb, blockData)
+    const createdNote = await createNote(syncedDb, noteData)
     
-    // Retrieve the block
-    const retrievedBlock = await getBlockByUuid(syncedDb, createdBlock.block_uuid)
+    // Retrieve the note
+    const retrievedNote = await getNoteByUuid(syncedDb, createdNote.block_uuid)
     
-    expect(retrievedBlock).toBeDefined()
-    expect(retrievedBlock?.block_uuid).toBe(createdBlock.block_uuid)
-    expect(retrievedBlock?.body).toBe(createdBlock.body)
+    expect(retrievedNote).toBeDefined()
+    expect(retrievedNote?.block_uuid).toBe(createdNote.block_uuid)
+    expect(retrievedNote?.body).toBe(createdNote.body)
   })
 
   test('should retrieve the latest version when multiple versions exist', async () => {
     const blockUuid = uuidv4() as BlockUuid
     
     // Create first version
-    const version1 = await createBlock(syncedDb, {
+    const version1 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 1\n\nFirst version.',
@@ -136,7 +136,7 @@ describe('Block Operations', () => {
     })
     
     // Create second version
-    const version2 = await createBlock(syncedDb, {
+    const version2 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 2\n\nSecond version.',
@@ -144,27 +144,27 @@ describe('Block Operations', () => {
       prior_version_uuid: version1.version_uuid
     })
     
-    // Retrieve the block by UUID (should get latest version)
-    const retrievedBlock = await getBlockByUuid(syncedDb, blockUuid)
+    // Retrieve the note by UUID (should get latest version)
+    const retrievedNote = await getNoteByUuid(syncedDb, blockUuid)
     
-    expect(retrievedBlock).toBeDefined()
-    expect(retrievedBlock?.version_uuid).toBe(version2.version_uuid)
-    expect(retrievedBlock?.body).toBe(version2.body)
+    expect(retrievedNote).toBeDefined()
+    expect(retrievedNote?.version_uuid).toBe(version2.version_uuid)
+    expect(retrievedNote?.body).toBe(version2.body)
   })
 
-  test('should return null when retrieving non-existent block', async () => {
+  test('should return null when retrieving non-existent note', async () => {
     const nonExistentUuid = uuidv4() as BlockUuid
     
-    const retrievedBlock = await getBlockByUuid(syncedDb, nonExistentUuid)
+    const retrievedNote = await getNoteByUuid(syncedDb, nonExistentUuid)
     
-    expect(retrievedBlock).toBeNull()
+    expect(retrievedNote).toBeNull()
   })
 
-  test('should retrieve all versions of a block', async () => {
+  test('should retrieve all versions of a note', async () => {
     const blockUuid = uuidv4() as BlockUuid
     
     // Create first version
-    const version1 = await createBlock(syncedDb, {
+    const version1 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 1\n\nFirst version.',
@@ -172,7 +172,7 @@ describe('Block Operations', () => {
     })
     
     // Create second version
-    const version2 = await createBlock(syncedDb, {
+    const version2 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 2\n\nSecond version.',
@@ -181,18 +181,18 @@ describe('Block Operations', () => {
     })
     
     // Retrieve all versions
-    const versions = await getBlockVersions(syncedDb, blockUuid)
+    const versions = await getNoteVersions(syncedDb, blockUuid)
     
     expect(versions).toHaveLength(2)
     expect(versions[0].version_uuid).toBe(version1.version_uuid)
     expect(versions[1].version_uuid).toBe(version2.version_uuid)
   })
 
-  test('should retrieve latest version of a block', async () => {
+  test('should retrieve latest version of a note', async () => {
     const blockUuid = uuidv4() as BlockUuid
     
     // Create first version
-    const version1 = await createBlock(syncedDb, {
+    const version1 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 1\n\nFirst version.',
@@ -200,7 +200,7 @@ describe('Block Operations', () => {
     })
     
     // Create second version
-    const version2 = await createBlock(syncedDb, {
+    const version2 = await createNote(syncedDb, {
       block_uuid: blockUuid,
       block_type: 'scribe/markdown',
       body: '# Version 2\n\nSecond version.',
@@ -209,54 +209,54 @@ describe('Block Operations', () => {
     })
     
     // Retrieve latest version
-    const latestVersion = await getLatestBlockVersion(syncedDb, blockUuid)
+    const latestVersion = await getLatestNoteVersion(syncedDb, blockUuid)
     
     expect(latestVersion).toBeDefined()
     expect(latestVersion?.version_uuid).toBe(version2.version_uuid)
     expect(latestVersion?.body).toBe(version2.body)
   })
 
-  test('should return null when retrieving latest version of non-existent block', async () => {
+  test('should return null when retrieving latest version of non-existent note', async () => {
     const nonExistentUuid = uuidv4() as BlockUuid
     
-    const latestVersion = await getLatestBlockVersion(syncedDb, nonExistentUuid)
+    const latestVersion = await getLatestNoteVersion(syncedDb, nonExistentUuid)
     
     expect(latestVersion).toBeNull()
   })
 
-  test('should count blocks correctly', async () => {
-    // Initially should be 0 blocks
-    let count = await getBlockCount(syncedDb)
+  test('should count notes correctly', async () => {
+    // Initially should be 0 notes
+    let count = await getNoteCount(syncedDb)
     expect(count).toBe(0)
 
-    // Create first block
-    const block1 = await createBlock(syncedDb, {
+    // Create first note
+    const note1 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
-      body: '# Block 1\n\nFirst block.',
+      body: '# Note 1\n\nFirst note.',
       inserter: 'test-user'
     })
     
-    count = await getBlockCount(syncedDb)
+    count = await getNoteCount(syncedDb)
     expect(count).toBe(1)
 
-    // Create second block
-    const block2 = await createBlock(syncedDb, {
+    // Create second note
+    const note2 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
-      body: '# Block 2\n\nSecond block.',
+      body: '# Note 2\n\nSecond note.',
       inserter: 'test-user'
     })
     
-    count = await getBlockCount(syncedDb)
+    count = await getNoteCount(syncedDb)
     expect(count).toBe(2)
 
-    // Create a new version of the first block (should still be 2 total blocks)
-    const version2 = await createBlockVersion(syncedDb, block1.block_uuid, {
+    // Create a new version of the first note (should still be 2 total notes)
+    const version2 = await createNoteVersion(syncedDb, note1.block_uuid, {
       block_type: 'scribe/markdown',
-      body: '# Block 1 Updated\n\nFirst block updated.',
+      body: '# Note 1 Updated\n\nFirst note updated.',
       inserter: 'test-user'
     })
     
-    count = await getBlockCount(syncedDb)
-    expect(count).toBe(3) // 2 unique blocks + 1 new version = 3 total rows
+    count = await getNoteCount(syncedDb)
+    expect(count).toBe(3) // 2 unique notes + 1 new version = 3 total rows
   })
 })

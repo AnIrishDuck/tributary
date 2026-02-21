@@ -17,8 +17,8 @@ export interface SyncStatusContextType {
   syncStream: (streamId: string, max?: number) => Promise<void>
   syncAll: (max?: number) => Promise<void>
   isSyncingAny: boolean
-  focusedStreamId: string | null
-  setFocusedStream: (id: string | null) => void
+  focusedLibraryId: string | null
+  setFocusedLibrary: (id: string | null) => void
 }
 
 const SyncStatusContext = createContext<SyncStatusContextType | undefined>(undefined)
@@ -37,13 +37,13 @@ export const SyncStatusProvider: React.FC<{
     lastSyncedAt: null,
     hasError: false,
   })
-  const [focusedStreamId, setFocusedStream] = useState<string | null>(null)
-  const focusedStreamRef = useRef<string | null>(null)
+  const [focusedLibraryId, setFocusedLibrary] = useState<string | null>(null)
+  const focusedLibraryRef = useRef<string | null>(null)
 
   // Keep ref in sync so the async sync loop can read the latest value
   useEffect(() => {
-    focusedStreamRef.current = focusedStreamId
-  }, [focusedStreamId])
+    focusedLibraryRef.current = focusedLibraryId
+  }, [focusedLibraryId])
 
   // Track tab visibility so the sync loop can back off when hidden
   const visibleRef = useRef(!document.hidden)
@@ -66,7 +66,7 @@ export const SyncStatusProvider: React.FC<{
     let isMounted = true
     let isRunning = false // guard against concurrent execution
 
-    // Local mirror of per-stream sync status, updated in the loop and
+    // Local mirror of per-library sync status, updated in the loop and
     // pushed to React state between async yields so the UI can re-render.
     let latestPerStream: Record<string, SyncStatus> = {}
 
@@ -120,7 +120,7 @@ export const SyncStatusProvider: React.FC<{
       setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
       try {
-        // Load all streams into memory
+        // Load all libraries into memory
         const streamIds = await client.list()
         const streams: Array<{ id: string, stream: TributaryStream }> = []
         for (const streamId of streamIds) {
@@ -130,13 +130,13 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) { isRunning = false; return }
 
-        // When a focused stream is set, only sync that stream
-        const focused = focusedStreamRef.current
+        // When a focused library is set, only sync that library
+        const focused = focusedLibraryRef.current
         const streamsToSync = focused
           ? streams.filter(s => s.id === focused)
           : streams
 
-        // Sync each stream in a small batch, updating UI after each
+        // Sync each library in a small batch, updating UI after each
         for (const { id, stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
 
@@ -153,7 +153,7 @@ export const SyncStatusProvider: React.FC<{
               hasError: !!tributaryStatus.error,
             }
           } catch (err) {
-            console.error(`Error syncing stream ${id}:`, err)
+            console.error(`Error syncing library ${id}:`, err)
             latestPerStream[id] = {
               ...latestPerStream[id],
               isSyncing: false,
@@ -165,14 +165,14 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) { isRunning = false; return }
 
-        // Reindex synced streams so documents appear in the UI
+        // Reindex synced libraries so notes appear in the UI
         for (const { stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
           try {
             const localDb = stream.local()
             await indexAll(localDb)
           } catch (error) {
-            console.error('Error reindexing stream:', error)
+            console.error('Error reindexing library:', error)
           }
         }
 
@@ -225,8 +225,8 @@ export const SyncStatusProvider: React.FC<{
     syncStream,
     syncAll,
     isSyncingAny,
-    focusedStreamId,
-    setFocusedStream,
+    focusedLibraryId,
+    setFocusedLibrary,
   }
 
   return (
@@ -258,8 +258,8 @@ export const useSyncStatusOptional = (): SyncStatusContextType | null => {
   return useContext(SyncStatusContext) ?? null
 }
 
-// Helper function to check if a stream is synced
-export const useIsStreamSynced = (streamId: string): boolean => {
+// Helper function to check if a library is synced
+export const useIsLibrarySynced = (streamId: string): boolean => {
   const { syncStatus } = useSyncStatus()
   return syncStatus[streamId]?.synced ?? false
 }

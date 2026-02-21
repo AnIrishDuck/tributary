@@ -1,10 +1,10 @@
 import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client';
 import { 
-  getAllBlockSlugs, 
-  getBlocksByTag, 
+  getAllNoteSlugs, 
+  getNotesByTag, 
   getAllTags,
-  getAuthoritativeVersionByBlockUuid,
-  getBlockBySlug,
+  getAuthoritativeVersionByNoteUuid,
+  getNoteBySlug,
   extractTitleFromMarkdown,
   titleToSlug,
   extractTagsFromMarkdown,
@@ -65,7 +65,7 @@ export async function validateDirectoryStructure(directory: string): Promise<voi
 }
 
 /**
- * Sync documents between local directory and Tributary Scribe collection
+ * Sync notes between local directory and Tributary Scribe library
  * 
  * This function:
  * 1. Validates the local directory structure
@@ -107,7 +107,7 @@ export async function sync(
   // 2. Read local files and update database
   await syncLocalFilesToDatabase(stream, localDb, path.join(directory, 'slugs'), { dryRun });
   
-  // 3. Re-index any newly added/updated blocks
+  // 3. Re-index any newly added/updated notes
   const reindexResult = await indexSlugs(localDb, { limit });
   console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
   if (reindexResult.hasMore) {
@@ -155,7 +155,7 @@ async function syncSlugsDirectory(
   const { dryRun = false } = options;
   
   // Get all current slugs from the database
-  const blockSlugs = await getAllBlockSlugs(localDb);
+  const noteSlugs = await getAllNoteSlugs(localDb);
   
   // Get all current files in the slugs directory
   const existingFiles = fs.existsSync(slugsDir) 
@@ -170,30 +170,30 @@ async function syncSlugsDirectory(
     slugToFileMap.set(slug, file);
   }
   
-  // Process each block slug
-  for (const blockSlug of blockSlugs) {
-    const slug = (blockSlug as any).slug;
-    const blockUuid = (blockSlug as any).block_uuid;
+  // Process each note slug
+  for (const noteSlug of noteSlugs) {
+    const slug = (noteSlug as any).slug;
+    const noteUuid = (noteSlug as any).block_uuid;
     
-    // Get the authoritative version of the block
-    const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockUuid);
+    // Get the authoritative version of the note
+    const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteUuid);
     if (!authoritativeVersion) {
-      console.warn(`No authoritative version found for block ${blockUuid}`);
+      console.warn(`No authoritative version found for note ${noteUuid}`);
       continue;
     }
     
-    // Get the block content
-    const blockResult = await stream.query(
+    // Get the note content
+    const noteResult = await stream.query(
       `SELECT * FROM block WHERE version_uuid = $1`,
       [(authoritativeVersion as any).version_uuid]
     );
     
-    if (!blockResult.rows || blockResult.rows.length === 0) {
-      console.warn(`Block not found for version ${(authoritativeVersion as any).version_uuid}`);
+    if (!noteResult.rows || noteResult.rows.length === 0) {
+      console.warn(`Note not found for version ${(authoritativeVersion as any).version_uuid}`);
       continue;
     }
     
-    const block = blockResult.rows[0] as any;
+    const note = noteResult.rows[0] as any;
     
     // Determine the correct filename based on the slug
     const expectedFilename = `${slug}.md`;
@@ -207,16 +207,16 @@ async function syncSlugsDirectory(
         if (!dryRun) {
           await fs.promises.writeFile(
             path.join(slugsDir, expectedFilename),
-            block.body,
+            note.body,
             'utf8'
           );
           
-          // Update file timestamps to match block datetime
-          const blockDate = new Date(block.insert_datetime);
+          // Update file timestamps to match note datetime
+          const noteDate = new Date(note.insert_datetime);
           await fs.promises.utimes(
             path.join(slugsDir, expectedFilename),
-            blockDate,
-            blockDate
+            noteDate,
+            noteDate
           );
         }
       } else {
@@ -225,28 +225,28 @@ async function syncSlugsDirectory(
           const oldPath = path.join(slugsDir, existingFile);
           const newPath = path.join(slugsDir, expectedFilename);
           await fs.promises.rename(oldPath, newPath);
-          await fs.promises.writeFile(newPath, block.body, 'utf8');
+          await fs.promises.writeFile(newPath, note.body, 'utf8');
           
           // Update file timestamps
-          const blockDate = new Date(block.insert_datetime);
-          await fs.promises.utimes(newPath, blockDate, blockDate);
+          const noteDate = new Date(note.insert_datetime);
+          await fs.promises.utimes(newPath, noteDate, noteDate);
         }
       }
     } else {
       // Create new file for this slug
       if (!dryRun) {
         const filePath = path.join(slugsDir, expectedFilename);
-        await fs.promises.writeFile(filePath, block.body, 'utf8');
+        await fs.promises.writeFile(filePath, note.body, 'utf8');
         
-        // Update file timestamps to match block datetime
-        const blockDate = new Date(block.insert_datetime);
-        await fs.promises.utimes(filePath, blockDate, blockDate);
+        // Update file timestamps to match note datetime
+        const noteDate = new Date(note.insert_datetime);
+        await fs.promises.utimes(filePath, noteDate, noteDate);
       }
     }
   }
   
   // Remove files that no longer correspond to any slug
-  const currentSlugs = new Set(blockSlugs.map((s: any) => s.slug));
+  const currentSlugs = new Set(noteSlugs.map((s: any) => s.slug));
   for (const file of existingFiles) {
     const slug = file.slice(0, -3);
     if (!currentSlugs.has(slug)) {
@@ -278,22 +278,22 @@ async function syncTagIndexFiles(
   
   // Process each tag
   for (const tag of tags) {
-    // Get all blocks with this tag
-    const blocksWithTag = await getBlocksByTag(localDb, tag);
+    // Get all notes with this tag
+    const notesWithTag = await getNotesByTag(localDb, tag);
     
-    // Get slugs for these blocks
+    // Get slugs for these notes
     const slugs = [];
-    for (const blockUuid of blocksWithTag) {
+    for (const noteUuid of notesWithTag) {
       const result = await localDb.query(
         `SELECT slug, title FROM block_slug WHERE block_uuid = $1`,
-        [blockUuid]
+        [noteUuid]
       );
       
       if (result.rows && result.rows.length > 0) {
-        const blockSlug = result.rows[0] as any;
+        const noteSlug = result.rows[0] as any;
         slugs.push({
-          slug: blockSlug.slug,
-          title: blockSlug.title
+          slug: noteSlug.slug,
+          title: noteSlug.title
         });
       }
     }
@@ -301,7 +301,7 @@ async function syncTagIndexFiles(
     // Generate markdown content for the tag index
     let content = `# Tag: ${tag}
 
-Documents tagged with \`#${tag}\`:
+Notes tagged with \`#${tag}\`:
 
 `;
     
@@ -348,15 +348,15 @@ async function syncLinkTargetFiles(
 ): Promise<void> {
   const { dryRun = false } = options;
   
-  // Find slugs that have multiple blocks with the same name
+  // Find slugs that have multiple notes with the same name
   // Group slugs by their base name (without UUID suffix)
   const slugGroups = new Map<string, Array<{ slug: string; title: string; block_uuid: string }>>();
 
-  const allSlugs = await getAllBlockSlugs(localDb);
-  for (const blockSlug of allSlugs) {
-    const bs = blockSlug as any;
+  const allSlugs = await getAllNoteSlugs(localDb);
+  for (const noteSlug of allSlugs) {
+    const ns = noteSlug as any;
     // Extract base name by removing UUID suffix if present
-    let baseName = bs.slug;
+    let baseName = ns.slug;
     if (baseName.includes('-')) {
       const parts = baseName.split('-');
       // If last part looks like a UUID fragment, remove it
@@ -370,9 +370,9 @@ async function syncLinkTargetFiles(
       slugGroups.set(baseName, []);
     }
     slugGroups.get(baseName)!.push({
-      slug: bs.slug,
-      title: bs.title,
-      block_uuid: bs.block_uuid
+      slug: ns.slug,
+      title: ns.title,
+      block_uuid: ns.block_uuid
     });
   }
   
@@ -380,9 +380,9 @@ async function syncLinkTargetFiles(
   for (const [baseName, slugs] of slugGroups.entries()) {
     if (slugs.length > 1) {
       // Generate disambiguation page
-      let content = `# Multiple documents found for: ${baseName}
+      let content = `# Multiple notes found for: ${baseName}
 
-There are multiple documents with similar names. Please select the correct one:
+There are multiple notes with similar names. Please select the correct one:
 
 `;
       
@@ -424,9 +424,9 @@ There are multiple documents with similar names. Please select the correct one:
  * Sync local files from the slugs directory to the database
  * 
  * This function reads markdown files from the slugs directory and:
- * 1. Creates new blocks for files that don't exist in the database
- * 2. Updates existing blocks when file content has changed
- * 3. Handles slug-based matching of files to blocks
+ * 1. Creates new notes for files that don't exist in the database
+ * 2. Updates existing notes when file content has changed
+ * 3. Handles slug-based matching of files to notes
  * 
  * @param stream The TributaryStream instance
  * @param localDb The TributaryLocal instance
@@ -465,33 +465,33 @@ async function syncLocalFilesToDatabase(
     // Extract the slug from the filename (without .md extension)
     const fileSlug = file.slice(0, -3);
     
-    // Try to find an existing block that matches this slug
-    const existingBlockSlug = await getBlockBySlug(localDb, fileSlug);
+    // Try to find an existing note that matches this slug
+    const existingNoteSlug = await getNoteBySlug(localDb, fileSlug);
     
-    if (existingBlockSlug) {
-      const ebs = existingBlockSlug as any;
-      // File corresponds to an existing block, check if content has changed
-      const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, ebs.block_uuid);
+    if (existingNoteSlug) {
+      const ens = existingNoteSlug as any;
+      // File corresponds to an existing note, check if content has changed
+      const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, ens.block_uuid);
       
       if (authoritativeVersion) {
         const av = authoritativeVersion as any;
-        // Get the current version of the block
-        const currentBlockResult = await stream.query(
+        // Get the current version of the note
+        const currentNoteResult = await stream.query(
           `SELECT * FROM block WHERE version_uuid = $1`,
           [av.version_uuid]
         );
         
-        if (currentBlockResult.rows && currentBlockResult.rows.length > 0) {
-          const currentBlock = currentBlockResult.rows[0] as any;
+        if (currentNoteResult.rows && currentNoteResult.rows.length > 0) {
+          const currentNote = currentNoteResult.rows[0] as any;
           
-          if (currentBlock.body !== content) {
+          if (currentNote.body !== content) {
             // Content has changed, create a new version using file's mtime
             if (!dryRun) {
               await stream.exec(
                 `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [
-                  ebs.block_uuid,
+                  ens.block_uuid,
                   'scribe/markdown',
                   uuidv4(),
                   av.version_uuid,
@@ -500,18 +500,18 @@ async function syncLocalFilesToDatabase(
                   content
                 ]
               );
-              console.log(`Updated block ${ebs.block_uuid} with new version`);
+              console.log(`Updated note ${ens.block_uuid} with new version`);
             } else {
-              console.log(`Would update block ${ebs.block_uuid} with new version (dry run)`);
+              console.log(`Would update note ${ens.block_uuid} with new version (dry run)`);
             }
           }
         }
       } else {
         // No authoritative version found, this shouldn't happen
-        console.warn(`Found block slug without authoritative version: ${fileSlug}`);
+        console.warn(`Found note slug without authoritative version: ${fileSlug}`);
       }
     } else {
-      // File doesn't correspond to an existing block, create a new block using file's mtime
+      // File doesn't correspond to an existing note, create a new note using file's mtime
       if (!dryRun) {
         await stream.exec(
           `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body) 
@@ -526,9 +526,9 @@ async function syncLocalFilesToDatabase(
             content
           ]
         );
-        console.log(`Created new block for file: ${file}`);
+        console.log(`Created new note for file: ${file}`);
       } else {
-        console.log(`Would create new block for file: ${file} (dry run)`);
+        console.log(`Would create new note for file: ${file} (dry run)`);
       }
     }
   }

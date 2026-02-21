@@ -16,6 +16,6 @@ export const CONFIG = {
   // Database name for IndexedDB persistence
   DB_NAME: 'scribe-db',
 
-  // Application ID for scribe streams
+  // Application ID for scribe libraries
   APP_ID: 'scribe',
 } as const

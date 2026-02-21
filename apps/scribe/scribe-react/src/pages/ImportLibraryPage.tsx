@@ -1,11 +1,11 @@
 import React, { useState, useEffect, FormEvent } from 'react'
 import { useNavigate, Link, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { importStream } from '../actions/importStream'
+import { importLibrary } from '../actions/importLibrary'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 import * as base64url from 'urlsafe-base64'
 
-const ImportStreamPage: React.FC = () => {
+const ImportLibraryPage: React.FC = () => {
   const { writeKey } = useParams<{ writeKey?: string }>()
   const [privateKey, setPrivateKey] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -14,7 +14,7 @@ const ImportStreamPage: React.FC = () => {
   const { client } = useTributary()
   const navigate = useNavigate()
 
-  // If writeKey is in the URL, check if the stream already exists or prepopulate
+  // If writeKey is in the URL, check if the library already exists or prepopulate
   useEffect(() => {
     if (!writeKey || !client) {
       setCheckingExisting(false)
@@ -28,10 +28,10 @@ const ImportStreamPage: React.FC = () => {
         const publicKey = new Uint8Array(decoded.slice(32))
         const publicKeyBase64 = base64url.encode(Buffer.from(publicKey))
 
-        // Check if stream already exists
+        // Check if library already exists
         const existingStreams = await client.list()
         if (existingStreams.includes(publicKeyBase64)) {
-          // Stream already imported, redirect to it
+          // Library already imported, redirect to it
           navigate(`/pk/${publicKeyBase64}/`, { replace: true })
           return
         }
@@ -39,7 +39,7 @@ const ImportStreamPage: React.FC = () => {
         // Not yet imported — prepopulate the form
         setPrivateKey(writeKey)
       } catch (err) {
-        console.error('Error checking existing stream:', err)
+        console.error('Error checking existing library:', err)
         // Still prepopulate so user can try manually
         setPrivateKey(writeKey)
       } finally {
@@ -67,16 +67,16 @@ const ImportStreamPage: React.FC = () => {
     setError(null)
 
     try {
-      // Import the stream using the provided private key
-      const { prefix } = await importStream(client, privateKey.trim())
+      // Import the library using the provided private key
+      const { prefix } = await importLibrary(client, privateKey.trim())
 
-      // Navigate to the stream's home page
+      // Navigate to the library's home page
       setTimeout(() => {
         navigate(`/${prefix}/`)
       }, 0)
     } catch (err) {
-      console.error('Error importing stream:', err)
-      setError(`Failed to import stream: ${(err as Error).message}`)
+      console.error('Error importing library:', err)
+      setError(`Failed to import library: ${(err as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -87,7 +87,7 @@ const ImportStreamPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Checking stream...</p>
+          <p className="text-gray-600">Checking library...</p>
         </div>
       </div>
     )
@@ -99,9 +99,9 @@ const ImportStreamPage: React.FC = () => {
       <div className="bg-white border-b border-gray-200 py-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Import Existing Stream</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Import Existing Library</h1>
             <p className="text-gray-600">
-              Access your encrypted documents using your private key
+              Access your encrypted notes using your private key
             </p>
           </div>
         </div>
@@ -113,9 +113,9 @@ const ImportStreamPage: React.FC = () => {
             {/* Left side - Form */}
             <div className="p-8 lg:p-10">
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-3">Import Stream</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-3">Import Library</h2>
                 <p className="text-gray-600">
-                  Import an existing stream by entering its private key. You can also import a stream via a shared link.
+                  Import an existing library by entering its private key. You can also import a library via a shared link.
                 </p>
               </div>
 
@@ -147,7 +147,7 @@ const ImportStreamPage: React.FC = () => {
                     />
                   </div>
                   <p className="mt-2 text-sm text-gray-500">
-                    This is your private write key for accessing an existing stream
+                    This is your private write key for accessing an existing library
                   </p>
                   {error && (
                     <p className="mt-2 text-sm text-red-600 flex items-center animate-fade-in">
@@ -176,7 +176,7 @@ const ImportStreamPage: React.FC = () => {
                         Importing...
                       </span>
                     ) : (
-                      'Import Stream'
+                      'Import Library'
                     )}
                   </button>
                 </div>
@@ -188,7 +188,7 @@ const ImportStreamPage: React.FC = () => {
                     to="/new"
                     className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
                   >
-                    Or create a new stream
+                    Or create a new library
                   </Link>
                 </p>
               </div>
@@ -199,7 +199,7 @@ const ImportStreamPage: React.FC = () => {
               <h3 className="text-xl font-bold text-gray-900 mb-6">Share Access</h3>
 
               <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
-                <h4 className="font-semibold text-gray-900 mb-3">To share access to your stream, create a link with your write key.</h4>
+                <h4 className="font-semibold text-gray-900 mb-3">To share access to your library, create a link with your write key.</h4>
                 <p className="text-sm text-gray-600 mb-4">
                   Format:
                 </p>
@@ -226,7 +226,7 @@ const ImportStreamPage: React.FC = () => {
                     className="flex items-center p-3 bg-white rounded-lg border border-gray-200 hover:border-green-300 hover:shadow-sm transition-all duration-200 text-gray-700 hover:text-green-600"
                   >
                     <DocumentTextIcon className="w-5 h-5 mr-3" />
-                    <span className="font-medium">Import Another Stream</span>
+                    <span className="font-medium">Import Another Library</span>
                   </Link>
                 </div>
               </div>
@@ -238,4 +238,4 @@ const ImportStreamPage: React.FC = () => {
   )
 }
 
-export default ImportStreamPage
+export default ImportLibraryPage

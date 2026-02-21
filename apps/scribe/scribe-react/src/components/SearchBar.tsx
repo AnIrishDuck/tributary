@@ -30,7 +30,7 @@ interface SearchBarProps {
 
 export const SearchBar: React.FC<SearchBarProps> = ({
   onSearch,
-  placeholder = 'Search documents...',
+  placeholder = 'Search notes...',
   loading = false,
   initialValue = '',
   autoFocus = false
@@ -89,7 +89,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           placeholder={placeholder}
           autoFocus={autoFocus}
           className="block w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-10 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          aria-label="Search documents"
+          aria-label="Search notes"
         />
         
         <div className="absolute inset-y-0 right-0 flex items-center pr-3">

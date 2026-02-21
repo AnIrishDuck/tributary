@@ -1,9 +1,9 @@
 import { TributaryLocal } from 'tributary-client'
-import { Block, BlockSlug, AuthoritativeVersion, BlockTag, PGliteResult, BlockSlugRow } from './types'
+import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
 
 
 // Add proper typing for the query results
-interface UnindexedBlock {
+interface UnindexedNote {
   block_uuid: string;
   version_uuid: string;
   body: string;
@@ -14,7 +14,7 @@ interface ExistingSlugResult {
   block_uuid: string;
 }
 
-interface ExistingBlockResult {
+interface ExistingNoteResult {
   block_uuid: string;
   body: string;
 }
@@ -69,12 +69,12 @@ export function titleToSlug(title: string): string {
  * - Handles titles with UUID-like fragments
  *
  * @param baseSlug The base slug to make unique
- * @param blockUuid The UUID of the current block
+ * @param noteUuid The UUID of the current note
  * @param db Database transaction
  * @returns A unique slug with UUID fragments appended as needed
  */
-export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db: TributaryLocal): Promise<string> {
-  // Find all existing blocks with the exact same base slug
+export async function generateUniqueSlug(baseSlug: string, noteUuid: string, db: TributaryLocal): Promise<string> {
+  // Find all existing notes with the exact same base slug
   const result = await db.query(
     `SELECT block_uuid FROM block_slug WHERE slug = $1`,
     [baseSlug]
@@ -88,17 +88,17 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
   }
 
   // We have conflicts, need to add UUID fragments
-  // According to the spec, when there are conflicts, we need to suffix ALL blocks
+  // According to the spec, when there are conflicts, we need to suffix ALL notes
 
-  // First, check if the current block already has a unique slug with a suffix
+  // First, check if the current note already has a unique slug with a suffix
   // Try with 4-character suffix first
-  const suffix4 = blockUuid.substring(0, 4)
+  const suffix4 = noteUuid.substring(0, 4)
   const slugWith4CharSuffix = `${baseSlug}-${suffix4}`
 
   // Check if this conflicts with any existing slug
   const existingResult = await db.query(
     `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-    [slugWith4CharSuffix, blockUuid]
+    [slugWith4CharSuffix, noteUuid]
   )
 
   const existingSlugWith4Suffix = existingResult.rows && existingResult.rows.length > 0 ? existingResult.rows[0] : null
@@ -111,14 +111,14 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
   // until we get a unique slug
   let fragmentLength = 9  // 8 characters (two 4-char segments) + 1 hyphen
 
-  while (fragmentLength <= blockUuid.length) {
-    const suffix = blockUuid.substring(0, fragmentLength)
+  while (fragmentLength <= noteUuid.length) {
+    const suffix = noteUuid.substring(0, fragmentLength)
     const slugWithSuffix = `${baseSlug}-${suffix}`
 
     // Check if this conflicts with any existing slug
     const existingSuffixResult = await db.query(
       `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-      [slugWithSuffix, blockUuid]
+      [slugWithSuffix, noteUuid]
     )
 
     const existingSlugWithSuffix = existingSuffixResult.rows && existingSuffixResult.rows.length > 0 ? existingSuffixResult.rows[0] : null
@@ -131,13 +131,13 @@ export async function generateUniqueSlug(baseSlug: string, blockUuid: string, db
     fragmentLength += 5  // 4 more chars + 1 hyphen
 
     // Safety check
-    if (fragmentLength > blockUuid.length) {
-      return `${baseSlug}-${blockUuid}`
+    if (fragmentLength > noteUuid.length) {
+      return `${baseSlug}-${noteUuid}`
     }
   }
 
   // Fallback to full UUID
-  return `${baseSlug}-${blockUuid}`
+  return `${baseSlug}-${noteUuid}`
 }
 
 /**
@@ -191,20 +191,20 @@ export interface IndexSlugsResult {
   hasMore: boolean
 
   /**
-   * Block UUIDs that were processed during this indexing run.
+   * Note UUIDs that were processed during this indexing run.
    * Can be passed to indexSearchVectors to avoid a redundant scan.
    */
   indexedBlockUuids: string[]
 }
 
 /**
- * Index slugs and tags for unindexed blocks
+ * Index slugs and tags for unindexed notes
  * 
  * This function:
- * 1. Finds unindexed blocks by comparing the block table with the indexed_block table
- * 2. Determines which blocks are authoritative (latest version)
- * 3. Extracts titles from authoritative blocks and converts them to slugs
- * 4. Extracts tags from authoritative blocks
+ * 1. Finds unindexed notes by comparing the block table with the indexed_block table
+ * 2. Determines which notes are authoritative (latest version)
+ * 3. Extracts titles from authoritative notes and converts them to slugs
+ * 4. Extracts tags from authoritative notes
  * 5. Updates the block_slug and block_tag index tables
  * 
  * @param localDb The TributaryLocal database instance for local operations (index tables)
@@ -217,7 +217,7 @@ export async function indexSlugs(
 ): Promise<IndexSlugsResult> {
   const limit = options.limit ?? 100
 
-  // First, find the latest version of each block using a window function
+  // First, find the latest version of each note using a window function
   const unindexedBlocksResult = await localDb.query(`
     SELECT
       latest_blocks.block_uuid,
@@ -240,10 +240,10 @@ export async function indexSlugs(
     LIMIT $1
   `, [limit])
 
-  const unindexedBlocks: UnindexedBlock[] = (unindexedBlocksResult.rows || []) as UnindexedBlock[]
+  const unindexedNotes: UnindexedNote[] = (unindexedBlocksResult.rows || []) as UnindexedNote[]
 
-  // If no unindexed blocks, return early
-  if (unindexedBlocks.length === 0) {
+  // If no unindexed notes, return early
+  if (unindexedNotes.length === 0) {
     return {
       indexedCount: 0,
       hasMore: false,
@@ -251,27 +251,27 @@ export async function indexSlugs(
     }
   }
 
-  console.log(`indexSlugs: ${unindexedBlocks.length} new/changed authoritative blocks to index`)
+  console.log(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
   const slugStartTime = performance.now()
 
-  // Process all blocks in a single transaction for atomicity and performance
+  // Process all notes in a single transaction for atomicity and performance
   let indexedCount = 0
   const indexedBlockUuids: string[] = []
 
   await localDb.transaction(async (tx: any) => {
-    for (const block of unindexedBlocks) {
-      const title = extractTitleFromMarkdown(block.body)
+    for (const note of unindexedNotes) {
+      const title = extractTitleFromMarkdown(note.body)
       const baseSlug = title ? titleToSlug(title) : null
-      const tags = extractTagsFromMarkdown(block.body)
+      const tags = extractTagsFromMarkdown(note.body)
       const now = new Date().toISOString()
 
-      // Mark the block as indexed
+      // Mark the note as indexed
       await tx.query(
         `INSERT INTO indexed_block (block_uuid, version_uuid, indexed, last_indexed_at)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (block_uuid)
          DO UPDATE SET version_uuid = $2, indexed = $3, last_indexed_at = $4`,
-        [block.block_uuid, block.version_uuid, true, now]
+        [note.block_uuid, note.version_uuid, true, now]
       )
 
       // Update the authoritative version mapping
@@ -280,12 +280,12 @@ export async function indexSlugs(
          VALUES ($1, $2, $3)
          ON CONFLICT (block_uuid)
          DO UPDATE SET version_uuid = $2, indexed_at = $3`,
-        [block.block_uuid, block.version_uuid, now]
+        [note.block_uuid, note.version_uuid, now]
       )
 
       // Handle slug updates
       if (baseSlug && title) {
-        // Check if this base slug already exists for a different block
+        // Check if this base slug already exists for a different note
         const existingSlugResult = await tx.query(
           `SELECT block_uuid FROM block_slug WHERE slug = $1`,
           [baseSlug]
@@ -294,48 +294,48 @@ export async function indexSlugs(
         const existingSlugRow = existingSlugResult.rows && existingSlugResult.rows.length > 0 ? existingSlugResult.rows[0] as ExistingSlugResult : null
         const existingSlug = existingSlugRow ? existingSlugRow : null
 
-        if (existingSlug && existingSlug.block_uuid !== block.block_uuid) {
-          // Conflict detected - update both blocks to have UUID suffixes
-          const existingBlockResult = await tx.query(
+        if (existingSlug && existingSlug.block_uuid !== note.block_uuid) {
+          // Conflict detected - update both notes to have UUID suffixes
+          const existingNoteResult = await tx.query(
             `SELECT block_uuid, body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
             [existingSlug.block_uuid]
           )
 
-          const existingBlockRow = existingBlockResult.rows && existingBlockResult.rows.length > 0 ? existingBlockResult.rows[0] as ExistingBlockResult : null
+          const existingNoteRow = existingNoteResult.rows && existingNoteResult.rows.length > 0 ? existingNoteResult.rows[0] as ExistingNoteResult : null
 
-          if (existingBlockRow) {
-            const existingTitle = extractTitleFromMarkdown(existingBlockRow.body)
+          if (existingNoteRow) {
+            const existingTitle = extractTitleFromMarkdown(existingNoteRow.body)
             const existingBaseSlug = existingTitle ? titleToSlug(existingTitle) : null
 
             if (existingBaseSlug) {
-              const existingBlockSuffix = existingBlockRow.block_uuid.substring(0, 4)
-              const updatedExistingSlug = `${existingBaseSlug}-${existingBlockSuffix}`
+              const existingNoteSuffix = existingNoteRow.block_uuid.substring(0, 4)
+              const updatedExistingSlug = `${existingBaseSlug}-${existingNoteSuffix}`
 
               await tx.query(
                 `UPDATE block_slug SET slug = $1, title = $2, indexed_at = $3 WHERE block_uuid = $4`,
-                [updatedExistingSlug, existingTitle || "Untitled", now, existingBlockRow.block_uuid]
+                [updatedExistingSlug, existingTitle || "Untitled", now, existingNoteRow.block_uuid]
               )
             }
           }
 
-          const currentBlockSuffix = block.block_uuid.substring(0, 4)
-          const finalSlug = `${baseSlug}-${currentBlockSuffix}`
+          const currentNoteSuffix = note.block_uuid.substring(0, 4)
+          const finalSlug = `${baseSlug}-${currentNoteSuffix}`
 
           await tx.query(
             `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (block_uuid)
              DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [block.block_uuid, finalSlug, title, now]
+            [note.block_uuid, finalSlug, title, now]
           )
         } else {
-          // No conflict or updating the same block
+          // No conflict or updating the same note
           await tx.query(
             `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (block_uuid)
              DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [block.block_uuid, baseSlug, title, now]
+            [note.block_uuid, baseSlug, title, now]
           )
         }
 
@@ -343,24 +343,24 @@ export async function indexSlugs(
       } else {
         await tx.query(
           `DELETE FROM block_slug WHERE block_uuid = $1`,
-          [block.block_uuid]
+          [note.block_uuid]
         )
       }
 
       // Handle tag updates
       await tx.query(
         `DELETE FROM block_tag WHERE block_uuid = $1`,
-        [block.block_uuid]
+        [note.block_uuid]
       )
 
       for (const tag of tags) {
         await tx.query(
           `INSERT INTO block_tag (block_uuid, tag, indexed_at) VALUES ($1, $2, $3)`,
-          [block.block_uuid, tag, now]
+          [note.block_uuid, tag, now]
         )
       }
 
-      indexedBlockUuids.push(block.block_uuid)
+      indexedBlockUuids.push(note.block_uuid)
     }
   })
 
@@ -369,34 +369,34 @@ export async function indexSlugs(
 
   return {
     indexedCount,
-    hasMore: unindexedBlocks.length === limit,
+    hasMore: unindexedNotes.length === limit,
     indexedBlockUuids
   }
 }
 
 /**
- * Get all block slugs
+ * Get all note slugs
  * @param db The TributaryLocal database instance
- * @returns Array of block slugs
+ * @returns Array of note slugs
  */
-export async function getAllBlockSlugs(db: TributaryLocal) {
+export async function getAllNoteSlugs(db: TributaryLocal) {
   const result = await db.query(`SELECT * FROM block_slug`, [])
   return result.rows || []
 }
 
 /**
- * Get block slug by block UUID
+ * Get note slug by note UUID
  * @param db The TributaryLocal database instance
- * @param blockUuid The block UUID
- * @returns The block slug or null if not found
+ * @param noteUuid The note UUID
+ * @returns The note slug or null if not found
  */
-export async function getBlockSlugByUuid(
+export async function getNoteSlugByUuid(
   db: TributaryLocal,
-  blockUuid: string
+  noteUuid: string
 ) {
   const result = await db.query(
     `SELECT * FROM block_slug WHERE block_uuid = $1`,
-    [blockUuid]
+    [noteUuid]
   )
   
   if (!result.rows || result.rows.length === 0) {
@@ -407,12 +407,12 @@ export async function getBlockSlugByUuid(
 }
 
 /**
- * Get block slug by slug
+ * Get note slug by slug
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
- * @returns The block slug or null if not found
+ * @returns The note slug or null if not found
  */
-export async function getBlockBySlug(
+export async function getNoteBySlug(
   db: TributaryLocal,
   slug: string
 ) {
@@ -429,18 +429,18 @@ export async function getBlockBySlug(
 }
 
 /**
- * Get authoritative version for a block
+ * Get authoritative version for a note
  * @param db The TributaryLocal database instance
- * @param blockUuid The block UUID
+ * @param noteUuid The note UUID
  * @returns The authoritative version mapping or null if not found
  */
-export async function getAuthoritativeVersionByBlockUuid(
+export async function getAuthoritativeVersionByNoteUuid(
   db: TributaryLocal,
-  blockUuid: string
+  noteUuid: string
 ) {
   const result = await db.query(
     `SELECT * FROM authoritative_version WHERE block_uuid = $1`,
-    [blockUuid]
+    [noteUuid]
   )
   
   if (!result.rows || result.rows.length === 0) {
@@ -461,18 +461,18 @@ export async function getAllAuthoritativeVersions(db: TributaryLocal) {
 }
 
 /**
- * Get all tags for a block
+ * Get all tags for a note
  * @param db The TributaryLocal database instance
- * @param blockUuid The block UUID
- * @returns Array of tags for the block
+ * @param noteUuid The note UUID
+ * @returns Array of tags for the note
  */
-export async function getTagsForBlock(
+export async function getTagsForNote(
   db: TributaryLocal,
-  blockUuid: string
+  noteUuid: string
 ): Promise<string[]> {
   const result = await db.query(
     `SELECT tag FROM block_tag WHERE block_uuid = $1`,
-    [blockUuid]
+    [noteUuid]
   )
   
   // Extract just the tag strings from the database rows
@@ -480,12 +480,12 @@ export async function getTagsForBlock(
 }
 
 /**
- * Get all blocks that have a specific tag
+ * Get all notes that have a specific tag
  * @param db The TributaryLocal database instance
  * @param tag The tag to search for
- * @returns Array of block UUIDs that have this tag
+ * @returns Array of note UUIDs that have this tag
  */
-export async function getBlocksByTag(
+export async function getNotesByTag(
   db: TributaryLocal,
   tag: string
 ): Promise<string[]> {
@@ -514,11 +514,11 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
 }
 
 /**
- * Get all blocks with their titles and slugs
+ * Get all notes with their titles and slugs
  * @param db The TributaryLocal database instance
- * @returns Array of blocks with titles and slugs, sorted by most recently edited first
+ * @returns Array of notes with titles and slugs, sorted by most recently edited first
  */
-export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockSlugRow[]> {
+export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
   const result = await db.query(
     `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, bs.slug, bs.title, bs.indexed_at
      FROM block b
@@ -528,13 +528,13 @@ export async function getAllBlocksWithTitles(db: TributaryLocal): Promise<BlockS
     []
   )
 
-  return (result.rows || []) as BlockSlugRow[]
+  return (result.rows || []) as NoteSlugRow[]
 }
 
 /**
- * Get the last edited time for a stream
+ * Get the last edited time for a library
  * @param db The TributaryLocal database instance
- * @returns ISO string of the most recent block edit time, or null if no blocks exist
+ * @returns ISO string of the most recent note edit time, or null if no notes exist
  */
 export async function getLastEditedTime(db: TributaryLocal): Promise<string | null> {
   const result = await db.query(
@@ -547,7 +547,7 @@ export async function getLastEditedTime(db: TributaryLocal): Promise<string | nu
 }
 
 /**
- * Index all metadata for unindexed blocks
+ * Index all metadata for unindexed notes
  *
  * This is a convenience function that calls both indexSlugs() and indexSearchVectors()
  * to ensure all indexing is performed together.
@@ -566,8 +566,8 @@ export async function indexAll(
   // First index slugs and tags
   const slugResult = await indexSlugs(localDb, options)
 
-  // Then index search vectors only for the blocks that were just processed,
-  // avoiding a redundant full-table scan to find unindexed blocks.
+  // Then index search vectors only for the notes that were just processed,
+  // avoiding a redundant full-table scan to find unindexed notes.
   const searchResult = await indexSearchVectors(localDb, {
     ...options,
     blockUuids: slugResult.indexedBlockUuids

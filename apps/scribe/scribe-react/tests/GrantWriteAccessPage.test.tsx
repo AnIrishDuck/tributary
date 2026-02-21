@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import GrantWriteAccessPage from '../src/pages/GrantWriteAccessPage'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
-import { createBlock } from 'scribe-data/src/block'
+import { createNote } from 'scribe-data/src/note'
 import { up } from 'scribe-data'
 import * as nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
@@ -50,8 +50,8 @@ describe('GrantWriteAccessPage', () => {
   })
 
   // Full end-to-end test for the grant/write access route
-  it('imports a stream via URL parameters and allows access to its blocks', async () => {
-    // STEP 1: Set up a source stream with some blocks
+  it('imports a library via URL parameters and allows access to its notes', async () => {
+    // STEP 1: Set up a source library with some notes
     const { server } = createTestTributaryClient()
 
     // Create a source client with its own database
@@ -69,28 +69,28 @@ describe('GrantWriteAccessPage', () => {
     const sourceStream = await sourceClient.addWriteKey('scribe', privateKey)
     const sourceLocalDb = sourceStream.local()
 
-    // Run migrations and add some test blocks
+    // Run migrations and add some test notes
     await up(sourceStream, sourceLocalDb)
 
-    const testBlockTitle = 'Test Document from Source Stream'
-    await createBlock(sourceStream, {
+    const testNoteTitle = 'Test Document from Source Stream'
+    await createNote(sourceStream, {
       block_type: 'scribe/markdown',
-      body: `# ${testBlockTitle}\n\nThis is a test document created in the source stream.`,
+      body: `# ${testNoteTitle}\n\nThis is a test document created in the source library.`,
       inserter: 'test-user-source'
     })
 
-    // Sync to ensure the blocks are persisted in the server
+    // Sync to ensure the notes are persisted in the server
     await sourceStream.sync(1000)
 
-    // Verify the block exists in the source stream
-    const sourceBlocks = await sourceLocalDb.query('SELECT * FROM block')
-    expect(sourceBlocks.rows.length).toBe(1)
+    // Verify the note exists in the source library
+    const sourceNotes = await sourceLocalDb.query('SELECT * FROM block')
+    expect(sourceNotes.rows.length).toBe(1)
 
     // STEP 2: Create a new client with a different database (representing a new user)
     const pglite2 = new PGlite('memory://')
     const targetClient = new TributaryClient({ server, db: pglite2 })
 
-    // Verify the new client doesn't have the stream yet
+    // Verify the new client doesn't have the library yet
     const initialStreams = await targetClient.list()
     expect(initialStreams.length).toBe(0)
 
@@ -118,14 +118,14 @@ describe('GrantWriteAccessPage', () => {
       vi.advanceTimersByTime(2000)
     })
 
-    // STEP 4: Directly verify the stream was imported
+    // STEP 4: Directly verify the library was imported
     await waitFor(async () => {
       const finalStreams = await targetClient.list()
       expect(finalStreams.length).toBe(1)
       expect(finalStreams[0]).toBe(publicKeyBase64)
     })
 
-    // Get the imported stream and verify it has the block
+    // Get the imported library and verify it has the note
     const importedStream = await targetClient.get('scribe', publicKeyBase64)
     expect(importedStream).toBeDefined()
 
@@ -134,10 +134,10 @@ describe('GrantWriteAccessPage', () => {
       await importedStream.sync(1000)
 
       const importedLocalDb = importedStream.local()
-      const importedBlocks = await importedLocalDb.query('SELECT * FROM block')
+      const importedNotes = await importedLocalDb.query('SELECT * FROM block')
 
-      expect(importedBlocks.rows.length).toBe(1)
-      expect(importedBlocks.rows[0].body).toContain(testBlockTitle)
+      expect(importedNotes.rows.length).toBe(1)
+      expect(importedNotes.rows[0].body).toContain(testNoteTitle)
     }
   }, 10000)
 })

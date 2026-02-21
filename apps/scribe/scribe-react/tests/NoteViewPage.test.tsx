@@ -5,10 +5,10 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { createTestClientWithStream, WithProviders } from './test-utils'
-import { saveBlock } from '../src/actions/saveBlock'
+import { saveNote } from '../src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
-describe('BlockViewPage', () => {
+describe('NoteViewPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -28,12 +28,12 @@ describe('BlockViewPage', () => {
 
     // Should show error state for missing parameters
     await waitFor(() => {
-      expect(screen.getByText(/Failed to load document/)).toBeInTheDocument()
+      expect(screen.getByText(/Failed to load note/)).toBeInTheDocument()
     }, { timeout: 2000 })
   })
 
-  // Test the full workflow: create a block, then view it
-  it('should display a block with rendered HTML content', async () => {
+  // Test the full workflow: create a note, then view it
+  it('should display a note with rendered HTML content', async () => {
     // Create a test client with a stream
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -41,14 +41,14 @@ describe('BlockViewPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create a test block
+    // Create a test note
     const testContent = '# Test Document\n\nThis is a **test** document with some *markdown*.'
-    const { block, blockSlug } = await saveBlock(stream, testContent)
+    const { block, blockSlug } = await saveNote(stream, testContent)
     
     expect(blockSlug).toBeDefined()
     const slug = blockSlug!.slug
     
-    // Now test viewing the block
+    // Now test viewing the note
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/${slug}`]
     })
@@ -83,13 +83,13 @@ describe('BlockViewPage', () => {
     expect(boldElement).toBeInTheDocument()
     expect(boldElement?.textContent).toBe('test')
     
-    // Check for the new document button
+    // Check for the new note button
     expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
   })
 
-  it('should render BlockViewPage at /pk/:prefix/:slug route and load without errors', async () => {
+  it('should render NoteViewPage at /pk/:prefix/:slug route and load without errors', async () => {
     // This test verifies that the route /pk/:prefix/:slug actually renders and works
-    // by creating a stream with a block, then directly rendering the BlockViewPage
+    // by creating a stream with a note, then directly rendering the NoteViewPage
     
     const { client, stream, prefix } = await createTestClientWithStream()
     
@@ -97,14 +97,14 @@ describe('BlockViewPage', () => {
     const parts = prefix.split('/')
     const base64Part = parts[1]
     
-    // Create a test block
+    // Create a test note
     const testContent = '# Test Document\n\nTest content.'
-    const { blockSlug } = await saveBlock(stream, testContent)
+    const { blockSlug } = await saveNote(stream, testContent)
     
     expect(blockSlug).toBeDefined()
     const slug = blockSlug!.slug
     
-    // Create router and render the BlockViewPage at its route
+    // Create router and render the NoteViewPage at its route
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${base64Part}/${slug}`]
     })

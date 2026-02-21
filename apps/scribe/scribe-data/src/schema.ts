@@ -3,16 +3,16 @@
  */
 
 /**
- * Database representation of a block
+ * Database representation of a note
  */
-export interface BlockTable {
+export interface NoteTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
   /**
-   * Type of the block
+   * Type of the note
    */
   block_type: string
 
@@ -37,17 +37,17 @@ export interface BlockTable {
   inserter: string
 
   /**
-   * The content of the block
+   * The content of the note
    */
   body: string
 }
 
 /**
- * Database representation of an indexed block (non-synchronized)
+ * Database representation of an indexed note (non-synchronized)
  */
-export interface IndexedBlockTable {
+export interface IndexedNoteTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
@@ -57,7 +57,7 @@ export interface IndexedBlockTable {
   version_uuid: string
 
   /**
-   * Flag indicating if this block has been indexed
+   * Flag indicating if this note has been indexed
    */
   indexed: boolean
 
@@ -68,21 +68,21 @@ export interface IndexedBlockTable {
 }
 
 /**
- * Database representation of a block slug (non-synchronized)
+ * Database representation of a note slug (non-synchronized)
  */
-export interface BlockSlugTable {
+export interface NoteSlugTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
   /**
-   * The URL-friendly slug derived from the block title
+   * The URL-friendly slug derived from the note title
    */
   slug: string
 
   /**
-   * The original title of the block
+   * The original title of the note
    */
   title: string
 
@@ -94,11 +94,11 @@ export interface BlockSlugTable {
 
 /**
  * Database representation of authoritative versions (non-synchronized)
- * Maps block UUIDs to their authoritative (latest) version UUIDs
+ * Maps note UUIDs to their authoritative (latest) version UUIDs
  */
 export interface AuthoritativeVersionTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
@@ -114,16 +114,16 @@ export interface AuthoritativeVersionTable {
 }
 
 /**
- * Database representation of block tags (non-synchronized)
+ * Database representation of note tags (non-synchronized)
  */
-export interface BlockTagTable {
+export interface NoteTagTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
   /**
-   * The tag extracted from the block
+   * The tag extracted from the note
    */
   tag: string
 
@@ -164,22 +164,22 @@ export interface CollectionTable {
   inserter: string
 
   /**
-   * Base64url-encoded public key of the linked stream (null if not a linked collection)
+   * Base64url-encoded public key of the linked library (null if not a linked collection)
    */
   linked_stream_id: string | null
 
   /**
-   * Base64url-encoded private write key of the linked stream (null if not a linked collection)
+   * Base64url-encoded private write key of the linked library (null if not a linked collection)
    */
   linked_stream_key: string | null
 }
 
 /**
- * Database representation of a block search index (non-synchronized)
+ * Database representation of a note search index (non-synchronized)
  */
-export interface BlockSearchIndexTable {
+export interface NoteSearchIndexTable {
   /**
-   * Unique identifier for the block
+   * Unique identifier for the note
    */
   block_uuid: string
 
@@ -204,19 +204,19 @@ export interface BlockSearchIndexTable {
  */
 export interface ScribeSchema {
   /**
-   * Table containing all block versions
+   * Table containing all note versions
    */
-  block: BlockTable
+  block: NoteTable
 
   /**
-   * Table containing indexing status for blocks (non-synchronized)
+   * Table containing indexing status for notes (non-synchronized)
    */
-  indexed_block: IndexedBlockTable
+  indexed_block: IndexedNoteTable
 
   /**
-   * Table containing block slugs (non-synchronized)
+   * Table containing note slugs (non-synchronized)
    */
-  block_slug: BlockSlugTable
+  block_slug: NoteSlugTable
 
   /**
    * Table containing authoritative version mappings (non-synchronized)
@@ -224,14 +224,14 @@ export interface ScribeSchema {
   authoritative_version: AuthoritativeVersionTable
 
   /**
-   * Table containing block tags (non-synchronized)
+   * Table containing note tags (non-synchronized)
    */
-  block_tag: BlockTagTable
+  block_tag: NoteTagTable
 
   /**
-   * Table containing block search indexes (non-synchronized)
+   * Table containing note search indexes (non-synchronized)
    */
-  block_search_index: BlockSearchIndexTable
+  block_search_index: NoteSearchIndexTable
 
   /**
    * Table containing collections (synchronized via Tributary)

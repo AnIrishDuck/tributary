@@ -1,7 +1,7 @@
 import { TributaryStream } from 'tributary-client'
 import * as scribeData from 'scribe-data'
 
-export async function saveBlock(
+export async function saveNote(
   stream: TributaryStream,
   content: string,
   inserter: string = 'web-ui',
@@ -10,15 +10,15 @@ export async function saveBlock(
   let block: any
   
   if (blockUuid) {
-    // Update existing block by creating a new version
-    block = await scribeData.createBlockVersion(stream, blockUuid, {
+    // Update existing note by creating a new version
+    block = await scribeData.createNoteVersion(stream, blockUuid, {
       block_type: 'scribe/markdown',
       body: content,
       inserter
     })
   } else {
-    // Create a new block using the scribe-data functions
-    block = await scribeData.createBlock(stream, {
+    // Create a new note using the scribe-data functions
+    block = await scribeData.createNote(stream, {
       block_type: 'scribe/markdown',
       body: content,
       inserter
@@ -28,7 +28,7 @@ export async function saveBlock(
   // Sync to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
   const syncStatus = await stream.sync(1000)
-  console.log(`Block saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
+  console.log(`Note saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
   
   // After sync, create a local database and then run indexing on it
   const localDb = stream.local()
@@ -37,9 +37,9 @@ export async function saveBlock(
   const { indexSlugs } = await import('scribe-data')
   await indexSlugs(localDb)
   
-  // Get the slug for this block from the local database
-  const { getBlockSlugByUuid } = await import('scribe-data')
-  const blockSlug = await getBlockSlugByUuid(localDb, block.block_uuid)
+  // Get the slug for this note from the local database
+  const { getNoteSlugByUuid } = await import('scribe-data')
+  const blockSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
   
   return { block, blockSlug }
 }

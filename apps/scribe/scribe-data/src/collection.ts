@@ -1,14 +1,14 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Block, Collection, CollectionSlug, CollectionSlugRow } from './types'
+import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
 
 /**
  * Create a new collection in the database
  *
- * To create the root collection, omit parent_collection_uuid (or pass null).
- * Only one root collection per stream is allowed (enforced by DB constraint).
+ * To create the library, omit parent_collection_uuid (or pass null).
+ * Only one library per library is allowed (enforced by DB constraint).
  *
- * To create a named collection, pass the root collection's UUID as parent_collection_uuid.
+ * To create a named collection, pass the library's UUID as parent_collection_uuid.
  *
  * @param db The TributaryStream database instance
  * @param data The collection data to insert
@@ -78,13 +78,13 @@ export async function getCollectionByUuid(
 }
 
 /**
- * Get the root collection for the stream (parent_collection_uuid IS NULL).
- * Returns null if no root collection has been created yet (implied "Notes").
+ * Get the library (root collection where parent_collection_uuid IS NULL).
+ * Returns null if no library has been created yet (implied "Notes").
  *
  * @param db The TributaryStream or TributaryLocal database instance
- * @returns The root collection or null
+ * @returns The library or null
  */
-export async function getRootCollection(
+export async function getLibrary(
   db: TributaryStream | TributaryLocal
 ): Promise<Collection | null> {
   const result = await db.query(
@@ -100,30 +100,30 @@ export async function getRootCollection(
 }
 
 /**
- * Get the display name for a stream.
- * Returns the root collection title if one exists, otherwise null
+ * Get the display name for a library.
+ * Returns the library title if one exists, otherwise null
  * (callers should treat null as the default name "Notes").
  *
- * Safe to call on streams that haven't been migrated yet (returns null).
+ * Safe to call on libraries that haven't been migrated yet (returns null).
  *
  * @param db The TributaryStream or TributaryLocal database instance
- * @returns The root collection title, or null if no root collection exists
+ * @returns The library title, or null if no library exists
  */
-export async function getStreamDisplayName(
+export async function getLibraryDisplayName(
   db: TributaryStream | TributaryLocal
 ): Promise<string | null> {
   try {
-    const root = await getRootCollection(db)
+    const root = await getLibrary(db)
     return root?.title ?? null
   } catch {
-    // collection table may not exist yet on older streams
+    // collection table may not exist yet on older libraries
     return null
   }
 }
 
 /**
- * Get all named collections (direct children of the root collection).
- * Does not include the root collection itself.
+ * Get all named collections (direct children of the library).
+ * Does not include the library itself.
  *
  * @param db The TributaryStream database instance
  * @returns Array of named collection records, sorted by title
@@ -141,7 +141,7 @@ export async function getAllCollections(
 
 /**
  * Get all named collections with their slugs for listing.
- * Does not include the root collection.
+ * Does not include the library.
  *
  * @param db The TributaryLocal database instance
  * @returns Array of collection slug rows
@@ -185,14 +185,14 @@ export async function getCollectionBySlug(
 }
 
 /**
- * Get all named collections that have a linked stream.
+ * Get all named collections that have a linked library.
  * Returns collections where parent_collection_uuid IS NOT NULL and
  * linked_stream_id IS NOT NULL, sorted by title.
  *
  * @param db The TributaryStream database instance
- * @returns Array of linked collection records, sorted by title
+ * @returns Array of linked library records, sorted by title
  */
-export async function getLinkedCollections(
+export async function getLinkedLibraries(
   db: TributaryStream
 ): Promise<Collection[]> {
   const result = await db.query(
@@ -207,20 +207,20 @@ export async function getLinkedCollections(
 }
 
 /**
- * Get blocks belonging to a specific collection.
- * Pass null for collectionId to get blocks in the root collection
- * (blocks with collection_id IS NULL).
+ * Get notes belonging to a specific collection.
+ * Pass null for collectionId to get notes in the library
+ * (notes with collection_id IS NULL).
  *
- * Returns the latest version of each block.
+ * Returns the latest version of each note.
  *
  * @param db The TributaryStream database instance
- * @param collectionId The collection UUID, or null for root collection blocks
- * @returns Array of blocks in the collection
+ * @param collectionId The collection UUID, or null for library notes
+ * @returns Array of notes in the collection
  */
-export async function getBlocksInCollection(
+export async function getNotesInCollection(
   db: TributaryStream,
   collectionId: string | null
-): Promise<Block[]> {
+): Promise<Note[]> {
   let result
   if (collectionId === null) {
     result = await db.query(
@@ -248,5 +248,5 @@ export async function getBlocksInCollection(
     )
   }
 
-  return (result.rows || []) as Block[]
+  return (result.rows || []) as Note[]
 }

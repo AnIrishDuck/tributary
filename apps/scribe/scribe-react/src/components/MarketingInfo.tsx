@@ -21,11 +21,11 @@ export const MarketingInfo: React.FC = () => {
               <div className="sm:text-center lg:text-left">
                 <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
                   <span className="block xl:inline">Scribe</span>{' '}
-                  <span className="block text-blue-600 xl:inline">Encrypted Document Editor</span>
+                  <span className="block text-blue-600 xl:inline">Encrypted Note Editor</span>
                 </h1>
                 <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
-                  Create and manage your encrypted documents securely with end-to-end encryption. 
-                  Your documents are encrypted locally before being synced, ensuring that the server 
+                  Create and manage your encrypted notes securely with end-to-end encryption.
+                  Your notes are encrypted locally before being synced, ensuring that the server
                   cannot read your content.
                 </p>
                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
@@ -35,7 +35,7 @@ export const MarketingInfo: React.FC = () => {
                       className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <PlusIcon className="w-5 h-5 mr-2" />
-                      Create New Stream
+                      Create New Library
                     </a>
                   </div>
                   <div className="mt-3 sm:mt-0 sm:ml-3">
@@ -44,7 +44,7 @@ export const MarketingInfo: React.FC = () => {
                       className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-blue-700 bg-blue-100 hover:bg-blue-200 md:py-4 md:text-lg transition-all duration-200"
                     >
                       <DocumentTextIcon className="w-5 h-5 mr-2" />
-                      Import Existing Stream
+                      Import Existing Library
                     </a>
                   </div>
                 </div>
@@ -66,7 +66,7 @@ export const MarketingInfo: React.FC = () => {
               Secure. Private. Yours.
             </p>
             <p className="mt-4 max-w-2xl text-xl text-gray-500 lg:mx-auto">
-              Scribe provides enterprise-grade security for your documents while maintaining a simple, intuitive interface.
+              Scribe provides enterprise-grade security for your notes while maintaining a simple, intuitive interface.
             </p>
           </div>
 
@@ -83,7 +83,7 @@ export const MarketingInfo: React.FC = () => {
                 <div className="mt-6 text-center">
                   <h3 className="text-lg leading-6 font-medium text-gray-900">End-to-End Encryption</h3>
                   <p className="mt-2 text-base text-gray-500">
-                    Your documents are encrypted locally before being synced, ensuring that the server cannot read your content.
+                    Your notes are encrypted locally before being synced, ensuring that the server cannot read your content.
                   </p>
                 </div>
               </div>
@@ -115,7 +115,7 @@ export const MarketingInfo: React.FC = () => {
                 <div className="mt-6 text-center">
                   <h3 className="text-lg leading-6 font-medium text-gray-900">Sync Anywhere</h3>
                   <p className="mt-2 text-base text-gray-500">
-                    Access your encrypted documents from any device while maintaining the same level of security.
+                    Access your encrypted notes from any device while maintaining the same level of security.
                   </p>
                 </div>
               </div>

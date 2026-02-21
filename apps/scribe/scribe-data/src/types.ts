@@ -3,9 +3,9 @@
  */
 
 /**
- * Unique identifier for a block (UUID format)
+ * Unique identifier for a note (UUID format)
  */
-export type BlockUuid = string
+export type NoteUuid = string
 
 /**
  * Unique identifier for a version (UUID format)
@@ -13,9 +13,9 @@ export type BlockUuid = string
 export type VersionUuid = string
 
 /**
- * Type of block - currently only scribe/markdown is supported
+ * Type of note - currently only scribe/markdown is supported
  */
-export type BlockType = 'scribe/markdown'
+export type NoteType = 'scribe/markdown'
 
 /**
  * Unique identifier for a collection (UUID format)
@@ -28,9 +28,9 @@ export type CollectionUuid = string
 export type Inserter = string
 
 /**
- * Database representation of a block (with proper types for database storage)
+ * Database representation of a note (with proper types for database storage)
  */
-export interface Block {
+export interface Note {
   block_uuid: string
   block_type: string
   version_uuid: string
@@ -76,9 +76,9 @@ export interface CollectionSlugRow {
 }
 
 /**
- * Database representation of an indexed block (with proper types for database storage)
+ * Database representation of an indexed note (with proper types for database storage)
  */
-export interface IndexedBlock {
+export interface IndexedNote {
   block_uuid: string
   version_uuid: string
   indexed: boolean
@@ -94,9 +94,9 @@ export interface PGliteResult {
 }
 
 /**
- * Type for a block slug database row
+ * Type for a note slug database row
  */
-export interface BlockSlug {
+export interface NoteSlug {
   block_uuid: string;
   slug: string;
   title: string;
@@ -113,74 +113,74 @@ export interface AuthoritativeVersion {
 }
 
 /**
- * Type for a block tag database row
+ * Type for a note tag database row
  */
-export interface BlockTag {
+export interface NoteTag {
   block_uuid: string;
   tag: string;
   indexed_at: string;
 }
 
 /**
- * Database representation of a block slug (with proper types for database storage)
+ * Database representation of a note slug (with proper types for database storage)
  */
-export interface BlockSlugRow {
+export interface NoteSlugRow {
   block_uuid: string
   slug: string
   title: string
   indexed_at: string // ISO string for database storage
-  insert_datetime: string // ISO string - when the block was last edited
+  insert_datetime: string // ISO string - when the note was last edited
   collection_id: string | null
 }
 
 /**
- * Database representation of a block tag (with proper types for database storage)
+ * Database representation of a note tag (with proper types for database storage)
  */
-export interface BlockTagRow {
+export interface NoteTagRow {
   block_uuid: string
   tag: string
   indexed_at: string // ISO string for database storage
 }
 
 /**
- * Type for a block with its authoritative version information
+ * Type for a note with its authoritative version information
  */
-export interface BlockWithVersion extends Block {
+export interface NoteWithVersion extends Note {
   /**
-   * The authoritative version UUID for this block
+   * The authoritative version UUID for this note
    */
   authoritative_version_uuid: VersionUuid
 }
 
 /**
- * Type for a block with its slug
+ * Type for a note with its slug
  */
-export interface BlockWithSlug extends Block {
+export interface NoteWithSlug extends Note {
   /**
-   * The URL-friendly slug for this block
+   * The URL-friendly slug for this note
    */
   slug: string
   
   /**
-   * The title of the block
+   * The title of the note
    */
   title: string
 }
 
 /**
- * Type for a block with its tags
+ * Type for a note with its tags
  */
-export interface BlockWithTags extends Block {
+export interface NoteWithTags extends Note {
   /**
-   * Array of tags for this block
+   * Array of tags for this note
    */
   tags: string[]
 }
 
 /**
- * Type for a complete indexed block with all metadata
+ * Type for a complete indexed note with all metadata
  */
-export interface IndexedBlock extends BlockWithVersion, BlockWithSlug, BlockWithTags {}
+export interface IndexedNote extends NoteWithVersion, NoteWithSlug, NoteWithTags {}
 
 // Re-export search types from search.ts
 export type {

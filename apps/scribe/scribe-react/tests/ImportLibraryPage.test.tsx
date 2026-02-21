@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import ImportStreamPage from '../src/pages/ImportStreamPage'
+import ImportLibraryPage from '../src/pages/ImportLibraryPage'
 import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
 import { MemoryRouter } from 'react-router'
 import * as nacl from 'tweetnacl'
@@ -19,36 +19,36 @@ vi.mock('react-router', async () => {
   }
 })
 
-// Mock the importStream function
-const mockImportStream = vi.fn()
-vi.mock('../src/actions/importStream', () => ({
-  importStream: mockImportStream
+// Mock the importLibrary function
+const mockImportLibrary = vi.fn()
+vi.mock('../src/actions/importLibrary', () => ({
+  importLibrary: mockImportLibrary
 }))
 
-describe('ImportStreamPage', () => {
+describe('ImportLibraryPage', () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks()
   })
 
-  it('renders the import stream page with form', () => {
+  it('renders the import library page with form', () => {
     const { client } = createTestTributaryClient()
     
     render(
       <MemoryRouter>
         <TributaryProvider client={client}>
-          <ImportStreamPage />
+          <ImportLibraryPage />
         </TributaryProvider>
       </MemoryRouter>
     )
 
     // Check that the page title is rendered
-    expect(screen.getByText('Import Existing Stream')).toBeInTheDocument()
+    expect(screen.getByText('Import Existing Library')).toBeInTheDocument()
     
     // Check that the form elements are present
     expect(screen.getByLabelText(/private key/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /import stream/i })).toBeInTheDocument()
-    expect(screen.getByText(/or create a new stream/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /import library/i })).toBeInTheDocument()
+    expect(screen.getByText(/or create a new library/i)).toBeInTheDocument()
   })
 
   it('shows validation error when form is submitted with empty private key', () => {
@@ -57,13 +57,13 @@ describe('ImportStreamPage', () => {
     render(
       <MemoryRouter>
         <TributaryProvider client={client}>
-          <ImportStreamPage />
+          <ImportLibraryPage />
         </TributaryProvider>
       </MemoryRouter>
     )
 
     // Submit the form without entering a private key
-    fireEvent.click(screen.getByRole('button', { name: /import stream/i }))
+    fireEvent.click(screen.getByRole('button', { name: /import library/i }))
     
     // Check for validation error
     expect(screen.getByText(/private key is required/i)).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('ImportStreamPage', () => {
     render(
       <MemoryRouter>
         <TributaryProvider client={null}>
-          <ImportStreamPage />
+          <ImportLibraryPage />
         </TributaryProvider>
       </MemoryRouter>
     )
@@ -83,23 +83,23 @@ describe('ImportStreamPage', () => {
       target: { value: 'some-key' } 
     })
     
-    fireEvent.click(screen.getByRole('button', { name: /import stream/i }))
+    fireEvent.click(screen.getByRole('button', { name: /import library/i }))
     
     // Check for client error
     expect(screen.getByText(/tributary client is not initialized/i)).toBeInTheDocument()
   })
 
-  it.skip('calls importStream and navigates when form is submitted with valid key', async () => {
+  it.skip('calls importLibrary and navigates when form is submitted with valid key', async () => {
     const { client } = createTestTributaryClient()
     
-    // Mock the importStream function to return a successful result
+    // Mock the importLibrary function to return a successful result
     const mockPrefix = 'pk/testprefix'
-    mockImportStream.mockResolvedValue({ prefix: mockPrefix })
+    mockImportLibrary.mockResolvedValue({ prefix: mockPrefix })
 
     render(
       <MemoryRouter>
         <TributaryProvider client={client}>
-          <ImportStreamPage />
+          <ImportLibraryPage />
         </TributaryProvider>
       </MemoryRouter>
     )
@@ -114,13 +114,13 @@ describe('ImportStreamPage', () => {
       target: { value: privateKeyBase64 }
     })
     
-    const button = screen.getByRole('button', { name: /import stream/i })
+    const button = screen.getByRole('button', { name: /import library/i })
     await act(async () => {
       fireEvent.click(button)
     })
     
-    // Check that importStream was called with the correct arguments
-    expect(mockImportStream).toHaveBeenCalledWith(
+    // Check that importLibrary was called with the correct arguments
+    expect(mockImportLibrary).toHaveBeenCalledWith(
       client,
       privateKeyBase64
     )

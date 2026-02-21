@@ -2,97 +2,97 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { saveBlock } from '../actions/saveBlock'
+import { saveNote } from '../actions/saveNote'
 import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
-import { BlockSlug, AuthoritativeVersion, Block } from 'scribe-data'
-import { getBlockBySlug, getAuthoritativeVersionByBlockUuid, getBlockByVersion } from 'scribe-data'
+import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
+import { getNoteBySlug, getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 
 const EditorPage: React.FC = () => {
-  const [content, setContent] = useState<string>('# New Document\n\nStart writing here...')
+  const [content, setContent] = useState<string>('# New Note\n\nStart writing here...')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { globalSyncStatus, setFocusedStream } = useSyncStatus()
+  const { globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   
-  // Extract the streamId and optional slug id from params
+  // Extract the library prefix and optional slug id from params
   const { prefix, slug } = useParams()
 
-  // Focus sync on this stream while the page is mounted
+  // Focus sync on this library while the page is mounted
   useEffect(() => {
     if (prefix) {
-      setFocusedStream(prefix)
-      return () => setFocusedStream(null)
+      setFocusedLibrary(prefix)
+      return () => setFocusedLibrary(null)
     }
-  }, [prefix, setFocusedStream])
+  }, [prefix, setFocusedLibrary])
 
-  // Determine if this is a new document:
+  // Determine if this is a new note:
   // - For /pk/:prefix/new route, slug is undefined
-  // - For /pk/:prefix/:slug/edit route, slug is the document slug
-  const isNewDocument = !slug || slug === 'new'
+  // - For /pk/:prefix/:slug/edit route, slug is the note slug
+  const isNewNote = !slug || slug === 'new'
 
   // Check if we're currently syncing
   const isSyncing = globalSyncStatus?.isSyncing ?? false
   const isSynced = globalSyncStatus?.synced ?? false
 
-  // If editing an existing document, load it once synced
+  // If editing an existing note, load it once synced
   useEffect(() => {
-    const loadDocumentForEditing = async () => {
+    const loadNoteForEditing = async () => {
       if (!isSynced) return
-      if (!isNewDocument && slug && slug !== 'new' && client && prefix) {
+      if (!isNewNote && slug && slug !== 'new' && client && prefix) {
         try {
-          // Extract streamId from prefix (format: base64url-public-key)
+          // Extract library ID from prefix (format: base64url-public-key)
           const streamId = prefix
-          
-          // Get the stream
+
+          // Get the library
           const stream = await client.get('scribe', streamId)
-          
+
           if (!stream) {
-            throw new Error('Failed to get stream')
+            throw new Error('Failed to get library')
           }
           
           // Create local database for querying
           const localDb = stream.local()
           
-          // Get the block slug info
-          const blockSlugInfo = await getBlockBySlug(localDb, slug) as BlockSlug | null
+          // Get the note slug info
+          const noteSlugInfo = await getNoteBySlug(localDb, slug) as NoteSlug | null
           
-          if (!blockSlugInfo) {
-            throw new Error('Document not found')
+          if (!noteSlugInfo) {
+            throw new Error('Note not found')
           }
           
           // Store the block UUID for updates
-          setBlockUuid(blockSlugInfo.block_uuid)
+          setBlockUuid(noteSlugInfo.block_uuid)
           
           // Get the authoritative version
-          const authoritativeVersion = await getAuthoritativeVersionByBlockUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
+          const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid) as AuthoritativeVersion | null
           
           if (!authoritativeVersion) {
-            throw new Error('Document version not found')
+            throw new Error('Note version not found')
           }
           
-          // Get the actual block content using scribe-data functions
-          const block = await getBlockByVersion(localDb, blockSlugInfo.block_uuid, authoritativeVersion.version_uuid)
+          // Get the actual note content using scribe-data functions
+          const note = await getNoteByVersion(localDb, noteSlugInfo.block_uuid, authoritativeVersion.version_uuid)
           
-          if (!block) {
-            throw new Error('Document content not found')
+          if (!note) {
+            throw new Error('Note content not found')
           }
           
-          setContent(block.body)
+          setContent(note.body)
         } catch (err: any) {
-          setError('Failed to load document: ' + (err.message || 'Unknown error'))
-          console.error('Error loading document:', err)
+          setError('Failed to load note: ' + (err.message || 'Unknown error'))
+          console.error('Error loading note:', err)
         }
       }
     }
 
-    loadDocumentForEditing()
-  }, [isNewDocument, slug, client, prefix, isSynced])
+    loadNoteForEditing()
+  }, [isNewNote, slug, client, prefix, isSynced])
 
   // If not synced, show a waiting screen
   if (!isSynced) {
@@ -111,12 +111,12 @@ const EditorPage: React.FC = () => {
               )}
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {isSyncing ? 'Syncing Documents' : 'Documents Still Syncing'}
+              {isSyncing ? 'Syncing Notes' : 'Notes Still Syncing'}
             </h3>
             <p className="text-sm text-gray-500 mb-4">
               {isSyncing
                 ? 'Please wait while we sync the latest changes from the server.'
-                : 'Some documents are still syncing. Please wait a moment before making edits.'}
+                : 'Some notes are still syncing. Please wait a moment before making edits.'}
             </p>
           </div>
           <p className="text-xs text-gray-400">
@@ -127,7 +127,7 @@ const EditorPage: React.FC = () => {
     )
   }
 
-  const onSaveBlock = async () => {
+  const onSaveNote = async () => {
     if (!client) {
       setError('Tributary client not available')
       return
@@ -137,26 +137,26 @@ const EditorPage: React.FC = () => {
     setError(null)
     
     try {
-      // Extract streamId from prefix (format: base64url-public-key)
+      // Extract library ID from prefix (format: base64url-public-key)
       if (!prefix) {
-        throw new Error('No stream prefix provided')
+        throw new Error('No library prefix provided')
       }
-      
+
       // The prefix is already the base64url-public-key part
       const streamId = prefix
-      
-      // Assuming app ID is 'scribe' based on NewStreamPage
+
+      // Get the library
       const stream = await client.get('scribe', streamId)
-      
+
       if (!stream) {
-        throw new Error('Failed to get stream')
+        throw new Error('Failed to get library')
       }
       
-      const { block, blockSlug: blockSlugResult } = await saveBlock(stream, content, 'web-ui', blockUuid)
+      const { block, blockSlug: blockSlugResult } = await saveNote(stream, content, 'web-ui', blockUuid)
       
-      // After saving, navigate to the document view using the slug
+      // After saving, navigate to the note view using the slug
       if (prefix) {
-        // Type assertion since saveBlock returns blockSlug as any
+        // Type assertion since saveNote returns blockSlug as any
         const slug = (blockSlugResult as any)?.slug
         if (slug && typeof slug === 'string') {
           navigate(`/pk/${prefix}/${slug}`)
@@ -167,8 +167,8 @@ const EditorPage: React.FC = () => {
         navigate('/')
       }
     } catch (err: any) {
-      setError('Failed to save document: ' + (err.message || 'Unknown error'))
-      console.error('Error saving document:', err)
+      setError('Failed to save note: ' + (err.message || 'Unknown error'))
+      console.error('Error saving note:', err)
     } finally {
       setIsLoading(false)
     }
@@ -182,7 +182,7 @@ const EditorPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-gray-900">
-                {isNewDocument ? 'New Document' : 'Edit Document'}
+                {isNewNote ? 'New Note' : 'Edit Note'}
               </h1>
             </div>
             
@@ -196,7 +196,7 @@ const EditorPage: React.FC = () => {
               </button>
               
               <button 
-                onClick={onSaveBlock}
+                onClick={onSaveNote}
                 disabled={isLoading}
                 className={`inline-flex items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white ${
                   isLoading 
@@ -215,7 +215,7 @@ const EditorPage: React.FC = () => {
                 ) : (
                   <>
                     <ArrowUpOnSquareIcon className="w-4 h-4 mr-1.5" />
-                    {isNewDocument ? 'Add Document' : 'Update Document'}
+                    {isNewNote ? 'Add Note' : 'Update Note'}
                   </>
                 )}
               </button>

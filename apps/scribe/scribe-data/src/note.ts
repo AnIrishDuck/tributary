@@ -1,21 +1,21 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Block, PGliteResult } from './types'
+import { Note, PGliteResult } from './types'
 
-interface BlockQueryResult {
+interface NoteQueryResult {
   version_uuid: string;
 }
 
 /**
- * Create a new block in the database
+ * Create a new note in the database
  * 
  * @param db The TributaryStream database instance
- * @param blockData The block data to insert
- * @returns The inserted block record
+ * @param noteData The note data to insert
+ * @returns The inserted note record
  */
-export async function createBlock(
+export async function createNote(
   db: TributaryStream,
-  blockData: {
+  noteData: {
     block_uuid?: string
     block_type: string
     body: string
@@ -23,67 +23,67 @@ export async function createBlock(
     prior_version_uuid?: string | null
     collection_id?: string | null
   }
-): Promise<Block> {
+): Promise<Note> {
   const now = new Date()
 
-  const newBlock: Block = {
-    block_uuid: blockData.block_uuid || uuidv4(),
-    block_type: blockData.block_type,
+  const newNote: Note = {
+    block_uuid: noteData.block_uuid || uuidv4(),
+    block_type: noteData.block_type,
     version_uuid: uuidv4(),
-    prior_version_uuid: blockData.prior_version_uuid !== undefined ? blockData.prior_version_uuid : null,
+    prior_version_uuid: noteData.prior_version_uuid !== undefined ? noteData.prior_version_uuid : null,
     insert_datetime: now.toISOString(),
-    inserter: blockData.inserter,
-    body: blockData.body,
-    collection_id: blockData.collection_id ?? null
+    inserter: noteData.inserter,
+    body: noteData.body,
+    collection_id: noteData.collection_id ?? null
   }
 
   await db.exec(
     `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
-      newBlock.block_uuid,
-      newBlock.block_type,
-      newBlock.version_uuid,
-      newBlock.prior_version_uuid,
-      newBlock.insert_datetime,
-      newBlock.inserter,
-      newBlock.body,
-      newBlock.collection_id
+      newNote.block_uuid,
+      newNote.block_type,
+      newNote.version_uuid,
+      newNote.prior_version_uuid,
+      newNote.insert_datetime,
+      newNote.inserter,
+      newNote.body,
+      newNote.collection_id
     ]
   )
   
-  // Retrieve the inserted block
+  // Retrieve the inserted note
   const result = await db.query(
     `SELECT * FROM block WHERE version_uuid = $1`,
-    [newBlock.version_uuid]
+    [newNote.version_uuid]
   )
   
   if (!result.rows || result.rows.length === 0) {
-    throw new Error('Failed to retrieve inserted block')
+    throw new Error('Failed to retrieve inserted note')
   }
   
-  return result.rows[0] as Block
+  return result.rows[0] as Note
 }
 
 /**
- * Create a new version of an existing block
+ * Create a new version of an existing note
  * 
  * @param db The TributaryStream database instance
- * @param block_uuid The UUID of the block to create a new version for
- * @param blockData The new block data
- * @returns The inserted block record
+ * @param block_uuid The UUID of the note to create a new version for
+ * @param noteData The new note data
+ * @returns The inserted note record
  */
-export async function createBlockVersion(
+export async function createNoteVersion(
   db: TributaryStream,
   block_uuid: string,
-  blockData: {
+  noteData: {
     block_type: string
     body: string
     inserter: string
     collection_id?: string | null
   }
-): Promise<Block> {
-  // Get the latest version of this block to set as prior_version_uuid and carry forward collection_id
+): Promise<Note> {
+  // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id
   const result = await db.query(
     `SELECT version_uuid, collection_id FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
@@ -92,29 +92,29 @@ export async function createBlockVersion(
   const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as any : null
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   // Use explicitly provided collection_id, otherwise carry forward from latest version
-  const collection_id = blockData.collection_id !== undefined ? blockData.collection_id : (versionResult?.collection_id ?? null)
+  const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
 
-  return createBlock(db, {
+  return createNote(db, {
     block_uuid,
-    block_type: blockData.block_type,
-    body: blockData.body,
-    inserter: blockData.inserter,
+    block_type: noteData.block_type,
+    body: noteData.body,
+    inserter: noteData.inserter,
     prior_version_uuid,
     collection_id
   })
 }
 
 /**
- * Get a block by its UUID
+ * Get a note by its UUID
  * 
  * @param db The TributaryStream database instance
- * @param block_uuid The UUID of the block to retrieve
- * @returns The block record or null if not found
+ * @param block_uuid The UUID of the note to retrieve
+ * @returns The note record or null if not found
  */
-export async function getBlockByUuid(
+export async function getNoteByUuid(
   db: TributaryStream,
   block_uuid: string
-): Promise<Block | null> {
+): Promise<Note | null> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
@@ -124,39 +124,39 @@ export async function getBlockByUuid(
     return null
   }
   
-  return result.rows[0] as Block
+  return result.rows[0] as Note
 }
 
 /**
- * Get all versions of a block
+ * Get all versions of a note
  * 
  * @param db The TributaryStream database instance
- * @param block_uuid The UUID of the block to retrieve versions for
- * @returns Array of block records ordered by insertion time
+ * @param block_uuid The UUID of the note to retrieve versions for
+ * @returns Array of note records ordered by insertion time
  */
-export async function getBlockVersions(
+export async function getNoteVersions(
   db: TributaryStream,
   block_uuid: string
-): Promise<Block[]> {
+): Promise<Note[]> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
     [block_uuid]
   )
   
-  return (result.rows || []) as Block[]
+  return (result.rows || []) as Note[]
 }
 
 /**
- * Get the latest version of a block
+ * Get the latest version of a note
  * 
  * @param db The TributaryStream database instance
- * @param block_uuid The UUID of the block to retrieve
- * @returns The latest block record or null if not found
+ * @param block_uuid The UUID of the note to retrieve
+ * @returns The latest note record or null if not found
  */
-export async function getLatestBlockVersion(
+export async function getLatestNoteVersion(
   db: TributaryStream,
   block_uuid: string
-): Promise<Block | null> {
+): Promise<Note | null> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
@@ -166,16 +166,16 @@ export async function getLatestBlockVersion(
     return null
   }
   
-  return result.rows[0] as Block
+  return result.rows[0] as Note
 }
 
 /**
- * Get the count of all blocks in the database
+ * Get the count of all notes in the database
  * 
  * @param db The TributaryStream database instance
- * @returns The number of blocks in the database
+ * @returns The number of notes in the database
  */
-export async function getBlockCount(
+export async function getNoteCount(
   db: TributaryStream
 ): Promise<number> {
   const result = await db.query(
@@ -191,31 +191,31 @@ export async function getBlockCount(
 }
 
 /**
- * Get all blocks in the database
+ * Get all notes in the database
  * 
  * @param db The TributaryStream database instance
- * @returns Array of all block records
+ * @returns Array of all note records
  */
-export async function getAllBlocks(
+export async function getAllNotes(
   db: TributaryStream
-): Promise<Block[]> {
+): Promise<Note[]> {
   const result = await db.query(
     `SELECT * FROM block ORDER BY insert_datetime`,
     []
   )
   
-  return (result.rows || []) as Block[]
+  return (result.rows || []) as Note[]
 }
 
 /**
- * Get all authoritative (latest) blocks in the database
+ * Get all authoritative (latest) notes in the database
  * 
  * @param db The TributaryStream database instance
- * @returns Array of all authoritative block records
+ * @returns Array of all authoritative note records
  */
-export async function getAllAuthoritativeBlocks(
+export async function getAllAuthoritativeNotes(
   db: TributaryStream
-): Promise<Block[]> {
+): Promise<Note[]> {
   const result = await db.query(`
     SELECT b.* 
     FROM block b
@@ -227,17 +227,17 @@ export async function getAllAuthoritativeBlocks(
     ORDER BY b.insert_datetime
   `, [])
   
-  return (result.rows || []) as Block[]
+  return (result.rows || []) as Note[]
 }
 
 /**
- * Get the count of versions for a specific block UUID
+ * Get the count of versions for a specific note UUID
  * 
  * @param db The TributaryStream or TributaryLocal database instance
- * @param block_uuid The UUID of the block to count versions for
- * @returns The number of versions for the specified block
+ * @param block_uuid The UUID of the note to count versions for
+ * @returns The number of versions for the specified note
  */
-export async function getBlockVersionCount(
+export async function getNoteVersionCount(
   db: TributaryStream | TributaryLocal,
   block_uuid: string
 ): Promise<number> {
@@ -254,18 +254,18 @@ export async function getBlockVersionCount(
 }
 
 /**
- * Get a block by its version UUID
+ * Get a note by its version UUID
  * 
  * @param db The TributaryStream or TributaryLocal database instance
- * @param block_uuid The UUID of the block
+ * @param block_uuid The UUID of the note
  * @param version_uuid The UUID of the version to retrieve
- * @returns The block record or null if not found
+ * @returns The note record or null if not found
  */
-export async function getBlockByVersion(
+export async function getNoteByVersion(
   db: TributaryStream | TributaryLocal,
   block_uuid: string,
   version_uuid: string
-): Promise<Block | null> {
+): Promise<Note | null> {
   const result = await db.query(
     `SELECT * FROM block WHERE block_uuid = $1 AND version_uuid = $2`,
     [block_uuid, version_uuid]
@@ -275,5 +275,5 @@ export async function getBlockByVersion(
     return null
   }
   
-  return result.rows[0] as Block
+  return result.rows[0] as Note
 }

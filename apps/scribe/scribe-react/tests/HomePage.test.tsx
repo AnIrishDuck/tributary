@@ -3,9 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import HomePage from '../src/pages/HomePage'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
-import { createStream } from '../src/actions/createStream'
+import { createLibrary } from '../src/actions/createLibrary'
 import { routes } from '../src/route'
-import { getStreams } from '../src/actions/getStreams'
+import { getLibraries } from '../src/actions/getLibraries'
 import { WithProviders } from './test-utils'
 
 // Mock the useNavigate hook from react-router
@@ -24,7 +24,7 @@ describe('HomePage', () => {
     vi.clearAllMocks()
   })
 
-  it('should render the home page with stream management', async () => {
+  it('should render the home page with library management', async () => {
     const { client } = createTestTributaryClient()
     
     const router = createMemoryRouter(routes, {
@@ -39,20 +39,20 @@ describe('HomePage', () => {
     
     // Wait for loading to complete
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
     
-    // When no streams exist, should show empty state
-    expect(screen.getByText(/no streams yet/i)).toBeInTheDocument()
+    // When no libraries exist, should show empty state
+    expect(screen.getByText(/no libraries yet/i)).toBeInTheDocument()
     
-    // Check for "Create New Stream" button
-    expect(screen.getByRole('link', { name: /create new stream/i })).toBeInTheDocument()
+    // Check for "Create New Library" button
+    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
     
-    // Check for "Import Existing Stream" button
-    expect(screen.getByRole('link', { name: /import existing stream/i })).toBeInTheDocument()
+    // Check for "Import Existing Library" button
+    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
   })
 
-  it('should display loading state while fetching streams', async () => {
+  it('should display loading state while fetching libraries', async () => {
     const { client } = createTestTributaryClient()
     
     const router = createMemoryRouter(routes, {
@@ -66,20 +66,20 @@ describe('HomePage', () => {
     )
     
     // Should show loading text initially
-    expect(screen.getByText(/loading your streams/i)).toBeInTheDocument()
+    expect(screen.getByText(/loading your libraries/i)).toBeInTheDocument()
     
-    // Wait for streams to be loaded (even if empty)
+    // Wait for libraries to be loaded (even if empty)
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     })
   })
 
-  it('should display empty state when client has no streams', async () => {
+  it('should display empty state when client has no libraries', async () => {
     const { client } = createTestTributaryClient()
     
-    // Verify client has no streams initially
-    const initialStreams = await getStreams(client)
-    expect(initialStreams.length).toBe(0)
+    // Verify client has no libraries initially
+    const initialLibraries = await getLibraries(client)
+    expect(initialLibraries.length).toBe(0)
     
     const router = createMemoryRouter(routes, {
       initialEntries: ['/']
@@ -91,34 +91,34 @@ describe('HomePage', () => {
       </WithProviders>
     )
     
-    // Wait for streams to load
+    // Wait for libraries to load
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
     
     // Should show empty state
-    expect(screen.getByText(/no streams yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/no libraries yet/i)).toBeInTheDocument()
     
-    // Should not show "Your Streams" section when empty
-    expect(screen.queryByText(/your streams/i)).not.toBeInTheDocument()
+    // Should not show "Your Libraries" section when empty
+    expect(screen.queryByText(/your libraries/i)).not.toBeInTheDocument()
     
     // Should show action buttons
-    expect(screen.getByRole('link', { name: /create new stream/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /import existing stream/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
   })
 
-  it('should display list of streams when streams exist', async () => {
-    // Create a client with a stream using the actual createStream function
+  it('should display list of libraries when libraries exist', async () => {
+    // Create a client with a library using the actual createLibrary function
     const { client } = createTestTributaryClient()
     
-    // Create a stream using the real createStream action
-    const { streamId } = await createStream(client, 'Test Stream')
+    // Create a library using the real createLibrary action
+    const { streamId } = await createLibrary(client, 'Test Stream')
 
-    // Verify the stream was created
-    const createdStreams = await getStreams(client)
-    expect(createdStreams.length).toBe(1)
-    expect(createdStreams[0].streamId).toBe(streamId)
-    expect(createdStreams[0].lastEdited).toBeNull() // No blocks yet
+    // Verify the library was created
+    const createdLibraries = await getLibraries(client)
+    expect(createdLibraries.length).toBe(1)
+    expect(createdLibraries[0].libraryId).toBe(streamId)
+    expect(createdLibraries[0].lastEdited).toBeNull() // No blocks yet
     
     const router = createMemoryRouter(routes, {
       initialEntries: ['/']
@@ -130,45 +130,45 @@ describe('HomePage', () => {
       </WithProviders>
     )
     
-    // Wait for streams to load
+    // Wait for libraries to load
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
     
-    // Should show "Your Streams" section
-    expect(screen.getByRole('heading', { name: /your streams/i })).toBeInTheDocument()
+    // Should show "Your Libraries" section
+    expect(screen.getByRole('heading', { name: /your libraries/i })).toBeInTheDocument()
     
-    // Should show stream count
-    expect(screen.getByText(/you have 1 stream available/i)).toBeInTheDocument()
+    // Should show library count
+    expect(screen.getByText(/you have 1 library available/i)).toBeInTheDocument()
     
     // Should show the truncated stream ID with pk/ prefix
     const displayId = `pk/${streamId.substring(0, 16)}...`
     expect(screen.getByText(displayId)).toBeInTheDocument()
 
-    // Should have the link to the stream
-    const streamLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 16)}`) })
-    expect(streamLink).toBeInTheDocument()
-    expect(streamLink).toHaveAttribute('href', `/pk/${streamId}/`)
+    // Should have the link to the library
+    const libraryLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 16)}`) })
+    expect(libraryLink).toBeInTheDocument()
+    expect(libraryLink).toHaveAttribute('href', `/pk/${streamId}/`)
     
-    // Should show action buttons at the top of "Your Streams" section
-    expect(screen.getByRole('link', { name: /create new stream/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /import existing stream/i })).toBeInTheDocument()
+    // Should show action buttons at the top of "Your Libraries" section
+    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
   })
 
-  it('should display multiple streams when multiple exist', async () => {
-    // Create a client with multiple streams
+  it('should display multiple libraries when multiple exist', async () => {
+    // Create a client with multiple libraries
     const { client } = createTestTributaryClient()
     
-    // Create multiple streams using the real createStream action
+    // Create multiple libraries using the real createLibrary action
     const streamIds: string[] = []
     for (let i = 0; i < 3; i++) {
-      const { streamId } = await createStream(client, `Stream ${i + 1}`)
+      const { streamId } = await createLibrary(client, `Stream ${i + 1}`)
       streamIds.push(streamId)
     }
     
-    // Verify all streams were created
-    const createdStreams = await getStreams(client)
-    expect(createdStreams.length).toBe(3)
+    // Verify all libraries were created
+    const createdLibraries = await getLibraries(client)
+    expect(createdLibraries.length).toBe(3)
     
     const router = createMemoryRouter(routes, {
       initialEntries: ['/']
@@ -180,24 +180,24 @@ describe('HomePage', () => {
       </WithProviders>
     )
     
-    // Wait for streams to load
+    // Wait for libraries to load
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
     
-    // Should show correct stream count
-    expect(screen.getByText(/you have 3 streams available/i)).toBeInTheDocument()
+    // Should show correct library count
+    expect(screen.getByText(/you have 3 libraries available/i)).toBeInTheDocument()
     
-    // Should show all three streams (pk/ prefix followed by truncated stream ID)
-    const streamLinks = screen.getAllByRole('link')
-    expect(streamLinks.length).toBeGreaterThanOrEqual(3)
+    // Should show all three libraries (pk/ prefix followed by truncated stream ID)
+    const libraryLinks = screen.getAllByRole('link')
+    expect(libraryLinks.length).toBeGreaterThanOrEqual(3)
     streamIds.forEach(streamId => {
       const displayId = `pk/${streamId.substring(0, 16)}...`
       expect(screen.getByText(displayId)).toBeInTheDocument()
     })
   })
 
-  it('should show "No streams yet" heading for empty state', async () => {
+  it('should show "No libraries yet" heading for empty state', async () => {
     const { client } = createTestTributaryClient()
     
     const router = createMemoryRouter(routes, {
@@ -211,9 +211,9 @@ describe('HomePage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.queryByText(/loading your streams/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
     
-    expect(screen.getByRole('heading', { name: /no streams yet/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /no libraries yet/i })).toBeInTheDocument()
   })
 })
