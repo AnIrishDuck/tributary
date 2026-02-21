@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { TributaryClient, deriveStreamSeed } from 'tributary-client';
 import { createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client/cli';
-import { indexSlugs, ensureMigrations, getLinkedLibraries } from '@tributary/scribe-data';
+import { ensureMigrations } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
@@ -16,96 +16,13 @@ import * as base64url from 'urlsafe-base64';
 // Import the sync function
 import { sync } from './sync.js';
 
+// Import extracted modules
+import { syncHomeLibrary, getLibraryWriteKey, listLinkedLibraries } from './home.js';
+import { resolveLibraryPk, writeStoredLibraryPk } from './libraryPk.js';
+
 const SCRIBE_HOME_DIR = path.join(os.homedir(), '.scribe');
 const HOME_DB_PATH = path.join(SCRIBE_HOME_DIR, 'home-db');
 const CONFIG_APP_ID = 'scribe';
-
-/**
- * Create a TributaryClient backed by the user-level home database (~/.scribe/home-db).
- * This database stores the home library (with linked library entries).
- */
-async function getHomeClient(): Promise<TributaryClient> {
-  await fs.promises.mkdir(HOME_DB_PATH, { recursive: true });
-  const pglite = new PGlite(HOME_DB_PATH);
-  const server = await createCliServer();
-  return new TributaryClient({ server, db: pglite as any });
-}
-
-/**
- * Sync the home library. Returns the home stream or null if not configured.
- */
-async function syncHomeLibrary(client: TributaryClient) {
-  const homeStreamId = await client.getHomeStream();
-  if (!homeStreamId) {
-    return null;
-  }
-  const homeStream = await client.get(CONFIG_APP_ID, homeStreamId);
-  if (!homeStream) {
-    return null;
-  }
-  const syncStatus = await homeStream.sync(1000);
-  console.log(`Home library synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
-  await ensureMigrations(homeStream, false);
-  return homeStream;
-}
-
-/**
- * Look up the write key for a library from the home library's linked collections.
- * @param client The home TributaryClient
- * @param libraryPk The public key (stream ID) of the library to find
- * @returns The base64url-encoded write key, or null if not found
- */
-async function getLibraryWriteKey(client: TributaryClient, libraryPk: string): Promise<string | null> {
-  const homeStream = await syncHomeLibrary(client);
-  if (!homeStream) {
-    return null;
-  }
-  const linkedLibraries = await getLinkedLibraries(homeStream);
-  for (const lib of linkedLibraries) {
-    if (lib.linked_stream_id === libraryPk && lib.linked_stream_key) {
-      return lib.linked_stream_key;
-    }
-  }
-  return null;
-}
-
-/**
- * Read the stored library public key from a sync directory's .scribe/library-pk file.
- */
-function readStoredLibraryPk(directory: string): string | null {
-  const pkFile = path.join(directory, '.scribe', 'library-pk');
-  try {
-    return fs.readFileSync(pkFile, 'utf8').trim();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Write the library public key to a sync directory's .scribe/library-pk file.
- */
-async function writeStoredLibraryPk(directory: string, pk: string): Promise<void> {
-  const scribeDir = path.join(directory, '.scribe');
-  await fs.promises.mkdir(scribeDir, { recursive: true });
-  await fs.promises.writeFile(path.join(scribeDir, 'library-pk'), pk + '\n', 'utf8');
-}
-
-/**
- * Resolve the library public key from --library-pk option or stored .scribe/library-pk file.
- * Throws if neither is available.
- */
-function resolveLibraryPk(directory: string, optionPk?: string): string {
-  if (optionPk) {
-    return optionPk;
-  }
-  const stored = readStoredLibraryPk(directory);
-  if (stored) {
-    return stored;
-  }
-  throw new Error(
-    'No library specified. Use --library-pk <public-key> or run `scribe library list` to see available libraries.'
-  );
-}
 
 /**
  * Create a TributaryClient and stream for a sync directory using the home library.
@@ -432,14 +349,12 @@ libraryCmd
   .action(async () => {
     try {
       const homeClient = await getHomeClient();
-      const homeStream = await syncHomeLibrary(homeClient);
+      const linkedLibraries = await listLinkedLibraries(homeClient);
 
-      if (!homeStream) {
+      if (!linkedLibraries) {
         console.error('No home library found. Run `scribe login` first.');
         process.exit(1);
       }
-
-      const linkedLibraries = await getLinkedLibraries(homeStream);
 
       if (linkedLibraries.length === 0) {
         console.log('No linked libraries found.');

@@ -8,7 +8,9 @@
     "scribe": "./src/index.ts"
   },
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "test": "vitest run tests/",
+    "test:watch": "vitest tests/"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.11",
@@ -25,6 +27,7 @@
     "esbuild": "^0.27.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^1.0.0"
   }
 }
