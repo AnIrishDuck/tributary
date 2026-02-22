@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { TributaryClient, createTestServer } from 'tributary-client'
-import { up, ensureMigrations } from '../src/migrations'
+import { up, syncedMigrations, localMigrations } from '../src/migrations'
 import { getAllNotesWithTitles } from '../src/indexing'
 import nacl from 'tweetnacl'
 import { PGlite } from '@electric-sql/pglite'
@@ -68,7 +68,7 @@ describe('Migration Persistence Bug', () => {
     }).rejects.toThrow(/relation.*block.*does not exist/)
   })
 
-  it('should work with ensureMigrations() on a fresh database', async () => {
+  it('should work with syncedMigrations + localMigrations on a fresh database', async () => {
     // Step 1: Create library in CLI and ensure migrations
     const cliClient = new TributaryClient({
       server: testServer,  // Use shared server
@@ -77,8 +77,9 @@ describe('Migration Persistence Bug', () => {
     
     const cliStream = await cliClient.addWriteKey('scribe', privateKey)
     
-    // Use ensureMigrations(isNew=true) - this adds library migrations to the library
-    await ensureMigrations(cliStream, true)
+    // Run synced + local migrations for a new library
+    await syncedMigrations(cliStream)
+    await localMigrations(cliStream.local())
     
     // Insert a test block
     const blockUuid = uuidv4()
@@ -111,8 +112,8 @@ describe('Migration Persistence Bug', () => {
     // Sync FIRST to get the library migrations (block table creation)
     await reactStream!.sync(100)
     
-    // Then run migrations for imported library (isNew=false, only creates local tables)
-    await ensureMigrations(reactStream!, false)
+    // Then run local migrations only (synced tables arrived via sync)
+    await localMigrations(reactStream!.local())
     
     // Get the local database
     const localDb = await reactClient.getLocal('scribe', streamId)
@@ -120,13 +121,13 @@ describe('Migration Persistence Bug', () => {
     
     // This should work because:
     // 1. Block table was created via sync (from library)
-    // 2. Local tables were created via ensureMigrations
+    // 2. Local tables were created via localMigrations
     const notes = await getAllNotesWithTitles(localDb!)
     expect(notes).toBeDefined()
     expect(notes.length).toBe(0) // No indexed notes yet (indexing is local-only)
   })
 
-  it('ensureMigrations() should be idempotent', async () => {
+  it('migrations should be idempotent', async () => {
     // Create a library
     const client = new TributaryClient({
       server: createTestServer(),
@@ -135,10 +136,10 @@ describe('Migration Persistence Bug', () => {
     
     const stream = await client.addWriteKey('scribe', privateKey)
     
-    // Call ensureMigrations multiple times with isNew=true - should not error
-    await ensureMigrations(stream, true)
-    await ensureMigrations(stream, false) // Calling with false should also work
-    await ensureMigrations(stream, false)
+    // Call migrations multiple times - should not error
+    await syncedMigrations(stream)
+    await localMigrations(stream.local())
+    await localMigrations(stream.local()) // Calling again should also work
     
     // Should still be able to use the library
     const blockUuid = uuidv4()
@@ -170,7 +171,8 @@ describe('Migration Persistence Bug', () => {
     })
     
     const stream = await client.addWriteKey('scribe', privateKey)
-    await ensureMigrations(stream, true)
+    await syncedMigrations(stream)
+    await localMigrations(stream.local())
     
     const localDb = stream.local()
     

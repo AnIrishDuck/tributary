@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react'
 import { useNavigate, Link, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { importLibrary } from '../actions/importLibrary'
+import { importLibrary } from 'scribe-data'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 import * as base64url from 'urlsafe-base64'
 

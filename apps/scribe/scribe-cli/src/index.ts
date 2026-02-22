@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { TributaryClient, deriveStreamSeed } from 'tributary-client';
 import { createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client/cli';
-import { ensureMigrations } from '@tributary/scribe-data';
+import { localMigrations, createHomeLibrary } from '@tributary/scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
@@ -23,6 +23,16 @@ import { resolveLibraryPk, writeStoredLibraryPk } from './libraryPk.js';
 const SCRIBE_HOME_DIR = path.join(os.homedir(), '.scribe');
 const HOME_DB_PATH = path.join(SCRIBE_HOME_DIR, 'home-db');
 const CONFIG_APP_ID = 'scribe';
+
+/**
+ * Create a TributaryClient for the home library.
+ */
+async function getHomeClient(): Promise<TributaryClient> {
+  await fs.promises.mkdir(HOME_DB_PATH, { recursive: true });
+  const pglite = new PGlite(HOME_DB_PATH);
+  const server = await createCliServer();
+  return new TributaryClient({ server, db: pglite as any });
+}
 
 /**
  * Create a TributaryClient and stream for a sync directory using the home library.
@@ -85,8 +95,8 @@ program
       const syncStatus = await stream.sync(1000);
       console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
 
-      // Ensure migrations are run (creates local tables only for existing libraries)
-      await ensureMigrations(stream, false);
+      // Create local tables for the existing library
+      await localMigrations(stream.local());
 
       // Parse limit option
       const limit = parseInt(options.limit);
@@ -162,8 +172,8 @@ Do not manually edit or add files here.
       const syncStatus = await stream.sync(1000);
       console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
 
-      // Ensure migrations are run for an EXISTING library (local tables only)
-      await ensureMigrations(stream, false);
+      // Create local tables for the existing library
+      await localMigrations(stream.local());
       console.log('Database tables initialized');
 
       // Only create seed note if --empty is not specified and library is empty
@@ -312,18 +322,21 @@ program
       const homeClient = await getHomeClient();
       const homeStream = await homeClient.addWriteKey(CONFIG_APP_ID, keyPair.secretKey);
 
-      // Set the home stream ID using urlsafe-base64 to match the rest of the codebase
-      const streamId = base64url.encode(Buffer.from(keyPair.publicKey));
-      await homeClient.setHomeStream(streamId);
-
-      // Sync the home library
+      // Sync first to detect whether this is a new or existing home library
       const syncStatus = await homeStream.sync(1000);
       console.log(`Home library synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
 
-      // Ensure local tables exist
-      await ensureMigrations(homeStream, false);
-
-      console.log('Home library is up to date.');
+      if (syncStatus.finalIndex === 0) {
+        // Brand new home library — create it
+        await createHomeLibrary(homeClient, 'My Library', keyPair);
+        console.log('Home library created.');
+      } else {
+        // Existing home library — just create local tables
+        const streamId = base64url.encode(Buffer.from(keyPair.publicKey));
+        await homeClient.setHomeStream(streamId);
+        await localMigrations(homeStream.local());
+        console.log('Home library is up to date.');
+      }
     } catch (error) {
       console.error('Error:', (error as Error).message);
       process.exit(1);

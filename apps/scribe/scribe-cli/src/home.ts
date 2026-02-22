@@ -1,5 +1,5 @@
 import { TributaryClient, TributaryStream } from 'tributary-client';
-import { ensureMigrations, getLinkedLibraries } from '@tributary/scribe-data';
+import { localMigrations, getLinkedLibraries } from '@tributary/scribe-data';
 import type { Collection } from '@tributary/scribe-data';
 
 const CONFIG_APP_ID = 'scribe';
@@ -17,7 +17,7 @@ export async function syncHomeLibrary(client: TributaryClient): Promise<Tributar
     return null;
   }
   await homeStream.sync(1000);
-  await ensureMigrations(homeStream, false);
+  await localMigrations(homeStream.local());
   return homeStream;
 }
 

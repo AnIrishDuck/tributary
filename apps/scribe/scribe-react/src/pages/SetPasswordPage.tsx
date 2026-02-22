@@ -3,7 +3,7 @@ import { SupabaseClient, Session } from '@supabase/supabase-js'
 import { TributaryClient, deriveAuthKey, deriveStreamSeed } from 'tributary-client'
 import nacl from 'tweetnacl'
 import { CONFIG } from '../config'
-import { createLibrary } from '../actions/createLibrary'
+import { createHomeLibrary } from 'scribe-data'
 import { LockClosedIcon } from '@heroicons/react/24/outline'
 
 interface SetPasswordPageProps {
@@ -59,12 +59,9 @@ export default function SetPasswordPage({ supabase, session, client, onComplete 
 
       // 3. Create home library with derived keypair
       const keyPair = nacl.sign.keyPair.fromSeed(streamSeed)
-      const { streamId } = await createLibrary(client, 'My Library', keyPair)
+      await createHomeLibrary(client, 'Home Library', keyPair)
 
-      // 4. Set as home stream
-      await client.setHomeStream(streamId)
-
-      // 5. Done — App.tsx re-enters normal flow
+      // 4. Done — App.tsx re-enters normal flow
       onComplete()
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred')

@@ -2,7 +2,7 @@ import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { initializeLibrary, createCollection } from '@tributary/scribe-data'
+import { syncedMigrations, localMigrations, createCollection } from '@tributary/scribe-data'
 
 /**
  * Create a test TributaryClient with an in-memory database and fake server.
@@ -45,7 +45,9 @@ export async function createTestHomeWithLibraries(libraryNames: string[] = ['My 
   await homeClient.setHomeStream(homeStreamId)
 
   // Initialize the home library (creates block table, collection table, root collection)
-  await initializeLibrary(homeStream, 'Home')
+  await syncedMigrations(homeStream)
+  await localMigrations(homeStream.local())
+  await createCollection(homeStream, { title: 'Home', inserter: 'user' })
   await homeStream.sync(1000)
 
   // Create child libraries and link them from the home library
@@ -58,7 +60,9 @@ export async function createTestHomeWithLibraries(libraryNames: string[] = ['My 
     // Initialize the child library on the same server
     const { client: childClient } = createTestClient(server)
     const childStream = await childClient.addWriteKey('scribe', keyPair.secretKey)
-    await initializeLibrary(childStream, name)
+    await syncedMigrations(childStream)
+    await localMigrations(childStream.local())
+    await createCollection(childStream, { title: name, inserter: 'user' })
     await childStream.sync(1000)
 
     // Get the root collection of the home library so we can link under it

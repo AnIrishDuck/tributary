@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
-import { createLibrary } from '../actions/createLibrary'
-import { createCollection, getLibrary } from 'scribe-data'
+import { createLibrary } from 'scribe-data'
 import { CONFIG } from '../config'
 import { ShieldCheckIcon } from '@heroicons/react/24/outline'
 
@@ -28,26 +27,13 @@ const NewLibraryPage: React.FC = () => {
     setError(null)
 
     try {
-      const { prefix, streamId, privateKeyBase64 } = await createLibrary(client, name.trim())
-
-      // Link the new library into the home stream so it appears on the home page
+      // Get the home stream so the new library can be linked into it
       const homeStreamId = await client.getHomeStream()
-      if (homeStreamId) {
-        const homeStream = await client.get(CONFIG.APP_ID, homeStreamId)
-        if (homeStream) {
-          const rootCollection = await getLibrary(homeStream)
-          if (rootCollection) {
-            await createCollection(homeStream, {
-              title: name.trim(),
-              parent_collection_uuid: rootCollection.collection_uuid,
-              inserter: 'user',
-              linked_stream_id: streamId,
-              linked_stream_key: privateKeyBase64,
-            })
-            await homeStream.sync(1000)
-          }
-        }
-      }
+      if (!homeStreamId) throw new Error('No home library configured')
+      const homeStream = await client.get(CONFIG.APP_ID, homeStreamId)
+      if (!homeStream) throw new Error('Could not load home library')
+
+      const { prefix } = await createLibrary(client, name.trim(), homeStream)
 
       // Navigate to the new library
       navigate(`/${prefix}/`)

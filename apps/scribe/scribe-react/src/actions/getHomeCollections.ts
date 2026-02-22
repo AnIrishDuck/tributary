@@ -1,5 +1,5 @@
 import { TributaryClient } from 'tributary-client'
-import { getLinkedLibraries, getLastEditedTime, ensureMigrations } from 'scribe-data'
+import { getLinkedLibraries, getLastEditedTime, localMigrations } from 'scribe-data'
 import { LibraryInfo } from './getLibraries'
 
 /**
@@ -28,7 +28,7 @@ export async function getHomeCollections(client: TributaryClient): Promise<Libra
       if (linkedStreamKey) {
         try {
           const stream = await client.addWriteKey('scribe', linkedStreamKey)
-          await ensureMigrations(stream, false)
+          await localMigrations(stream.local())
         } catch (err) {
           console.error(`Failed to register linked library ${linkedStreamId}:`, err)
         }
