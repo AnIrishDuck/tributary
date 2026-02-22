@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { up } from 'scribe-data'
-import { createNote } from 'scribe-data'
-import { getAllNotes } from 'scribe-data/src/note'
+import { createNote } from '../src/note.js'
+import { getAllNotes } from '../src/note.js'
+import { createHomeLibrary, createLibrary, importLibrary } from '../src/library.js'
 import { PGlite } from '@electric-sql/pglite'
-import { TributaryClient, FakeServer, createTestServer } from 'tributary-client'
+import { TributaryClient, FakeServer } from 'tributary-client'
 import * as base64url from 'urlsafe-base64'
-import * as nacl from 'tweetnacl'
-import { importLibrary } from '../src/actions/importLibrary'
+import nacl from 'tweetnacl'
 
 /**
  * This test mocks the 'normal' scenario - a user creates a new library with notes,
@@ -18,22 +17,18 @@ import { importLibrary } from '../src/actions/importLibrary'
 describe('Key Import Feature', () => {
   it('should allow a new user to import a key and list notes previously added to that library', async () => {
     // STEP 1: First user creates a library with notes
-    const server = createTestServer() as FakeServer
+    const server = new FakeServer()
 
     // Create source client and database
     const sourceDB = new PGlite('memory://sourcedb')
     const sourceClient = new TributaryClient({ server, db: sourceDB })
 
-    // Generate key pair and create a new stream
-    const keyPair = nacl.sign.keyPair()
-    const sourceStream = await sourceClient.addWriteKey('scribe', keyPair.secretKey)
+    // Create a home library first, then create a regular library
+    const homeKeyPair = nacl.sign.keyPair()
+    const { stream: homeStream } = await createHomeLibrary(sourceClient, 'Home', homeKeyPair)
+    const { stream: sourceStream, streamId, privateKeyBase64 } = await createLibrary(sourceClient, 'Test Library', homeStream)
 
-    // Run scribe migrations on new stream
-    await up(sourceStream, sourceStream.local())
-    await sourceStream.sync(1000)
-
-    const publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey))
-    const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey))
+    const publicKeyBase64 = streamId
 
     // Create test notes in source database
     await createNote(sourceStream, {
