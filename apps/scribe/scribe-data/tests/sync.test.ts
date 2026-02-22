@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { TestFakeServer } from './test-server'
-import { createNote } from 'scribe-data'
+import { createNote } from '../src/note.js'
+import { createHomeLibrary, createLibrary } from '../src/library.js'
 import { PGlite } from '@electric-sql/pglite'
 import { TributaryClient } from 'tributary-client'
-import { createLibrary } from '../src/actions/createLibrary'
+import nacl from 'tweetnacl'
 
 /**
  * Helper to check if all streams in a sync result are fully synced.
@@ -14,6 +15,15 @@ function allComplete(result: Map<string, any>): boolean {
   return [...result.values()].every(s => s.complete())
 }
 
+async function createTestLibrary(server: TestFakeServer) {
+  const pglite = new PGlite('memory://')
+  const client = new TributaryClient({ server, db: pglite })
+  const homeKeyPair = nacl.sign.keyPair()
+  const { stream: homeStream } = await createHomeLibrary(client, 'Home', homeKeyPair)
+  const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream', homeStream)
+  return { client, stream, prefix, streamId }
+}
+
 describe('Background Sync with TestFakeServer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -21,10 +31,7 @@ describe('Background Sync with TestFakeServer', () => {
 
   it('should handle disconnection and reconnection', async () => {
     const testServer = new TestFakeServer()
-    const pglite = new PGlite('memory://')
-    const client = new TributaryClient({ server: testServer, db: pglite })
-
-    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
+    const { client, stream } = await createTestLibrary(testServer)
 
     // Create a note
     await createNote(stream, {
@@ -54,10 +61,7 @@ describe('Background Sync with TestFakeServer', () => {
 
   it('should respect max blobs per sync when limit is set', async () => {
     const testServer = new TestFakeServer()
-    const pglite = new PGlite('memory://')
-    const client = new TributaryClient({ server: testServer, db: pglite })
-
-    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
+    const { client, stream } = await createTestLibrary(testServer)
 
     // Create 100 notes - this will sync all of them
     for (let i = 0; i < 100; i++) {
@@ -78,10 +82,7 @@ describe('Background Sync with TestFakeServer', () => {
 
   it('should sync all blobs when fewer than max', async () => {
     const testServer = new TestFakeServer()
-    const pglite = new PGlite('memory://')
-    const client = new TributaryClient({ server: testServer, db: pglite })
-
-    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
+    const { client, stream } = await createTestLibrary(testServer)
 
     // Create 5 notes
     for (let i = 0; i < 5; i++) {
@@ -99,10 +100,7 @@ describe('Background Sync with TestFakeServer', () => {
 
   it('should handle sync errors gracefully', async () => {
     const testServer = new TestFakeServer()
-    const pglite = new PGlite('memory://')
-    const client = new TributaryClient({ server: testServer, db: pglite })
-
-    const { stream, prefix, streamId } = await createLibrary(client, 'Test Stream')
+    const { client, stream } = await createTestLibrary(testServer)
 
     // Create 5 notes
     for (let i = 0; i < 5; i++) {
