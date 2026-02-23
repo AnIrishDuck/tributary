@@ -1,0 +1,345 @@
+# Security
+
+This document describes Tributary's threat model, cryptographic design, and
+data storage decisions. It is intended for security researchers auditing this
+software.
+
+## Overview
+
+Tributary is a system for creating collections of end-to-end encrypted data.
+Each collection is a **stream**: an encrypted database replication log that can
+be replayed to reconstruct a local PGLite database. The server stores only
+opaque, encrypted blobs. All plaintext data remains exclusively on the client.
+
+## Threat Model
+
+### What We Defend Against
+
+The threats we aim to deter fall into three broad categories that share a
+common attack pattern -- **mass data collection**:
+
+- **Surveillance capitalism.** Mining user data to build behavioral profiles
+  and shape preferences. Tributary's design ensures the server operator cannot
+  read user data, making bulk profiling infeasible even with full database
+  access.
+
+- **State-level dragnet surveillance.** Bulk collection programs (of the kind
+  disclosed by Snowden) that vacuum up data at rest from service providers. A
+  court order or infrastructure compromise that yields the server database
+  produces only encrypted blobs that are unusable without per-user key
+  material derived from each user's password.
+
+- **Token harvesting for LLM training.** Users' private writing and thoughts
+  are increasingly scraped to train large language models. Because Tributary
+  stores only ciphertext server-side, this data cannot be fed into training
+  pipelines.
+
+All three threats reduce to the same core problem: an attacker who gains read
+access to the server database should learn nothing about the plaintext content
+of any user's data.
+
+### What Is Explicitly Out of Scope
+
+- **User device compromise.** We do not currently attempt to protect against an
+  attacker with physical or root access to the user's device. Key material is
+  stored in the local PGLite database. We may adopt platform secure storage
+  primitives in the future, but this is not a current guarantee.
+
+- **Metadata analysis.** Our data model reduces metadata side channels (the
+  server sees only opaque blobs of varying size at varying times), but it does
+  not eliminate them. Blob sizes, timing, and total stream length are
+  observable. We are not aware of any practical technique to eliminate these
+  side channels without unacceptable user experience trade-offs (e.g.,
+  re-encrypting the entire database on every operation, which still leaks the
+  total database size).
+
+- **Active server compromise.** A sophisticated attacker (e.g., a nation state)
+  who compromises the serving infrastructure can tamper with the application
+  code delivered to clients. Since the code is the root actor on the data,
+  compromising the code is game over -- the attacker can exfiltrate plaintext
+  before encryption or inject backdoored key derivation. We do not attempt to
+  defend against this.
+
+### Gray Area: Supply Chain Attacks
+
+Supply chain attacks on dependencies occupy a gray area between the passive
+server read access we defend against and the active server compromise we
+exclude. A compromised dependency could exfiltrate key material without
+requiring full server infrastructure access. This is an area we may want to
+harden in the future (e.g., dependency pinning, reproducible builds, vendoring
+critical crypto code).
+
+## Cryptographic Design
+
+### Key Derivation
+
+All key material is derived deterministically from the user's password and
+email address. There is no server-side key escrow.
+
+```
+password + lowercase(email)
+        |
+        v
+   PBKDF2-SHA256 (100,000 iterations, salt = lowercase email)
+        |
+        v
+   32-byte master key
+        |
+        +---> HKDF-SHA256(info="tributary-auth")         --> auth key (base64, sent to Supabase as password)
+        |
+        +---> HKDF-SHA256(info="tributary-stream:{appId}") --> 32-byte seed --> Ed25519 keypair
+```
+
+**PBKDF2** stretches the password into a 32-byte master key. The salt is the
+user's lowercased email address. 100,000 iterations of SHA-256 are used.
+
+**HKDF** with domain-separated `info` strings derives independent keys from
+the master key. The empty salt in HKDF is intentional -- salting has already
+been performed by PBKDF2. Two domains are currently defined:
+
+- `tributary-auth`: produces the authentication credential sent to Supabase.
+  The server never sees the user's actual password.
+- `tributary-stream:{appId}`: produces a 32-byte seed used to generate a
+  deterministic Ed25519 keypair via `nacl.sign.keyPair.fromSeed()`.
+
+**Implementation:** `tributary-client/src/kdf.ts`, using the Web Crypto API
+(PBKDF2 + HKDF). Available in browsers, Deno, and Node 18+.
+
+### Stream Keys
+
+Each stream is identified by an Ed25519 keypair derived from the user's
+password (as described above). The keypair serves two roles:
+
+- **Signing (write key):** The full 64-byte Ed25519 private key signs every
+  blob uploaded to the server, proving authorship.
+- **Encryption (read key):** A symmetric encryption key is derived by hashing
+  the first 32 bytes of the private key (the Ed25519 scalar):
+
+  ```
+  encryption_key = SHA-256(private_key[0:32])[0:32]
+  ```
+
+  This separation exists so that read access can be granted independently of
+  write access in the future. A user who holds only the encryption key can
+  decrypt data but cannot sign new blobs.
+
+**Stream ID:** The URL-safe base64 encoding of the Ed25519 public key.
+
+**Schema ID:** The first 16 hex characters of `SHA-256(public_key)`, with a
+counter-based collision resolution mechanism to ensure uniqueness within the
+local database.
+
+### Encryption
+
+All data is encrypted client-side before transmission using
+**XSalsa20-Poly1305** (`nacl.secretbox` from TweetNaCl):
+
+1. The transaction data (SQL queries and parameters) is serialized to JSON and
+   encoded as UTF-8 bytes.
+2. A fresh **24-byte random nonce** is generated via `nacl.randomBytes()` for
+   each message. Nonce uniqueness is critical to the security of
+   XSalsa20-Poly1305 -- nonce reuse under the same key would compromise
+   confidentiality.
+3. The data is encrypted with the stream's symmetric encryption key.
+4. The ciphertext is prepended with the nonce: `[24-byte nonce][ciphertext + Poly1305 tag]`.
+
+The server receives and stores only this nonce-prefixed ciphertext. It cannot
+decrypt, inspect, or meaningfully process the plaintext.
+
+**Implementation:** `tributary-client/src/tributaryStream.ts` (methods
+`encryptData`, `decryptData`, `deriveEncryptionKey`).
+
+### Integrity: Hash Chain
+
+Every blob is linked into a hash chain that provides an append-only integrity
+guarantee:
+
+```
+body_hash  = SHA-256(encrypted_blob_data)
+chain_hash = SHA-256(prior_chain_hash || body_hash)
+```
+
+The first blob in a stream uses an empty string as `prior_chain_hash`. Each
+subsequent blob references the chain hash of its predecessor. This makes it
+possible to detect reordering, omission, or insertion of blobs.
+
+**Implementation:** `tributary-client/src/tributaryStream.ts` (method
+`computeChainHash`), `supabase/functions/shared/crypto.ts` (server-side
+verification).
+
+### Authenticity: Ed25519 Signatures
+
+Every blob is signed with the stream's Ed25519 private key:
+
+```
+signature = Ed25519_sign_detached(chain_hash_as_utf8_bytes, private_key)
+```
+
+The signature is transmitted in the `X-Tributary-Authorization` header as
+URL-safe base64. The server verifies the signature against the stream's public
+key before accepting the blob. This prevents unauthorized writes to a stream
+even if the attacker has a valid Supabase authentication token.
+
+**Implementation:** `tributary-client/src/tributaryStream.ts` (in
+`ensureServerPersistence`), `supabase/functions/shared/crypto.ts`
+(`verifySignature`), `supabase/functions/shared/routes.ts` (`handleUpload`).
+
+### Hashing
+
+SHA-256 is used throughout, with hex encoding for chain hashes. The
+implementation uses the Web Crypto API where available, with a Node.js
+`crypto` fallback.
+
+**Implementation:** `tributary-client/src/hashUtils.ts`,
+`supabase/functions/shared/crypto.ts`.
+
+## Data Storage
+
+### Server-Side (Supabase)
+
+The server stores blobs in a single `blobs` table:
+
+| Column            | Type      | Description                                 |
+|-------------------|-----------|---------------------------------------------|
+| `id`              | TEXT      | Blob identifier (`{pubkey}:{sequence}`)     |
+| `pubkey`          | TEXT      | Stream public key (URL-safe base64)         |
+| `data`            | BYTEA     | Encrypted blob (nonce + ciphertext)         |
+| `hash`            | TEXT      | Chain hash (hex)                            |
+| `prior_hash`      | TEXT      | Previous chain hash (hex)                   |
+| `signature`       | TEXT      | Ed25519 signature (URL-safe base64)         |
+| `sequence_number` | INTEGER   | Monotonic sequence within the stream        |
+| `owner_id`        | UUID      | Supabase auth user ID                       |
+| `origin`          | TEXT      | Request origin                              |
+| `created_at`      | TIMESTAMP | Server-side timestamp                       |
+
+The primary key is `(pubkey, id)`. Indexes exist on `(pubkey, sequence_number)`
+and `owner_id`.
+
+**Row Level Security (RLS)** is enabled:
+
+- **SELECT:** Public. Anyone can read blobs. Since data is encrypted, public
+  read access does not compromise confidentiality. An attacker needs the
+  stream's public key to even locate blobs, and the private key to decrypt
+  them.
+- **INSERT:** Authenticated users only (enforced via Supabase JWT). Edge
+  functions operate with the service role and bypass RLS for writes. The
+  upload handler independently verifies the Ed25519 signature before storing.
+- **UPDATE:** Authenticated users may only update blobs where
+  `owner_id = auth.uid()`.
+- **DELETE:** No policy exists. Deletions are not permitted through standard
+  database access.
+
+### Client-Side (PGLite)
+
+The client maintains a local PGLite database with a `tributary` schema for
+internal state:
+
+- `tributary.streams` tracks each stream's keys, schema ID, and last synced
+  sequence number.
+- Per-stream schemas (`{appId}_{schemaId}`) contain the materialized
+  application tables produced by replaying the decrypted replication log.
+
+Key material (Ed25519 private keys) is stored in the `tributary.streams` table
+in the local PGLite database. This is the basis for the "device compromise is
+out of scope" exclusion in the threat model.
+
+### Write Path
+
+1. Client serializes SQL operations to JSON.
+2. Client encrypts with XSalsa20-Poly1305 (random nonce).
+3. Client computes body hash and chain hash.
+4. Client signs the chain hash with Ed25519.
+5. Client uploads the encrypted blob with hash and signature headers.
+6. Server verifies the chain hash and Ed25519 signature.
+7. Server stores the blob. On success, the client commits locally.
+
+If server persistence fails, the local transaction is rolled back. The server
+never sees plaintext.
+
+### Sync Path
+
+1. Client requests blobs after its last synced sequence number (Apache Arrow
+   IPC format for efficiency).
+2. For each blob, the client decrypts with its symmetric key.
+3. Decrypted SQL operations are replayed against the local PGLite database.
+4. The last synced sequence number is updated.
+
+## Cryptographic Library Choices
+
+| Concern              | Library / API         | Algorithm                |
+|----------------------|-----------------------|--------------------------|
+| Key stretching       | Web Crypto API        | PBKDF2-SHA256            |
+| Key derivation       | Web Crypto API        | HKDF-SHA256              |
+| Symmetric encryption | TweetNaCl             | XSalsa20-Poly1305        |
+| Signing              | TweetNaCl             | Ed25519                  |
+| Hashing              | Web Crypto / Node.js  | SHA-256                  |
+| Nonce generation     | TweetNaCl             | `nacl.randomBytes` (CSPRNG) |
+
+[TweetNaCl](https://tweetnacl.js.org/) is a direct JavaScript port of
+[NaCl](https://nacl.cr.yp.to/) by Daniel J. Bernstein et al. It is a minimal,
+audited library with no dependencies.
+
+## Known Limitations and Future Work
+
+- **No key rotation.** If a user's password is compromised, there is no
+  mechanism to re-encrypt existing stream data under a new key. Implementing
+  key rotation would require decrypting and re-encrypting all blobs.
+
+- **No forward secrecy.** All blobs in a stream are encrypted under the same
+  symmetric key. Compromising the key exposes the entire stream history. A
+  ratcheting protocol could mitigate this but would significantly complicate
+  the sync model.
+
+- **PBKDF2 vs. memory-hard KDFs.** PBKDF2-SHA256 at 100,000 iterations
+  provides reasonable resistance to brute-force attacks but is less resistant
+  to GPU/ASIC attacks than memory-hard alternatives like Argon2. Migrating to
+  Argon2 would strengthen password-derived key material against offline
+  attacks.
+
+- **Local key storage.** Private keys are stored in PGLite without additional
+  protection from platform secure storage APIs. On platforms that support it,
+  using the OS keychain or secure enclave would reduce exposure.
+
+- **Supply chain hardening.** Critical cryptographic dependencies (TweetNaCl)
+  could be vendored and integrity-checked to reduce supply chain risk.
+
+## For Auditors
+
+If you are auditing this codebase, the following files contain the
+security-critical code paths:
+
+| Area                     | File                                                  |
+|--------------------------|-------------------------------------------------------|
+| Key derivation           | `tributary-client/src/kdf.ts`                         |
+| Encryption / decryption  | `tributary-client/src/tributaryStream.ts`              |
+| Hashing                  | `tributary-client/src/hashUtils.ts`                   |
+| Client keypair generation| `apps/scribe/scribe-react/src/utils/crypto.ts`        |
+| Server signature verify  | `supabase/functions/shared/crypto.ts`                 |
+| Server upload handler    | `supabase/functions/shared/routes.ts`                 |
+| Database schema / RLS    | `supabase/migrations/20260218000000_secure_rls.sql`   |
+| Password flow            | `apps/scribe/scribe-react/src/pages/SetPasswordPage.tsx` |
+
+Corresponding test files:
+
+| Area                     | File                                                  |
+|--------------------------|-------------------------------------------------------|
+| Key derivation           | `tributary-client/test/kdf.test.ts`                   |
+| Server crypto            | `supabase/functions/tests/unit/crypto.test.ts`        |
+| Client crypto            | `apps/scribe/scribe-react/src/utils/crypto.test.ts`   |
+| Password page            | `apps/scribe/scribe-react/tests/SetPasswordPage.test.tsx` |
+
+Things an auditor should specifically verify:
+
+1. **Nonce uniqueness.** Every call to `encryptData` must generate a fresh
+   random nonce. Nonce reuse under XSalsa20-Poly1305 is catastrophic.
+2. **HKDF domain separation.** The `info` strings for auth key and stream seed
+   derivation must be distinct to prevent key reuse across contexts.
+3. **Signature covers chain hash.** The Ed25519 signature must be computed over
+   the full chain hash (which transitively covers all prior hashes and the
+   current body). Signing only the body hash would allow reordering attacks.
+4. **Server-side verification.** The server must independently recompute the
+   expected chain hash and verify the signature before storing a blob.
+   Client-provided hashes alone are insufficient.
+5. **Auth key never exposes password.** The auth key sent to Supabase is an
+   HKDF derivation of the PBKDF2 master key, not the password itself. Verify
+   that the password is never transmitted in any other form.
