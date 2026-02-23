@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createTestClientWithStream } from './test-utils'
 import { saveNote } from '../src/actions/saveNote'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
+import { searchNotes } from 'scribe-data'
 
 describe('saveNote function', () => {
   beforeEach(() => {
@@ -46,6 +47,21 @@ describe('saveNote function', () => {
     
     // Verify the block UUID stayed the same (new version of same note)
     expect(updatedBlock.block_uuid).toBe(initialBlockUuid)
+  })
+
+  it('should index the saved note for full-text search', async () => {
+    const { stream } = await createTestClientWithStream()
+
+    // Save a note with distinctive content
+    await saveNote(stream, '# Photosynthesis\n\nPlants convert sunlight into energy through chlorophyll.')
+
+    // Without calling indexAll again, search should find the note
+    // because saveNote itself should run full indexing (not just slug indexing)
+    const localDb = stream.local()
+    const results = await searchNotes(localDb, 'photosynthesis')
+
+    expect(results).toHaveLength(1)
+    expect(results[0].title).toBe('Photosynthesis')
   })
 
   it('should preserve block UUID when creating new note (no blockUuid)', async () => {

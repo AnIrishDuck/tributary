@@ -34,12 +34,10 @@ export async function saveNote(
   const localDb = stream.local()
   
   // Run indexing on the local database
-  const { indexSlugs } = await import('scribe-data')
-  await indexSlugs(localDb)
-  
+  await scribeData.indexAll(localDb)
+
   // Get the slug for this note from the local database
-  const { getNoteSlugByUuid } = await import('scribe-data')
-  const blockSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+  const blockSlug = await scribeData.getNoteSlugByUuid(localDb, block.block_uuid)
   
   return { block, blockSlug }
 }
