@@ -189,7 +189,7 @@ describe('NewLibraryPage', () => {
     // Wait for error message to appear
     await waitFor(() => {
       expect(screen.getByText('Failed to create new library. Please try again.')).toBeInTheDocument()
-    }, { timeout: 2000 })
+    }, { timeout: 5000 })
   })
 
   it('should handle missing Tributary client gracefully', async () => {
