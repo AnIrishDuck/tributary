@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams, Link } from 'react-router'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import * as base64url from 'urlsafe-base64'
-import { micromark } from 'micromark'
 import { PencilIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
-import { isSlugLink, resolveLink, isResolvedBlockUrl } from '../utils/links'
+import { renderMarkdown } from '../utils/markdown'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -128,31 +126,6 @@ const NoteViewPage: React.FC = () => {
     }
   }
 
-  // Post-process the rendered HTML to update links
-  useEffect(() => {
-    // Only run in browser environment
-    if (typeof window === 'undefined') return
-    
-    // Get the content container
-    const contentContainer = document.querySelector('.prose')
-    if (!contentContainer) return
-    
-    // Find all anchor tags and update their href attributes
-    const anchors = contentContainer.querySelectorAll('a')
-    anchors.forEach(anchor => {
-      const href = anchor.getAttribute('href')
-      if (href) {
-        // Check if this is a slug link (no protocol)
-        if (isSlugLink(href) && !isResolvedBlockUrl(href)) {
-          // Resolve the slug link to the proper block URL
-          const resolvedHref = resolveLink(href, prefix || '', slug || '')
-          console.log("DEBUG: setting href to:", resolvedHref);
-          anchor.setAttribute('href', resolvedHref);
-        }
-      }
-    })
-  }, [prefix, slug, content])
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
@@ -232,7 +205,7 @@ const NoteViewPage: React.FC = () => {
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div 
             className="prose prose-lg max-w-none"
-            dangerouslySetInnerHTML={{ __html: micromark(content) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix || '', slug) }}
           />
         </div>
       </div>
