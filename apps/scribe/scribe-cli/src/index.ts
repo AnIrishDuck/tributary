@@ -44,7 +44,7 @@ async function createSyncClient(directory: string, libraryPk: string, dbPath?: s
   if (dbPath) {
     pglitePath = dbPath;
   } else {
-    pglitePath = path.join(directory, 'db');
+    pglitePath = path.join(directory, '.scribe', 'db');
   }
 
   await fs.promises.mkdir(pglitePath, { recursive: true });
@@ -133,34 +133,11 @@ program
       if (options.db) {
         pglitePath = options.db;
       } else {
-        pglitePath = path.join(directory, 'db');
+        pglitePath = path.join(directory, '.scribe', 'db');
       }
 
       // Create the db directory
       await fs.promises.mkdir(pglitePath, { recursive: true });
-
-      // Create the slugs directory
-      const slugsDir = path.join(directory, 'slugs');
-      await fs.promises.mkdir(slugsDir, { recursive: true });
-
-      // Create the indexed directory and its subdirectories
-      const indexedDir = path.join(directory, 'indexed');
-      await fs.promises.mkdir(indexedDir, { recursive: true });
-
-      const tagsDir = path.join(indexedDir, 'tags');
-      await fs.promises.mkdir(tagsDir, { recursive: true });
-
-      const linksDir = path.join(indexedDir, 'links');
-      await fs.promises.mkdir(linksDir, { recursive: true });
-
-      // Create the READ-ONLY warning file
-      const readOnlyContent = `# READ-ONLY
-
-Files and directories in this directory are managed automatically by Scribe.
-They will be overwritten or removed during sync operations.
-Do not manually edit or add files here.
-`;
-      await fs.promises.writeFile(path.join(indexedDir, 'READ-ONLY.md'), readOnlyContent);
 
       // Store the library PK for future use
       await writeStoredLibraryPk(directory, libraryPk);
@@ -200,7 +177,7 @@ Welcome to Scribe! This is a sample note to help you get started.
 
 ## Basic Usage
 
-1. Edit notes in the \`slugs/\` directory
+1. Edit markdown files in your sync directory
 2. Use \`scribe sync\` to synchronize your changes
 3. Link to other notes using [Note Title](note-title) syntax
 
@@ -240,13 +217,9 @@ Use \`scribe sync <directory>\` to synchronize your local directory with the Tri
       console.log(`Directory structure:`);
       console.log(`  ${directory}/`);
       console.log(`    .scribe/`);
+      console.log(`      db/`);
       console.log(`      library-pk`);
-      console.log(`    db/`);
-      console.log(`    slugs/`);
-      console.log(`    indexed/`);
-      console.log(`      READ-ONLY.md`);
-      console.log(`      tags/`);
-      console.log(`      links/`);
+      console.log(`    note-title.md`);
     } catch (error) {
       console.error('Error:', (error as Error).message);
       process.exit(1);

@@ -83,28 +83,19 @@ Depending on the lookup results, one of three outcomes occurs:
 
 ## Disambiguation Handling
 
-When multiple notes could match a link target, Scribe automatically generates disambiguation pages:
+When multiple notes could match a link target, Scribe tracks disambiguation in the database:
 
 ### Disambiguation Process
-1. A disambiguation page is created in the `indexed/links/` directory
-2. The page lists all notes with matching base slugs
-3. Each entry includes the full note title and unique slug
-4. Users can navigate to the correct note from this page
+1. Notes with conflicting base slugs are given unique suffixed slugs (e.g. `same-title-a1b2`)
+2. The `block_slug` table tracks which note owns which slug
+3. Clients can query the database to present disambiguation choices to the user
 
 ### Example
 If two notes both have the base slug `same-title`:
-- Note A: `abcd-same-title` with title "Same Title (Work)"
-- Note B: `1234-same-title` with title "Same Title (Personal)"
+- Note A: `same-title-abcd` with title "Same Title (Work)"
+- Note B: `same-title-1234` with title "Same Title (Personal)"
 
-A disambiguation page at `indexed/links/same-title.md` would contain:
-```markdown
-# Multiple notes found for: same-title
-
-There are multiple notes with similar names. Please select the correct one:
-
-- [Same Title (Work)](abcd-same-title)
-- [Same Title (Personal)](1234-same-title)
-```
+Both notes receive UUID-suffixed slugs so that each has a unique filename on disk.
 
 ## Link Validation
 
