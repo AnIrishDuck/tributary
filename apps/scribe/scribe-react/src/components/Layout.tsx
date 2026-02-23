@@ -1,14 +1,23 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Outlet, useLocation, useNavigate, Link } from 'react-router'
-import { HomeIcon, PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { HomeIcon, PlusIcon, MagnifyingGlassIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
+import { useTributary } from '../context/tributaryContext'
 
 const Layout: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const syncContext = useSyncStatusOptional()
   const globalSyncStatus = syncContext?.globalSyncStatus
+  const { logout } = useTributary()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    if (!logout || loggingOut) return
+    setLoggingOut(true)
+    await logout()
+  }
 
   // Extract prefix from current path if in library context
   const prefixMatch = location.pathname.match(/^\/pk\/([^/]+)/)
@@ -28,6 +37,21 @@ const Layout: React.FC = () => {
   return (
     <div className="min-h-dvh bg-gray-50 flex flex-col">
       <OfflineBanner />
+      {logout && (
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 flex justify-end h-10 items-center">
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+              title="Sign out"
+            >
+              <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
+              <span>{loggingOut ? 'Signing out...' : 'Sign out'}</span>
+            </button>
+          </div>
+        </div>
+      )}
       <main className="flex-1 pb-16 md:pb-0">
         <Outlet />
       </main>

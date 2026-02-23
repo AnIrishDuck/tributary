@@ -5,22 +5,25 @@ import { PGlite } from '@electric-sql/pglite'
 // Define the context type
 interface TributaryContextType {
   client: TributaryClient | null
+  logout: (() => Promise<void>) | null
 }
 
 // Create the context with default value
 const TributaryContext = createContext<TributaryContextType>({
-  client: null
+  client: null,
+  logout: null,
 })
 
 // Create a provider component
 interface TributaryProviderProps {
   client: TributaryClient | null
+  logout?: (() => Promise<void>) | null
   children: ReactNode
 }
 
-export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, children }) => {
+export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, logout, children }) => {
   return (
-    <TributaryContext.Provider value={{ client }}>
+    <TributaryContext.Provider value={{ client, logout: logout ?? null }}>
       {children}
     </TributaryContext.Provider>
   )

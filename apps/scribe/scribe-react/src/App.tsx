@@ -7,7 +7,7 @@ import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed } fro
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { getPGlite } from './db/persistence'
+import { getPGlite, wipePGlite } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -183,6 +183,18 @@ function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(initialPasswordRecovery)
   const [derivedKeyPair, setDerivedKeyPair] = useState<DerivedKeyPair | null>(null)
 
+  // Logout: sign out of Supabase, wipe local DB, and reset client state
+  async function logout() {
+    if (supabaseAuth) {
+      await supabaseAuth.auth.signOut()
+    }
+    await wipePGlite()
+    clientPromise = null
+    setClient(null)
+    setSession(null)
+    setDerivedKeyPair(null)
+  }
+
   // Listen for auth state changes
   useEffect(() => {
     if (!supabaseAuth) return
@@ -348,7 +360,7 @@ function App() {
 
   return (
     <SyncStatusProvider client={client}>
-      <TributaryProvider client={client}>
+      <TributaryProvider client={client} logout={logout}>
         <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>
