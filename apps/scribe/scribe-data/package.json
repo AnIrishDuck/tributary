@@ -20,7 +20,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^20.11.0",
     "@types/urlsafe-base64": "^1.0.31",
     "tweetnacl-util": "^0.15.1",
     "typescript": "^5.0.0",

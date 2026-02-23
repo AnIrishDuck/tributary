@@ -1,6 +1,7 @@
 import React from 'react'
+import nacl from 'tweetnacl'
 import { TributaryClient, TributaryStream, Server } from 'tributary-client'
-import { createLibrary } from '../src/actions/createLibrary'
+import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { TributaryProvider } from '../src/context/tributaryContext'
 import { SyncStatusProvider } from '../src/context/syncStatusContext'
@@ -21,7 +22,11 @@ export async function createTestClientWithStream(name: string = 'Test Stream'): 
   // Create test client (this uses createTestServer internally)
   const { client, server } = createTestTributaryClient()
 
-  const { stream, prefix, streamId } = await createLibrary(client, name)
+  // Create a home library first (required by createLibrary)
+  const homeKeyPair = nacl.sign.keyPair()
+  const { stream: homeStream } = await createHomeLibrary(client, 'Home', homeKeyPair)
+
+  const { stream, prefix, streamId } = await createLibrary(client, name, homeStream)
 
   // Return server only if it's a TestFakeServer for extended functionality
   const testServer = server as TestFakeServer | null
