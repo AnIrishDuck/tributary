@@ -11,6 +11,8 @@ import {
   createCollection,
   createNote,
   createNoteVersion,
+  getNoteByUuid,
+  getNotesInCollection,
   indexAll,
 } from '@tributary/scribe-data'
 import { sync, validateDirectoryStructure } from '../src/sync.js'
@@ -171,13 +173,9 @@ describe('sync — flat notes (no collections)', () => {
     await sync(stream, client, tmpDir, { dryRun: false })
 
     // Verify the database has the updated content
-    const localDb = stream.local()
-    const result = await stream.query(
-      'SELECT body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1',
-      [note.block_uuid]
-    )
-    expect(result.rows).toHaveLength(1)
-    expect((result.rows[0] as any).body).toContain('Updated content from local edit')
+    const updated = await getNoteByUuid(stream, note.block_uuid)
+    expect(updated).not.toBeNull()
+    expect(updated!.body).toContain('Updated content from local edit')
   })
 
   it('dry run should not write files', async () => {
@@ -353,12 +351,9 @@ describe('sync — collections', () => {
     await sync(stream, client, tmpDir, { dryRun: false })
 
     // Verify database has the updated content
-    const result = await stream.query(
-      'SELECT body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1',
-      [note.block_uuid]
-    )
-    expect(result.rows).toHaveLength(1)
-    expect((result.rows[0] as any).body).toContain('Updated gumbo recipe!')
+    const updated = await getNoteByUuid(stream, note.block_uuid)
+    expect(updated).not.toBeNull()
+    expect(updated!.body).toContain('Updated gumbo recipe!')
   })
 
   it('should create new notes with correct collection_id when added to collection directory', async () => {
@@ -390,13 +385,11 @@ describe('sync — collections', () => {
     // Sync again — should create the note in the database with the correct collection_id
     await sync(stream, client, tmpDir, { dryRun: false })
 
-    // Verify the new note exists in the database with the collection_id
-    const result = await stream.query(
-      `SELECT * FROM block WHERE body LIKE '%Jambalaya%' ORDER BY insert_datetime DESC LIMIT 1`,
-      []
-    )
-    expect(result.rows).toHaveLength(1)
-    expect((result.rows[0] as any).collection_id).toBe(recipes.collection_uuid)
+    // Verify the new note exists in the database with the correct collection_id
+    const notesInRecipes = await getNotesInCollection(stream, recipes.collection_uuid)
+    const jambalaya = notesInRecipes.find(n => n.body.includes('Jambalaya'))
+    expect(jambalaya).toBeDefined()
+    expect(jambalaya!.collection_id).toBe(recipes.collection_uuid)
   })
 
   it('should handle duplicate slugs within a collection', async () => {
