@@ -52,9 +52,15 @@ export const SyncStatusProvider: React.FC<{
     const onVisibilityChange = () => {
       const wasVisible = visibleRef.current
       visibleRef.current = !document.hidden
-      console.log(`[sync] visibilitychange: ${wasVisible ? 'visible' : 'hidden'} → ${document.hidden ? 'hidden' : 'visible'}`)
+      console.log(`[sync] visibilitychange: ${wasVisible ? 'visible' : 'hidden'} → ${document.hidden ? 'hidden' : 'visible'}`, { hasWakeUp: !!wakeUpRef.current })
       // When the tab becomes visible again, restart the sync loop immediately
-      if (!document.hidden) wakeUpRef.current?.()
+      if (!document.hidden) {
+        if (wakeUpRef.current) {
+          wakeUpRef.current()
+        } else {
+          console.warn('[sync] visibilitychange: wakeUpRef is null, cannot restart sync')
+        }
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -65,6 +71,11 @@ export const SyncStatusProvider: React.FC<{
     let timeoutId: ReturnType<typeof setTimeout>
     let isMounted = true
     let isRunning = false // guard against concurrent execution
+    let pendingWakeUp = false // track wakeUp calls that arrived mid-sync
+
+    // Re-sync in case visibility changed between effect cleanup and re-mount
+    // (e.g. during React StrictMode double-mount)
+    visibleRef.current = !document.hidden
 
     // Local mirror of per-library sync status, updated in the loop and
     // pushed to React state between async yields so the UI can re-render.
@@ -102,7 +113,7 @@ export const SyncStatusProvider: React.FC<{
     }
 
     const syncLoop = async () => {
-      if (!isMounted) return
+      if (!isMounted) { console.log('[sync] syncLoop: not mounted, skipping'); return }
 
       // If the tab is hidden, skip the work entirely and just reschedule.
       // The wakeUp callback will restart us immediately when the tab returns.
@@ -112,10 +123,11 @@ export const SyncStatusProvider: React.FC<{
         return
       }
 
-      // Prevent concurrent execution — if wakeUp fires while we're mid-sync,
-      // just let the current iteration finish (it will reschedule itself).
+      // Prevent concurrent execution — the wakeUp function handles setting
+      // pendingWakeUp when a sync is already in-flight.
       if (isRunning) return
       isRunning = true
+      pendingWakeUp = false
 
       setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
@@ -180,14 +192,24 @@ export const SyncStatusProvider: React.FC<{
 
         const allComplete = pushStatus()
         isRunning = false
-        scheduleNext(nextDelay(allComplete))
+        if (pendingWakeUp) {
+          pendingWakeUp = false
+          scheduleNext(0)
+        } else {
+          scheduleNext(nextDelay(allComplete))
+        }
       } catch (error) {
         console.error('Background sync error:', error)
         setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
         isRunning = false
-        // On error use 5× poll interval, but still respect background throttle
-        const errorDelay = visibleRef.current ? pollInterval * 5 : pollInterval * 30
-        scheduleNext(errorDelay)
+        if (pendingWakeUp) {
+          pendingWakeUp = false
+          scheduleNext(0)
+        } else {
+          // On error use 5× poll interval, but still respect background throttle
+          const errorDelay = visibleRef.current ? pollInterval * 5 : pollInterval * 30
+          scheduleNext(errorDelay)
+        }
       }
     }
 
@@ -195,7 +217,15 @@ export const SyncStatusProvider: React.FC<{
     // and restart the loop immediately when the tab becomes visible.
     wakeUpRef.current = () => {
       clearTimeout(timeoutId)
-      syncLoop() // guarded by isRunning — safe if a sync is already in-flight
+      if (isRunning) {
+        // A sync is already in-flight — flag it so the running iteration
+        // restarts the loop immediately when it finishes.
+        console.log('[sync] wakeUp: sync in-flight, setting pendingWakeUp')
+        pendingWakeUp = true
+      } else {
+        console.log('[sync] wakeUp: starting syncLoop')
+        syncLoop()
+      }
     }
 
     syncLoop()
