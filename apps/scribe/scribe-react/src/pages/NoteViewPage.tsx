@@ -1,7 +1,9 @@
 import React from 'react'
 import { useNavigate } from 'react-router'
 import { PencilIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { Collection } from 'scribe-data'
 import { renderMarkdown } from '../utils/markdown'
+import { Breadcrumbs } from '../components/Breadcrumbs'
 
 interface NoteViewPageProps {
   content: string
@@ -9,21 +11,33 @@ interface NoteViewPageProps {
   slugPath: string
   prefix: string
   splatPath: string
+  ancestors: Collection[]
 }
 
-const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath }) => {
+const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors }) => {
   const navigate = useNavigate()
+
+  // Compute parent collection path from slugPath (remove last segment which is the note)
+  const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
 
   const handleEdit = () => {
     navigate(`/pk/${prefix}/${slugPath}&edit`)
   }
 
   const handleNewNote = () => {
-    navigate(`/pk/${prefix}/+note`)
+    if (parentSlugPath) {
+      navigate(`/pk/${prefix}/${parentSlugPath}/+note`)
+    } else {
+      navigate(`/pk/${prefix}/+note`)
+    }
   }
 
   const handleBack = () => {
-    navigate(`/pk/${prefix}/`)
+    if (parentSlugPath) {
+      navigate(`/pk/${prefix}/${parentSlugPath}`)
+    } else {
+      navigate(`/pk/${prefix}/`)
+    }
   }
 
   return (
@@ -64,6 +78,11 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Breadcrumbs (show path to parent collection, not the note itself) */}
+        {ancestors.length > 0 && (
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
+        )}
+
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
             className="prose prose-lg max-w-none"

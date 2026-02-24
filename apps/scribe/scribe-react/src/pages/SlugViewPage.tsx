@@ -27,7 +27,7 @@ interface AuthoritativeVersion {
 type PageMode =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'note'; content: string; title: string; slugPath: string }
+  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[] }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
@@ -179,7 +179,18 @@ const SlugViewPage: React.FC = () => {
 
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
           const fullSlugPath = segments.join('/')
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath })
+
+          // Get parent collection ancestors for breadcrumbs
+          let noteAncestors: Collection[] = []
+          const parentSegments = segments.slice(0, -1)
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              noteAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
+            }
+          }
+
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors })
           return
         }
 
@@ -195,7 +206,18 @@ const SlugViewPage: React.FC = () => {
         if (resolved.type === 'note') {
           const blockSlugInfo = resolved.entity as BlockSlugInfo
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath })
+
+          // Get parent collection ancestors for breadcrumbs
+          let noteAncestors: Collection[] = []
+          const parentSegments = segments.slice(0, -1)
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              noteAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
+            }
+          }
+
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors })
           return
         }
 
@@ -303,6 +325,7 @@ const SlugViewPage: React.FC = () => {
       slugPath={mode.slugPath}
       prefix={prefix || ''}
       splatPath={splatPath}
+      ancestors={mode.ancestors}
     />
   )
 }
