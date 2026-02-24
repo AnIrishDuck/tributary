@@ -142,7 +142,9 @@ export const SyncStatusProvider: React.FC<{
 
       try {
         // Load all libraries into memory
+        console.log('[sync] calling client.list()...')
         const streamIds = await client.list()
+        console.log(`[sync] client.list() returned ${streamIds.length} streams:`, streamIds)
         const streams: Array<{ id: string, stream: TributaryStream }> = []
         for (const streamId of streamIds) {
           const stream = await client.get('scribe', streamId)
