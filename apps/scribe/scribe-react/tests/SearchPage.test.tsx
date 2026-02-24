@@ -305,7 +305,7 @@ describe('SearchPage', () => {
     
     // Should navigate to new note page
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe(`/pk/${base64Part}/new`)
+      expect(router.state.location.pathname).toBe(`/pk/${base64Part}/+note`)
     })
   })
 })

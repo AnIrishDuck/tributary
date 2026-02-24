@@ -25,11 +25,12 @@ const Layout: React.FC = () => {
 
   // Determine which bottom nav item is active
   const isHome = location.pathname === '/'
-  const isNew = location.pathname === '/new' || location.pathname.endsWith('/new')
+  const isNew = location.pathname === '/new' || location.pathname.endsWith('/+note')
   const isSearch = location.pathname.endsWith('/search')
 
   // Don't show bottom nav on the editor page (it has its own toolbar)
-  const isEditor = location.pathname.endsWith('/edit')
+  const lastSegment = location.pathname.split('/').pop() || ''
+  const isEditor = lastSegment.endsWith('&edit')
 
   // Show sync indicator dot
   const showSyncDot = globalSyncStatus ? globalSyncStatus.isSyncing && !globalSyncStatus.synced : false
@@ -88,7 +89,7 @@ const Layout: React.FC = () => {
                 </Link>
 
                 <Link
-                  to={`/pk/${prefix}/new`}
+                  to={`/pk/${prefix}/+note`}
                   className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
                     isNew ? 'text-blue-600' : 'text-gray-500'
                   }`}

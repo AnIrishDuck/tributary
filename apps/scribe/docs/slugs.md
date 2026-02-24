@@ -48,3 +48,43 @@ slug resolution behavior applies across both types.
 See [Collections](collections.md) for more on how collections use slugs.
 
 For information about how slugs are used for linking, see [Linking System](linking.md).
+
+## Routing
+
+Slugs form the basis of scribe-react's URL structure. All routes live under
+`/pk/:prefix/` where `:prefix` is the base64url-encoded public key of the
+library.
+
+### Viewing
+
+Notes and collections are viewed at their slug path:
+
+```
+/pk/:prefix/note-slug
+/pk/:prefix/collection-slug
+/pk/:prefix/collection-slug/nested-note
+```
+
+### Action Routes
+
+Creation and editing use special characters (`+`, `&`) that cannot appear in
+slugs, making them unambiguous:
+
+| Action | Route | Example |
+|---|---|---|
+| New note (library root) | `/pk/:prefix/+note` | `/pk/abc123/+note` |
+| New note (in collection) | `/pk/:prefix/collection/+note` | `/pk/abc123/recipes/+note` |
+| New collection (library root) | `/pk/:prefix/+collection` | `/pk/abc123/+collection` |
+| New collection (nested) | `/pk/:prefix/parent/+collection` | `/pk/abc123/recipes/+collection` |
+| Edit note | `/pk/:prefix/slug-path&edit` | `/pk/abc123/recipes/gumbo&edit` |
+
+The parent for creation routes is resolved from the preceding slug path
+segments — no UUIDs in the URL.
+
+### Reserved Characters
+
+- `+` prefixes action segments (`+note`, `+collection`). Since `+` is
+  stripped during slug generation (`[a-z0-9\s-]` only), it can never collide
+  with a slug.
+- `&` separates action suffixes (`&edit`). Same reasoning — `&` cannot
+  appear in a slug.

@@ -2,20 +2,14 @@ import { RouteObject } from 'react-router'
 import NewLibraryPage from './pages/NewLibraryPage'
 import ImportLibraryPage from './pages/ImportLibraryPage'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
-import EditorPage from './pages/EditorPage'
 import SlugViewPage from './pages/SlugViewPage'
 import HomePage from './pages/HomePage'
 import NoteListPage from './pages/NoteListPage'
 import SearchPage from './pages/SearchPage'
-import NewCollectionPage from './pages/NewCollectionPage'
 import Layout from './components/Layout'
 import React from 'react'
 
 // Error components for routes
-function NewNoteError() {
-  return React.createElement('div', null, 'ERROR: NEW NOTE')
-}
-
 function NoteError() {
   return React.createElement('div', null, 'ERROR: NOTE')
 }
@@ -47,16 +41,6 @@ export const routes: RouteObject[] = [
         ErrorBoundary: NoteError
       },
       {
-        path: '/pk/:prefix/new',
-        Component: EditorPage,
-        ErrorBoundary: NewNoteError
-      },
-      {
-        path: '/pk/:prefix/new-collection',
-        Component: NewCollectionPage,
-        ErrorBoundary: NoteError
-      },
-      {
         path: '/pk/:prefix/',
         Component: NoteListPage,
         ErrorBoundary: NoteError
@@ -67,6 +51,11 @@ export const routes: RouteObject[] = [
         ErrorBoundary: NoteError
       },
       {
+        // Handles all slug paths including:
+        // - Note/collection viewing: /pk/:prefix/slug-path
+        // - New note creation: /pk/:prefix/+note or /pk/:prefix/parent/+note
+        // - New collection creation: /pk/:prefix/+collection or /pk/:prefix/parent/+collection
+        // - Note editing: /pk/:prefix/slug-path&edit
         path: '/pk/:prefix/*',
         Component: SlugViewPage,
         ErrorBoundary: NoteError

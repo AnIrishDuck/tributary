@@ -20,31 +20,32 @@ describe('EditorPage', () => {
   it('should render the editor page with note title', async () => {
     // Create a test stream with an actual note
     const { client, stream, prefix } = await createTestClientWithStream()
-    
+
     // Create a note in the stream
     const block = await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Test Document\n\nThis is a test document.',
       inserter: 'test'
     })
-    
+
     // Sync to ensure persistence
     await stream.sync(1000)
-    
+
     // Run indexing to create the slug
     const localDb = stream.local()
     await indexSlugs(localDb)
-    
+
     // Extract the base64 part for the route parameter
     const parts = prefix.split('/')
     const base64Part = parts[1]
-    
+
     // Get the slug for this note using scribe-data function
     const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
     const slug = noteSlug ? noteSlug.slug : 'test-document'
-    
+
+    // Edit route uses &edit suffix on the note's slug path
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new?edit=${block.block_uuid}`]
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
     })
 
     render(
@@ -60,18 +61,19 @@ describe('EditorPage', () => {
   })
 
   it('should render the editor page for new note', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
     const router = createMemoryRouter(routes, {
-      initialEntries: ['/pk/test-prefix/new']
+      initialEntries: [`/pk/${base64Part}/+note`]
     })
-    
-    const { client } = createTestTributaryClient()
-    
+
     render(
       <WithProviders client={client}>
         <RouterProvider router={router} />
       </WithProviders>
     )
-    
+
     // Wait for the component to render fully
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
@@ -80,29 +82,29 @@ describe('EditorPage', () => {
 
   it('should show loading state when Save is clicked', async () => {
     const { client, prefix } = await createTestClientWithStream()
-    
+
     // Extract just the base64 part for the route parameter (remove the 'pk/' prefix)
     const parts = prefix.split('/')
     const base64Part = parts[1]
-    
+
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new`]
+      initialEntries: [`/pk/${base64Part}/+note`]
     })
-    
+
     const { unmount } = render(
       <WithProviders client={client}>
         <RouterProvider router={router} />
       </WithProviders>
     )
-    
+
     // Wait for the component to render fully
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     })
-    
+
     const saveButton = screen.getByRole('button', { name: 'Add Note' })
     fireEvent.click(saveButton)
-    
+
     // Check that loading state is displayed immediately
     expect(saveButton).toBeDisabled()
 
@@ -120,10 +122,10 @@ describe('EditorPage', () => {
         }
       }
     }, { timeout: 5000 })
-    
+
     // Wait a bit for any navigation to settle before unmounting
     await new Promise(resolve => setTimeout(resolve, 100))
-    
+
     // Unmount to prevent navigation from triggering AbortSignal errors
     unmount()
   })
@@ -136,7 +138,7 @@ describe('EditorPage', () => {
     const base64Part = parts[1]
 
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new`]
+      initialEntries: [`/pk/${base64Part}/+note`]
     })
 
     const { unmount } = render(
@@ -174,31 +176,31 @@ describe('EditorPage', () => {
   it('should edit an existing note and show updated content', async () => {
     // Create a test stream with an actual note
     const { client, stream, prefix } = await createTestClientWithStream()
-    
+
     // Create a note in the stream
     const block = await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Original Document\n\nThis is the original content.',
       inserter: 'test'
     })
-    
+
     // Sync to ensure persistence
     await stream.sync(1000)
-    
+
     // Run indexing to create the slug
     const localDb = stream.local()
     await indexSlugs(localDb)
-    
+
     // Get the slug for this note using scribe-data function
     const parts = prefix.split('/')
     const base64Part = parts[1]
-    
+
     const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
     const slug = noteSlug ? noteSlug.slug : 'original-document'
-    
-    // First, edit the note using the new edit URL pattern
+
+    // Edit the note using the &edit URL pattern
     const editRouter = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new?edit=${block.block_uuid}`]
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
     })
 
     const { rerender } = render(
@@ -211,15 +213,15 @@ describe('EditorPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
     })
-    
+
     // Test that the save button exists and is properly labeled for editing
     const saveButton = screen.getByRole('button', { name: 'Update Note' })
     expect(saveButton).toBeInTheDocument()
-    
+
     // Test that editor is loaded - we won't try to interact with CodeMirror directly as it's complex
     const editor = screen.getByRole('textbox')
     expect(editor).toBeInTheDocument()
-    
+
     // Check initial version count using scribe-data function
     const initialVersionCount = await getNoteVersionCount(stream, block.block_uuid)
     expect(initialVersionCount).toBe(1)
@@ -227,31 +229,31 @@ describe('EditorPage', () => {
 })
 
 describe('EditorPage Additional Tests', () => {
-  it('should render EditorPage at /pk/:prefix/new route and load without errors', async () => {
-    // This test verifies that the route /pk/:prefix/new actually renders and works
-    
+  it('should render EditorPage at /pk/:prefix/+note route and load without errors', async () => {
+    // This test verifies that the route /pk/:prefix/+note actually renders and works
+
     const { client, prefix } = await createTestClientWithStream()
-    
+
     // Extract just the base64 part for the route parameter
     const parts = prefix.split('/')
     const base64Part = parts[1]
-    
+
     // Create router and render the EditorPage at its route
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new`]
+      initialEntries: [`/pk/${base64Part}/+note`]
     })
-    
+
     render(
       <WithProviders client={client}>
         <RouterProvider router={router} />
       </WithProviders>
     )
-    
+
     // Wait for the page to fully load - check for "New Note" heading
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
     }, { timeout: 5000 })
-    
+
     // Verify NO errors
     const errorEl = screen.queryByText(/Error|error/)
     expect(errorEl).toBeNull()
@@ -327,7 +329,7 @@ describe('EditorPage sync gate bug', () => {
     // Now navigate to the editor. This sets focused library = base64Part.
     // Subsequent sync iterations only sync the focused library.
     // The home library entry stays synced:false in latestPerStream.
-    router.navigate(`/pk/${base64Part}/new`)
+    router.navigate(`/pk/${base64Part}/+note`)
 
     // The editor should appear within a reasonable time.
     // BUG: globalSyncStatus.synced stays false because the home library is

@@ -15,11 +15,11 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   const navigate = useNavigate()
 
   const handleEdit = () => {
-    navigate(`/pk/${prefix}/${slugPath}/edit`)
+    navigate(`/pk/${prefix}/${slugPath}&edit`)
   }
 
   const handleNewNote = () => {
-    navigate(`/pk/${prefix}/new`)
+    navigate(`/pk/${prefix}/+note`)
   }
 
   const handleBack = () => {

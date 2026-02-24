@@ -1,22 +1,25 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useNavigate } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { createCollection, getLibrary, getCollectionAncestors, indexAll, getCollectionBySlug, titleToSlug, getSlugPath, Collection } from 'scribe-data'
+import { createCollection, getLibrary, indexAll, getCollectionBySlug, titleToSlug, getSlugPath, Collection } from 'scribe-data'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
-const NewCollectionPage: React.FC = () => {
+export interface NewCollectionPageProps {
+  prefix: string
+  parentUuid?: string
+  ancestors?: Collection[]
+  cancelPath: string
+}
+
+const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUuid, ancestors = [], cancelPath }) => {
   const [title, setTitle] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [ancestors, setAncestors] = useState<Collection[]>([])
   const navigate = useNavigate()
   const { client } = useTributary()
   const { setFocusedLibrary } = useSyncStatus()
-  const { prefix } = useParams()
-  const [searchParams] = useSearchParams()
-  const parentUuid = searchParams.get('parent')
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -26,28 +29,9 @@ const NewCollectionPage: React.FC = () => {
     }
   }, [prefix, setFocusedLibrary])
 
-  // Load breadcrumb ancestors if parent is specified
-  useEffect(() => {
-    const loadAncestors = async () => {
-      if (!client || !prefix || !parentUuid) return
-
-      try {
-        const stream = await client.get('scribe', prefix)
-        if (!stream) return
-        const localDb = stream.local()
-        const chain = await getCollectionAncestors(localDb, parentUuid)
-        setAncestors(chain)
-      } catch {
-        // Breadcrumbs are non-critical
-      }
-    }
-
-    loadAncestors()
-  }, [client, prefix, parentUuid])
-
   // No sync gate needed: creating a new collection doesn't require existing
   // content to be loaded. The library is already local (the user navigated
-  // from it), and the parent UUID is either the root or provided in the URL.
+  // from it), and the parent UUID is either the root or provided via props.
 
   const onCreateCollection = async () => {
     if (!client || !prefix || !title.trim()) return
@@ -113,7 +97,7 @@ const NewCollectionPage: React.FC = () => {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => prefix ? navigate(`/pk/${prefix}/`) : navigate('/')}
+                onClick={() => navigate(cancelPath)}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <XMarkIcon className="w-4 h-4 mr-1.5" />
@@ -151,7 +135,7 @@ const NewCollectionPage: React.FC = () => {
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix || ''} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
         )}
 
         {error && (

@@ -8,6 +8,8 @@ import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from './NoteViewPage'
 import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
+import EditorPage from './EditorPage'
+import NewCollectionPage from './NewCollectionPage'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -29,6 +31,9 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string }
+  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[] }
+  | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -74,17 +79,88 @@ const SlugViewPage: React.FC = () => {
         } = await import('scribe-data')
 
         // Parse the splat path into segments
-        let segments = splatPath.split('/').filter(Boolean)
-
-        // Check if last segment is 'edit' — if so, strip it and redirect to editor
-        const isEdit = segments.length > 0 && segments[segments.length - 1] === 'edit'
-        if (isEdit) {
-          segments = segments.slice(0, -1)
-        }
+        const segments = splatPath.split('/').filter(Boolean)
 
         if (segments.length === 0) {
           throw new Error('Not found')
         }
+
+        const lastSegment = segments[segments.length - 1]
+
+        // --- Handle +note (new note creation) ---
+        if (lastSegment === '+note') {
+          const parentSegments = segments.slice(0, -1)
+          let collectionId: string | undefined = undefined
+          const parentSlugPath = parentSegments.join('/')
+
+          if (parentSegments.length > 0) {
+            const library = await getLibrary(localDb)
+            if (!library) throw new Error('Library not found')
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            collectionId = resolved.entity.collection_uuid
+          }
+
+          setMode({ type: 'newNote', collectionId, parentSlugPath })
+          return
+        }
+
+        // --- Handle +collection (new collection creation) ---
+        if (lastSegment === '+collection') {
+          const parentSegments = segments.slice(0, -1)
+          const parentSlugPath = parentSegments.join('/')
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          let parentUuid: string = library.collection_uuid
+          let ancestors: Collection[] = []
+
+          if (parentSegments.length > 0) {
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            parentUuid = resolved.entity.collection_uuid
+            ancestors = await getCollectionAncestors(localDb, parentUuid)
+          }
+
+          setMode({ type: 'newCollection', parentUuid, parentSlugPath, ancestors })
+          return
+        }
+
+        // --- Handle &edit suffix (edit existing note) ---
+        if (lastSegment.endsWith('&edit')) {
+          const noteSlug = lastSegment.slice(0, -'&edit'.length)
+          if (!noteSlug) throw new Error('Invalid edit path')
+
+          const resolveSegments = [...segments.slice(0, -1), noteSlug]
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          // Check if the noteSlug looks like a UUID (for disambiguation links)
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          if (uuidPattern.test(noteSlug)) {
+            // Direct UUID access for edit
+            const noteSlugPath = resolveSegments.join('/')
+            setMode({ type: 'editNote', editBlockUuid: noteSlug, noteSlugPath })
+            return
+          }
+
+          const resolved = await resolveSlugPath(localDb, resolveSegments, library.collection_uuid)
+          if (!resolved || resolved.type !== 'note') {
+            throw new Error('Path does not resolve to an editable note')
+          }
+
+          const noteSlugPath = resolveSegments.join('/')
+          setMode({ type: 'editNote', editBlockUuid: resolved.entity.block_uuid, noteSlugPath })
+          return
+        }
+
+        // --- Standard slug resolution ---
 
         // Get library root for scoped resolution
         const library = await getLibrary(localDb)
@@ -93,19 +169,12 @@ const SlugViewPage: React.FC = () => {
         }
 
         // Check if the last segment looks like a UUID (for disambiguation links)
-        const lastSegment = segments[segments.length - 1]
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         if (uuidPattern.test(lastSegment)) {
           // Direct UUID access — load the note directly
           const blockSlugInfo = await getNoteSlugByUuid(localDb, lastSegment) as BlockSlugInfo | null
           if (!blockSlugInfo) {
             throw new Error('Note not found')
-          }
-
-          if (isEdit) {
-            // For edit mode with UUID, navigate to the legacy editor route
-            navigate(`/pk/${prefix}/new?edit=${lastSegment}`, { replace: true })
-            return
           }
 
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
@@ -124,12 +193,6 @@ const SlugViewPage: React.FC = () => {
         const fullSlugPath = segments.join('/')
 
         if (resolved.type === 'note') {
-          if (isEdit) {
-            // Redirect to editor with block UUID
-            navigate(`/pk/${prefix}/new?edit=${resolved.entity.block_uuid}`, { replace: true })
-            return
-          }
-
           const blockSlugInfo = resolved.entity as BlockSlugInfo
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
           setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath })
@@ -138,12 +201,6 @@ const SlugViewPage: React.FC = () => {
 
         if (resolved.type === 'collection') {
           const col = resolved.entity as CollectionSlug
-
-          if (isEdit) {
-            // Collections don't have edit mode, redirect to the collection view
-            navigate(`/pk/${prefix}/${fullSlugPath}`, { replace: true })
-            return
-          }
 
           const collectionData = await loadCollectionData(
             localDb, col, getCollectionByUuid, getChildCollections,
@@ -203,6 +260,37 @@ const SlugViewPage: React.FC = () => {
         notes={mode.notes}
         slugPath={mode.slugPath}
         prefix={prefix || ''}
+      />
+    )
+  }
+
+  if (mode.type === 'newNote') {
+    return (
+      <EditorPage
+        prefix={prefix || ''}
+        collectionId={mode.collectionId}
+        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+      />
+    )
+  }
+
+  if (mode.type === 'newCollection') {
+    return (
+      <NewCollectionPage
+        prefix={prefix || ''}
+        parentUuid={mode.parentUuid}
+        ancestors={mode.ancestors}
+        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+      />
+    )
+  }
+
+  if (mode.type === 'editNote') {
+    return (
+      <EditorPage
+        prefix={prefix || ''}
+        editBlockUuid={mode.editBlockUuid}
+        cancelPath={`/pk/${prefix}/${mode.noteSlugPath}`}
       />
     )
   }

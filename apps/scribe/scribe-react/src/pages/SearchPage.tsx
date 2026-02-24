@@ -96,7 +96,7 @@ const SearchPage: React.FC = () => {
   
   const handleNewNote = () => {
     if (prefix) {
-      navigate(`/pk/${prefix}/new`)
+      navigate(`/pk/${prefix}/+note`)
     }
   }
 
