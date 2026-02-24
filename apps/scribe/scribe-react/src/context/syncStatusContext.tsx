@@ -52,9 +52,15 @@ export const SyncStatusProvider: React.FC<{
     const onVisibilityChange = () => {
       const wasVisible = visibleRef.current
       visibleRef.current = !document.hidden
-      console.log(`[sync] visibilitychange: ${wasVisible ? 'visible' : 'hidden'} → ${document.hidden ? 'hidden' : 'visible'}`)
+      console.log(`[sync] visibilitychange: ${wasVisible ? 'visible' : 'hidden'} → ${document.hidden ? 'hidden' : 'visible'}`, { hasWakeUp: !!wakeUpRef.current })
       // When the tab becomes visible again, restart the sync loop immediately
-      if (!document.hidden) wakeUpRef.current?.()
+      if (!document.hidden) {
+        if (wakeUpRef.current) {
+          wakeUpRef.current()
+        } else {
+          console.warn('[sync] visibilitychange: wakeUpRef is null, cannot restart sync')
+        }
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -65,6 +71,12 @@ export const SyncStatusProvider: React.FC<{
     let timeoutId: ReturnType<typeof setTimeout>
     let isMounted = true
     let isRunning = false // guard against concurrent execution
+    let pendingWakeUp = false // track wakeUp calls that arrived mid-sync
+    let hasRunOnce = false // skip visibility sleep until first sync completes
+
+    // Re-sync in case visibility changed between effect cleanup and re-mount
+    // (e.g. during React StrictMode double-mount)
+    visibleRef.current = !document.hidden
 
     // Local mirror of per-library sync status, updated in the loop and
     // pushed to React state between async yields so the UI can re-render.
@@ -95,27 +107,36 @@ export const SyncStatusProvider: React.FC<{
     }
 
     // Compute the delay for the next sync iteration based on tab visibility
-    // and sync completeness.
+    // and sync completeness.  Read document.hidden directly so a stale
+    // visibleRef (from a spurious visibilitychange on page load) can't
+    // permanently stall sync.
     const nextDelay = (allComplete: boolean) => {
-      if (!visibleRef.current) return pollInterval * 30 // ~30s background
+      if (document.hidden) return pollInterval * 30 // ~30s background
       return allComplete ? pollInterval : 10
     }
 
     const syncLoop = async () => {
-      if (!isMounted) return
+      if (!isMounted) { console.log('[sync] syncLoop: not mounted, skipping'); return }
 
-      // If the tab is hidden, skip the work entirely and just reschedule.
-      // The wakeUp callback will restart us immediately when the tab returns.
-      if (!visibleRef.current) {
+      // Always run the first sync regardless of tab visibility.  Browsers
+      // can fire a spurious visibilitychange (visible→hidden) during page
+      // load — or report document.hidden=true during navigation — while the
+      // tab is actually visible.  Sleeping on the very first iteration would
+      // leave the user staring at "loading your libraries" for 30+ seconds
+      // until the next check self-corrects.
+      if (hasRunOnce && document.hidden) {
+        visibleRef.current = false
         console.log(`[sync] tab hidden, sleeping for ${pollInterval * 30}ms`)
         scheduleNext(pollInterval * 30)
         return
       }
+      visibleRef.current = !document.hidden
 
-      // Prevent concurrent execution — if wakeUp fires while we're mid-sync,
-      // just let the current iteration finish (it will reschedule itself).
-      if (isRunning) return
+      // Prevent concurrent execution — the wakeUp function handles setting
+      // pendingWakeUp when a sync is already in-flight.
+      if (isRunning) { console.log('[sync] syncLoop: already running, skipping'); return }
       isRunning = true
+      pendingWakeUp = false
 
       setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
@@ -179,15 +200,26 @@ export const SyncStatusProvider: React.FC<{
         }
 
         const allComplete = pushStatus()
+        hasRunOnce = true
         isRunning = false
-        scheduleNext(nextDelay(allComplete))
+        if (pendingWakeUp) {
+          pendingWakeUp = false
+          scheduleNext(0)
+        } else {
+          scheduleNext(nextDelay(allComplete))
+        }
       } catch (error) {
         console.error('Background sync error:', error)
         setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
         isRunning = false
-        // On error use 5× poll interval, but still respect background throttle
-        const errorDelay = visibleRef.current ? pollInterval * 5 : pollInterval * 30
-        scheduleNext(errorDelay)
+        if (pendingWakeUp) {
+          pendingWakeUp = false
+          scheduleNext(0)
+        } else {
+          // On error use 5× poll interval, but still respect background throttle
+          const errorDelay = document.hidden ? pollInterval * 30 : pollInterval * 5
+          scheduleNext(errorDelay)
+        }
       }
     }
 
@@ -195,7 +227,15 @@ export const SyncStatusProvider: React.FC<{
     // and restart the loop immediately when the tab becomes visible.
     wakeUpRef.current = () => {
       clearTimeout(timeoutId)
-      syncLoop() // guarded by isRunning — safe if a sync is already in-flight
+      if (isRunning) {
+        // A sync is already in-flight — flag it so the running iteration
+        // restarts the loop immediately when it finishes.
+        console.log('[sync] wakeUp: sync in-flight, setting pendingWakeUp')
+        pendingWakeUp = true
+      } else {
+        console.log('[sync] wakeUp: starting syncLoop')
+        syncLoop()
+      }
     }
 
     syncLoop()
