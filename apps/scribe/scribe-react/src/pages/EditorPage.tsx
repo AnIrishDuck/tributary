@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, Link, useSearchParams } from 'react-router'
+import { useNavigate } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
 import { saveNote } from '../actions/saveNote'
-import * as base64url from 'urlsafe-base64'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
@@ -11,7 +10,14 @@ import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 
-const EditorPage: React.FC = () => {
+export interface EditorPageProps {
+  prefix: string
+  collectionId?: string
+  editBlockUuid?: string
+  cancelPath: string
+}
+
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, cancelPath }) => {
   const [content, setContent] = useState<string>('# New Note\n\nStart writing here...')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,12 +25,6 @@ const EditorPage: React.FC = () => {
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
-
-  // Extract the library prefix from params
-  const { prefix } = useParams()
-  const [searchParams] = useSearchParams()
-  const collectionId = searchParams.get('collection') || undefined
-  const editBlockUuid = searchParams.get('edit') || undefined
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -69,21 +69,21 @@ const EditorPage: React.FC = () => {
 
           // Store the block UUID for updates
           setBlockUuid(noteSlugInfo.block_uuid)
-          
+
           // Get the authoritative version
           const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid) as AuthoritativeVersion | null
-          
+
           if (!authoritativeVersion) {
             throw new Error('Note version not found')
           }
-          
+
           // Get the actual note content using scribe-data functions
           const note = await getNoteByVersion(localDb, noteSlugInfo.block_uuid, authoritativeVersion.version_uuid)
-          
+
           if (!note) {
             throw new Error('Note content not found')
           }
-          
+
           setContent(note.body)
         } catch (err: any) {
           setError('Failed to load note: ' + (err.message || 'Unknown error'))
@@ -137,7 +137,7 @@ const EditorPage: React.FC = () => {
 
     setIsLoading(true)
     setError(null)
-    
+
     try {
       // Extract library ID from prefix (format: base64url-public-key)
       if (!prefix) {
@@ -153,7 +153,7 @@ const EditorPage: React.FC = () => {
       if (!stream) {
         throw new Error('Failed to get library')
       }
-      
+
       const { block, blockSlug: blockSlugResult } = await saveNote(stream, content, 'web-ui', blockUuid, collectionId)
 
       // After saving, navigate to the note view using its full slug path
@@ -198,22 +198,22 @@ const EditorPage: React.FC = () => {
                 {isNewNote ? 'New Note' : 'Edit Note'}
               </h1>
             </div>
-            
+
             <div className="flex items-center space-x-2">
-              <button 
-                onClick={() => prefix ? navigate(`/pk/${prefix}/`) : navigate('/')}
+              <button
+                onClick={() => navigate(cancelPath)}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <XMarkIcon className="w-4 h-4 mr-1.5" />
                 Cancel
               </button>
-              
-              <button 
+
+              <button
                 onClick={onSaveNote}
                 disabled={isLoading}
                 className={`inline-flex items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white ${
-                  isLoading 
-                    ? 'bg-blue-400 cursor-not-allowed' 
+                  isLoading
+                    ? 'bg-blue-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700'
                 } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200`}
               >
@@ -251,7 +251,7 @@ const EditorPage: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100dvh-250px)]">
           <div className="flex-1 overflow-hidden">
             <CodeMirror
@@ -265,7 +265,7 @@ const EditorPage: React.FC = () => {
               onChange={(value) => setContent(value)}
             />
           </div>
-          
+
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
             <div className="flex items-center text-sm text-gray-500">
               <DocumentTextIcon className="w-4 h-4 mr-2" />

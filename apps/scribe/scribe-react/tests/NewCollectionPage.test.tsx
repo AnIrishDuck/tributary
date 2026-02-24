@@ -16,7 +16,7 @@ describe('NewCollectionPage', () => {
     const base64Part = prefix.split('/')[1]
 
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new-collection`]
+      initialEntries: [`/pk/${base64Part}/+collection`]
     })
 
     render(
@@ -45,7 +45,7 @@ describe('NewCollectionPage', () => {
     const base64Part = prefix.split('/')[1]
 
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new-collection`]
+      initialEntries: [`/pk/${base64Part}/+collection`]
     })
 
     render(
@@ -72,7 +72,7 @@ describe('NewCollectionPage', () => {
     }, { timeout: 10000 })
   })
 
-  it('should create a collection with parent UUID from query param', async () => {
+  it('should create a child collection via parent slug path', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
 
@@ -90,9 +90,9 @@ describe('NewCollectionPage', () => {
     await stream.sync(1000)
     await scribeData.indexAll(localDb)
 
-    // Navigate to new-collection with parent query param
+    // Navigate to +collection under the parent's slug path
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/new-collection?parent=${parent.collection_uuid}`]
+      initialEntries: [`/pk/${base64Part}/parent-collection/+collection`]
     })
 
     render(

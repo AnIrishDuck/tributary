@@ -29,21 +29,19 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   const showSyncProgress = syncProgress && !syncProgress.synced
 
-  const collectionUuid = collection?.collection_uuid
-
   const handleNewNote = () => {
-    if (collectionUuid) {
-      navigate(`/pk/${prefix}/new?collection=${collectionUuid}`)
+    if (slugPath) {
+      navigate(`/pk/${prefix}/${slugPath}/+note`)
     } else {
-      navigate(`/pk/${prefix}/new`)
+      navigate(`/pk/${prefix}/+note`)
     }
   }
 
   const handleNewCollection = () => {
-    if (collectionUuid) {
-      navigate(`/pk/${prefix}/new-collection?parent=${collectionUuid}`)
+    if (slugPath) {
+      navigate(`/pk/${prefix}/${slugPath}/+collection`)
     } else {
-      navigate(`/pk/${prefix}/new-collection`)
+      navigate(`/pk/${prefix}/+collection`)
     }
   }
 
