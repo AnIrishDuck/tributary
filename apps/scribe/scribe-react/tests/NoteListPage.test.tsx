@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveNote } from '../src/actions/saveNote'
+import * as scribeData from 'scribe-data'
 
 describe('NoteListPage', () => {
   beforeEach(() => {
@@ -304,5 +305,93 @@ describe('NoteListPage', () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(`/pk/${base64Part}/search`)
     })
+  })
+
+  it('should show collections above notes when library has child collections', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create a collection under the library root
+    await scribeData.createCollection(stream, {
+      title: 'My Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(localDb)
+
+    // Create a root-level note (no collection)
+    await saveNote(stream, '# Root Note\n\nA root-level note.')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Collection should appear
+    expect(screen.getByText('My Recipes')).toBeInTheDocument()
+
+    // Root-level note should appear
+    expect(screen.getByText('Root Note')).toBeInTheDocument()
+  })
+
+  it('should filter out notes that are in collections from root listing', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create a collection
+    const col = await scribeData.createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(localDb)
+
+    // Create a note in the collection
+    await saveNote(stream, '# In Collection\n\nThis is inside the collection.', 'web-ui', undefined, col.collection_uuid)
+
+    // Create a root-level note
+    await saveNote(stream, '# At Root\n\nThis is at root level.')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Root note should appear
+    expect(screen.getByText('At Root')).toBeInTheDocument()
+
+    // Note inside collection should NOT appear at root
+    expect(screen.queryByText('In Collection')).toBeNull()
+
+    // Collection should appear
+    expect(screen.getByText('Recipes')).toBeInTheDocument()
   })
 })

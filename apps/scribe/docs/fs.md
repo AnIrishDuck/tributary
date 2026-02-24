@@ -11,13 +11,18 @@ Here's an example directory layout:
   - .scribe
     - db - PGlite database synced with the server
     - library-pk - the library public key
-  - gumbo-8f21.md
-  - gumbo-431c.md
+  - gumbo/
+    - 8f4187cb-8870-4cbd-9972-f085718d2b26.md
+    - a72626cf-8d28-4ca0-af14-4fe615ee7e66.md
   - beef-stew.md
 
-Markdown note files live at the root of the sync directory. The `.scribe/`
-directory holds internal state (database, config) and should not be edited
-manually.
+Markdown note files with unique slugs live as flat files at the root of the
+sync directory. When multiple notes share the same slug (duplicate slugs), they
+are placed in a folder named after the slug, with each file named by its note
+UUID.
+
+The `.scribe/` directory holds internal state (database, config) and should not
+be edited manually.
 
 ## Dotfile Filtering
 
@@ -29,12 +34,18 @@ Note that `titleToSlug` strips all characters outside `[a-z0-9\s-]`, including
 dots, so a title like "# .Scribe" produces slug `scribe` (not `.scribe`).
 Dotfile slugs cannot be generated from titles.
 
-## Slug Deduplication
+## Slug Layout
 
-On sync, notes with filenames that don't match their computed slug name are
-moved to the correct unique slug name.
+On sync, notes are laid out according to their slug:
 
-When a local note is updated we match it to the underlying note via slug name.
+- **Unique slug**: The note is a flat file at the sync root, named
+  `[slug].md` (e.g. `beef-stew.md`).
+- **Duplicate slug**: All notes sharing the slug are placed in a folder named
+  `[slug]/`, with each file named `[note-uuid].md`
+  (e.g. `gumbo/8f4187cb-8870-4cbd-9972-f085718d2b26.md`).
+
+When a local note is updated we match it to the underlying note via slug name
+(for unique slugs) or UUID filename (for duplicate slugs).
 
 We update the created and modified times for all files for easy change
 detection. For change detection, by default we compare modified time to

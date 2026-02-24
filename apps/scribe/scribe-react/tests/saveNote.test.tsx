@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createTestClientWithStream } from './test-utils'
 import { saveNote } from '../src/actions/saveNote'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
-import { searchNotes } from 'scribe-data'
+import { searchNotes, getLibrary, createCollection, getNotesInCollection } from 'scribe-data'
 
 describe('saveNote function', () => {
   beforeEach(() => {
@@ -77,5 +77,36 @@ describe('saveNote function', () => {
     expect(block1.block_uuid).toBeDefined()
     expect(block2.block_uuid).toBeDefined()
     expect(block1.block_uuid).not.toBe(block2.block_uuid)
+  })
+
+  it('should save a note with collectionId and create note with correct collection_id', async () => {
+    const { stream } = await createTestClientWithStream()
+
+    // Get the library root
+    const localDb = stream.local()
+    const library = await getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create a collection
+    const col = await createCollection(stream, {
+      title: 'Test Collection',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+
+    // Save a note with the collection_id
+    const { block } = await saveNote(stream, '# Note In Collection\n\nContent.', 'web-ui', undefined, col.collection_uuid)
+
+    // Verify the note has the correct collection_id
+    expect(block.collection_id).toBe(col.collection_uuid)
+
+    // Verify it appears in the collection
+    const notesInCollection = await getNotesInCollection(stream, col.collection_uuid)
+    expect(notesInCollection).toHaveLength(1)
+    expect(notesInCollection[0].block_uuid).toBe(block.block_uuid)
+
+    // Verify it does NOT appear in root-level notes
+    const rootNotes = await getNotesInCollection(stream, null)
+    expect(rootNotes.find(n => n.block_uuid === block.block_uuid)).toBeUndefined()
   })
 })

@@ -41,15 +41,15 @@ describe('EditorPage', () => {
     const slug = noteSlug ? noteSlug.slug : 'test-document'
     
     const router = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/${slug}/edit`]
+      initialEntries: [`/pk/${base64Part}/new?edit=${block.block_uuid}`]
     })
-    
+
     render(
       <WithProviders client={client}>
         <RouterProvider router={router} />
       </WithProviders>
     )
-    
+
     // Wait for the component to render fully
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
@@ -193,17 +193,17 @@ describe('EditorPage', () => {
     const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
     const slug = noteSlug ? noteSlug.slug : 'original-document'
     
-    // First, edit the note
+    // First, edit the note using the new edit URL pattern
     const editRouter = createMemoryRouter(routes, {
-      initialEntries: [`/pk/${base64Part}/${slug}/edit`]
+      initialEntries: [`/pk/${base64Part}/new?edit=${block.block_uuid}`]
     })
-    
+
     const { rerender } = render(
       <WithProviders client={client}>
         <RouterProvider router={editRouter} />
       </WithProviders>
     )
-    
+
     // Wait for the editor to load and show it's editing existing note
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()

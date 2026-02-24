@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, Link } from 'react-router'
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
 import { saveNote } from '../actions/saveNote'
@@ -8,7 +8,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
-import { getNoteBySlug, getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
+import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 
 const EditorPage: React.FC = () => {
@@ -20,8 +20,11 @@ const EditorPage: React.FC = () => {
   const { client } = useTributary()
   const { globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   
-  // Extract the library prefix and optional slug id from params
-  const { prefix, slug } = useParams()
+  // Extract the library prefix from params
+  const { prefix } = useParams()
+  const [searchParams] = useSearchParams()
+  const collectionId = searchParams.get('collection') || undefined
+  const editBlockUuid = searchParams.get('edit') || undefined
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -31,10 +34,8 @@ const EditorPage: React.FC = () => {
     }
   }, [prefix, setFocusedLibrary])
 
-  // Determine if this is a new note:
-  // - For /pk/:prefix/new route, slug is undefined
-  // - For /pk/:prefix/:slug/edit route, slug is the note slug
-  const isNewNote = !slug || slug === 'new'
+  // Determine if this is a new note or editing an existing one
+  const isNewNote = !editBlockUuid
 
   // Check if we're currently syncing
   const isSyncing = globalSyncStatus?.isSyncing ?? false
@@ -44,28 +45,26 @@ const EditorPage: React.FC = () => {
   useEffect(() => {
     const loadNoteForEditing = async () => {
       if (!isSynced) return
-      if (!isNewNote && slug && slug !== 'new' && client && prefix) {
+      if (!isNewNote && editBlockUuid && client && prefix) {
         try {
-          // Extract library ID from prefix (format: base64url-public-key)
           const streamId = prefix
-
-          // Get the library
           const stream = await client.get('scribe', streamId)
 
           if (!stream) {
             throw new Error('Failed to get library')
           }
-          
-          // Create local database for querying
+
           const localDb = stream.local()
-          
-          // Get the note slug info
-          const noteSlugInfo = await getNoteBySlug(localDb, slug) as NoteSlug | null
-          
+
+          // Load note by block UUID
+          const { getNoteSlugByUuid } = await import('scribe-data')
+          let noteSlugInfo: NoteSlug | null = null
+          noteSlugInfo = await getNoteSlugByUuid(localDb, editBlockUuid) as NoteSlug | null
+
           if (!noteSlugInfo) {
             throw new Error('Note not found')
           }
-          
+
           // Store the block UUID for updates
           setBlockUuid(noteSlugInfo.block_uuid)
           
@@ -92,7 +91,7 @@ const EditorPage: React.FC = () => {
     }
 
     loadNoteForEditing()
-  }, [isNewNote, slug, client, prefix, isSynced])
+  }, [isNewNote, editBlockUuid, client, prefix, isSynced])
 
   // If not synced, show a waiting screen
   if (!isSynced) {
@@ -152,16 +151,27 @@ const EditorPage: React.FC = () => {
         throw new Error('Failed to get library')
       }
       
-      const { block, blockSlug: blockSlugResult } = await saveNote(stream, content, 'web-ui', blockUuid)
-      
-      // After saving, navigate to the note view using the slug
+      const { block, blockSlug: blockSlugResult } = await saveNote(stream, content, 'web-ui', blockUuid, collectionId)
+
+      // After saving, navigate to the note view using its full slug path
       if (prefix) {
-        // Type assertion since saveNote returns blockSlug as any
-        const slug = (blockSlugResult as any)?.slug
-        if (slug && typeof slug === 'string') {
-          navigate(`/pk/${prefix}/${slug}`)
-        } else {
-          navigate(`/pk/${prefix}/`)
+        try {
+          const { getNoteSlugPath } = await import('scribe-data')
+          const localDb = stream.local()
+          const slugPathSegments = await getNoteSlugPath(localDb, block.block_uuid)
+          if (slugPathSegments.length > 0) {
+            navigate(`/pk/${prefix}/${slugPathSegments.join('/')}`)
+          } else {
+            navigate(`/pk/${prefix}/`)
+          }
+        } catch {
+          // Fallback to flat slug if path resolution fails
+          const slug = (blockSlugResult as any)?.slug
+          if (slug && typeof slug === 'string') {
+            navigate(`/pk/${prefix}/${slug}`)
+          } else {
+            navigate(`/pk/${prefix}/`)
+          }
         }
       } else {
         navigate('/')

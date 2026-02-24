@@ -62,6 +62,7 @@ export interface CollectionSlug {
   slug: string
   title: string
   indexed_at: string
+  parent_collection_uuid: string | null
 }
 
 /**

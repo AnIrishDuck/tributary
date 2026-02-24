@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
+import { titleToSlug } from './indexing.js'
 
 /**
  * Create a new collection in the database
@@ -162,7 +163,7 @@ export async function getAllCollectionsWithSlugs(
 }
 
 /**
- * Get a collection by its slug
+ * Get a collection by its slug (returns first match for backwards compatibility)
  *
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
@@ -172,16 +173,79 @@ export async function getCollectionBySlug(
   db: TributaryLocal,
   slug: string
 ): Promise<CollectionSlug | null> {
+  const results = await getCollectionsBySlug(db, slug)
+  return results.length > 0 ? results[0] : null
+}
+
+/**
+ * Get all collections matching a slug
+ *
+ * @param db The TributaryLocal database instance
+ * @param slug The slug to search for
+ * @returns Array of matching collection slug records, or empty array if none found
+ */
+export async function getCollectionsBySlug(
+  db: TributaryLocal,
+  slug: string
+): Promise<CollectionSlug[]> {
   const result = await db.query(
     `SELECT * FROM collection_slug WHERE slug = $1`,
     [slug]
   )
 
-  if (!result.rows || result.rows.length === 0) {
-    return null
+  return (result.rows || []) as CollectionSlug[]
+}
+
+/**
+ * Get child collections of a given parent collection.
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param parentUuid The UUID of the parent collection
+ * @returns Array of child collection records, sorted by title
+ */
+export async function getChildCollections(
+  db: TributaryStream | TributaryLocal,
+  parentUuid: string
+): Promise<Collection[]> {
+  const result = await db.query(
+    `SELECT * FROM collection WHERE parent_collection_uuid = $1 ORDER BY title`,
+    [parentUuid]
+  )
+
+  return (result.rows || []) as Collection[]
+}
+
+/**
+ * Get the ancestor chain for a collection, from root to the given collection.
+ * Walks up the parent_collection_uuid chain to build a breadcrumb array.
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param collectionUuid The UUID of the collection to start from
+ * @returns Array of collections from root (library) to the given collection, inclusive
+ */
+export async function getCollectionAncestors(
+  db: TributaryStream | TributaryLocal,
+  collectionUuid: string
+): Promise<Collection[]> {
+  const ancestors: Collection[] = []
+  let currentUuid: string | null = collectionUuid
+
+  while (currentUuid) {
+    const result = await db.query(
+      `SELECT * FROM collection WHERE collection_uuid = $1`,
+      [currentUuid]
+    )
+
+    if (!result.rows || result.rows.length === 0) {
+      break
+    }
+
+    const collection = result.rows[0] as Collection
+    ancestors.unshift(collection) // prepend to build root-first order
+    currentUuid = collection.parent_collection_uuid
   }
 
-  return result.rows[0] as CollectionSlug
+  return ancestors
 }
 
 /**
@@ -249,4 +313,95 @@ export async function getNotesInCollection(
   }
 
   return (result.rows || []) as Note[]
+}
+
+/**
+ * Get a collection by its slug scoped to a specific parent collection.
+ *
+ * @param db The TributaryLocal database instance
+ * @param slug The slug to search for
+ * @param parentUuid The UUID of the parent collection to scope the search
+ * @returns The matching collection slug record or null
+ */
+export async function getCollectionBySlugUnderParent(
+  db: TributaryLocal,
+  slug: string,
+  parentUuid: string
+): Promise<CollectionSlug | null> {
+  const result = await db.query(
+    `SELECT * FROM collection_slug WHERE slug = $1 AND parent_collection_uuid = $2`,
+    [slug, parentUuid]
+  )
+
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+
+  return result.rows[0] as CollectionSlug
+}
+
+/**
+ * Get the slug path for a collection (excluding the library root).
+ * Returns an array of slug segments from the first named collection down to the given collection.
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param collectionUuid The UUID of the collection
+ * @returns Array of slug segments, e.g. ['cooking', 'italian']
+ */
+export async function getSlugPath(
+  db: TributaryStream | TributaryLocal,
+  collectionUuid: string
+): Promise<string[]> {
+  const ancestors = await getCollectionAncestors(db, collectionUuid)
+
+  // Exclude the root/library (first ancestor with parent_collection_uuid === null)
+  return ancestors
+    .filter(a => a.parent_collection_uuid !== null)
+    .map(a => titleToSlug(a.title))
+}
+
+/**
+ * Get the full slug path for a note, including its collection ancestors and own slug.
+ *
+ * @param db The TributaryLocal database instance
+ * @param noteBlockUuid The block UUID of the note
+ * @returns Array of slug segments, e.g. ['cooking', 'italian', 'pasta']
+ */
+export async function getNoteSlugPath(
+  db: TributaryLocal,
+  noteBlockUuid: string
+): Promise<string[]> {
+  // Get the note's slug
+  const slugResult = await db.query(
+    `SELECT * FROM block_slug WHERE block_uuid = $1`,
+    [noteBlockUuid]
+  )
+
+  if (!slugResult.rows || slugResult.rows.length === 0) {
+    return []
+  }
+
+  const noteSlug = (slugResult.rows[0] as any).slug as string
+
+  // Get the note's collection_id from the authoritative version
+  const noteResult = await db.query(
+    `SELECT b.collection_id FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.block_uuid = $1`,
+    [noteBlockUuid]
+  )
+
+  if (!noteResult.rows || noteResult.rows.length === 0) {
+    return [noteSlug]
+  }
+
+  const collectionId = (noteResult.rows[0] as any).collection_id
+
+  if (!collectionId) {
+    return [noteSlug]
+  }
+
+  // Build the collection slug path and append the note slug
+  const collectionPath = await getSlugPath(db, collectionId)
+  return [...collectionPath, noteSlug]
 }
