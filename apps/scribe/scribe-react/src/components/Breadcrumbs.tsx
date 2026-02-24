@@ -53,7 +53,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
   const showLibrary = hiddenCount < nonRootAncestors.length || nonRootAncestors.length === 0
 
   return (
-    <nav ref={navRef} className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
+    <nav ref={navRef} className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
       {showLibrary && (
         <Link
           to={`/pk/${prefix}/`}
@@ -82,7 +82,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
           <React.Fragment key={ancestor.collection_uuid}>
             <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
             {isLast && !allLinks ? (
-              <span className="text-gray-900 font-medium flex-shrink-0">{ancestor.title}</span>
+              <span className="text-gray-900 font-bold text-lg flex-shrink-0">{ancestor.title}</span>
             ) : (
               <Link
                 to={`/pk/${prefix}/${cumulativePath}`}

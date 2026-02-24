@@ -132,11 +132,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           <Breadcrumbs ancestors={ancestors} prefix={prefix} />
         )}
 
-        {/* Collection title (collection view only) */}
-        {!isRoot && (
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">{collection.title}</h1>
-        )}
-
         {totalItems === 0 ? (
           isRoot && showSyncProgress ? (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
