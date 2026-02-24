@@ -6,7 +6,7 @@ import * as os from 'os';
 import * as fs from 'fs-extra';
 import { info, error as errorLog } from './logger';
 import * as base64url from 'urlsafe-base64';
-import { getClient } from './util';
+import { getClient, validateAuthToken } from './util';
 
 // Execute SQL command
 export async function executeSQL(
@@ -32,6 +32,7 @@ export async function executeSQL(
   // Sync with server by default unless explicitly disabled
   const shouldSync = options.sync !== false; // Default to true
   if (shouldSync) {
+    await validateAuthToken();
     info('Syncing with server...');
     await stream.sync(1000);
   }
@@ -40,6 +41,10 @@ export async function executeSQL(
   if (sql) {
     info(`Executing SQL: ${sql}`);
     if (shouldSync) {
+      // Validate token for server-persisted operations (token was already
+      // validated before sync above, but guard the write path too in case
+      // sync is skipped in the future).
+      await validateAuthToken();
       // Use the stream's query method which persists to server
       // Check if it's a query (SELECT) or exec (INSERT/UPDATE/DELETE/DDL)
       const trimmedSql = sql.trim().toLowerCase();
