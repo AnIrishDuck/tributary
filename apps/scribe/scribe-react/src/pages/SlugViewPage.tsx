@@ -6,7 +6,7 @@ import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import SlugLoadingPage from './SlugLoadingPage'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from './NoteViewPage'
-import SlugNoteListPage from './SlugNoteListPage'
+import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
 
 interface BlockSlugInfo {
@@ -196,10 +196,10 @@ const SlugViewPage: React.FC = () => {
 
   if (mode.type === 'collection') {
     return (
-      <SlugNoteListPage
+      <NoteListView
         collection={mode.collection}
         ancestors={mode.ancestors}
-        childCollections={mode.childCollections}
+        collections={mode.childCollections}
         notes={mode.notes}
         slugPath={mode.slugPath}
         prefix={prefix || ''}
