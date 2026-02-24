@@ -56,10 +56,15 @@ Auth routes:
 Basic routes (should sync and index before rendering all of these):
 
 - `#[prefix]/` => render a listing of all docs in the given collection
-- `#[prefix]/slug/[slug]` => render the authoritative version of a block
-  identified via slug. Show a listing of pages that match the slug if it
-  does not reference a unique block.
-- `#[prefix]/slug/[slug]/edit` => edit page for the given slug
+- `#[prefix]/slug/[slug]` => if the slug is unique, render the authoritative
+  version of that block. If the slug is shared by multiple blocks, render a
+  **duplicate slug listing page** showing each matching document's UUID and
+  title.
+- `#[prefix]/slug/[slug]/[uuid]` => render the authoritative version of the
+  specific block identified by UUID (used to disambiguate duplicate slugs)
+- `#[prefix]/slug/[slug]/edit` => edit page for the given slug (unique slugs only)
+- `#[prefix]/slug/[slug]/[uuid]/edit` => edit page for a specific block
+  (duplicate slugs)
 - `#[prefix]/new` => edit page for a new slug
 
 ## Linking

@@ -61,6 +61,16 @@ export const routes: RouteObject[] = [
         ErrorBoundary: NoteError
       },
       {
+        path: '/pk/:prefix/:slug/:uuid/edit',
+        Component: EditorPage,
+        ErrorBoundary: NoteError
+      },
+      {
+        path: '/pk/:prefix/:slug/:uuid',
+        Component: NoteViewPage,
+        ErrorBoundary: NoteError
+      },
+      {
         path: '/pk/:prefix/:slug/edit',
         Component: EditorPage,
         ErrorBoundary: NoteError

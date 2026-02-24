@@ -51,9 +51,8 @@ The indexing process begins by identifying notes that need to be indexed:
 For each unindexed authoritative note:
 1. Extract the first H1 heading (`# Title`) from the note body
 2. Convert the title to a URL-friendly slug
-3. Check for conflicts with existing slugs and resolve them using the conflict resolution algorithm
-4. Store the unique slug in the `block_slug` table
-5. If not found, remove any existing slug entry for that note
+3. Store the slug in the `block_slug` table (duplicate slugs are allowed)
+4. If no title is found, remove any existing slug entry for that note
 
 ### 4. Tag Extraction
 
@@ -84,14 +83,13 @@ The index tables are specifically designed to NOT be synchronized via Tributary 
 3. **Flexibility**: Users can rebuild indexes without affecting the shared collection
 4. **Privacy**: Indexes might contain user-specific data
 
-## Conflict Resolution
+## Version Resolution
 
 The system implements Last Write Wins (LWW) semantics for notes:
 
 1. Only the latest version of each note is indexed
 2. When a new version arrives, the index is updated automatically
-3. Slug conflicts are resolved using the conflict resolution algorithm described in slugs.md
-4. Existing links are preserved when possible during conflict resolution
+3. Duplicate slugs are allowed — multiple notes may share the same slug
 
 ## Implementation Details
 
@@ -122,24 +120,20 @@ All indexing operations are wrapped in database transactions to ensure consisten
 2. Update slug index
 3. Both operations succeed or fail together
 
-### Slug Conflict Resolution
+### Slug Storage
 
-The indexing process handles slug conflicts as follows:
-
-1. When indexing a new note, if its base slug conflicts with an existing slug:
-   - Both the existing note and the new note are updated to have suffixed slugs
-   - The existing note gets a 4-character UUID suffix
-   - The new note gets a 4-character UUID suffix
-2. If 4-character suffixes still conflict, more UUID characters are added progressively
-3. All updates happen within a transaction to maintain consistency
+When indexing a note, its slug is stored directly in `block_slug`. Duplicate
+slugs are permitted — no conflict resolution or UUID suffixing is performed
+during indexing. Slug uniqueness is not enforced; instead, clients handle
+duplicate slugs at the routing/display layer (see [Slug System](slugs.md)).
 
 ## Link Resolution Support
 
 The indexing system supports the link resolution process by:
 
-1. **Maintaining Accurate Slugs**: Ensuring all notes have unique, up-to-date slugs
+1. **Maintaining Accurate Slugs**: Ensuring all notes have up-to-date slugs
 2. **Tracking Authoritative Versions**: Making sure links always point to the latest version of a note
-3. **Providing Lookup Mechanism**: The `block_slug` table serves as the lookup table for resolving slug references in links
+3. **Providing Lookup Mechanism**: The `block_slug` table serves as the lookup table for resolving slug references in links (a slug may map to multiple notes)
 
 For detailed information about the linking system, see [Linking System](linking.md).
 

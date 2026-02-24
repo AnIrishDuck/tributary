@@ -223,7 +223,7 @@ describe('scribe-data indexing', () => {
     expect(result2.hasMore).toBe(false)
   })
 
-  test('should generate unique slugs with UUID suffixes for duplicate titles', async () => {
+  test('should allow duplicate slugs for notes with the same title', async () => {
     // Insert two notes with the same title using the note functions
     const note1 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
@@ -232,7 +232,6 @@ describe('scribe-data indexing', () => {
     })
 
     const note1Uuid = note1.block_uuid
-    const version1Uuid = note1.version_uuid
 
     const note2 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
@@ -241,7 +240,6 @@ describe('scribe-data indexing', () => {
     })
 
     const note2Uuid = note2.block_uuid
-    const version2Uuid = note2.version_uuid
 
     // Run indexing
     await indexSlugs(localDb)
@@ -253,20 +251,13 @@ describe('scribe-data indexing', () => {
     expect(slug1).toBeDefined()
     expect(slug2).toBeDefined()
 
-    // Both should have the same base slug but with different UUID suffixes
+    // Both should have the same title
     expect(slug1?.title).toBe('Same Title')
     expect(slug2?.title).toBe('Same Title')
 
-    // Both slugs should be unique
-    expect(slug1?.slug).not.toBe(slug2?.slug)
-
-    // Both should contain the base slug
-    expect(slug1?.slug).toContain('same-title')
-    expect(slug2?.slug).toContain('same-title')
-
-    // Both should have UUID suffixes
-    expect(slug1?.slug).toMatch(/.+-[a-f0-9]{4}$/)
-    expect(slug2?.slug).toMatch(/.+-[a-f0-9]{4}$/)
+    // Both should have the same slug (duplicates are allowed)
+    expect(slug1?.slug).toBe('same-title')
+    expect(slug2?.slug).toBe('same-title')
   })
 
   test('should index tags for new notes', async () => {

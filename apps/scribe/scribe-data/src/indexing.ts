@@ -10,15 +10,6 @@ interface UnindexedNote {
   insert_datetime: string;
 }
 
-interface ExistingSlugResult {
-  block_uuid: string;
-}
-
-interface ExistingNoteResult {
-  block_uuid: string;
-  body: string;
-}
-
 interface LastEditedResult {
   last_edited: string | null;
 }
@@ -59,85 +50,6 @@ export function titleToSlug(title: string): string {
     .replace(/\s+/g, '-')         // Replace spaces with hyphens
     .replace(/-+/g, '-')          // Replace multiple hyphens with single
     .replace(/^-|-$/g, '')        // Remove leading/trailing hyphens
-}
-
-/**
- * Generate a unique slug by appending UUID fragments
- * Implements the algorithm from apps/scribe/docs/slugs.md:
- * - If multiple docs have same title, first 4 chars of UUID are appended
- * - If still conflicting, continue adding UUID chunks until unique
- * - Handles titles with UUID-like fragments
- *
- * @param baseSlug The base slug to make unique
- * @param noteUuid The UUID of the current note
- * @param db Database transaction
- * @returns A unique slug with UUID fragments appended as needed
- */
-export async function generateUniqueSlug(baseSlug: string, noteUuid: string, db: TributaryLocal): Promise<string> {
-  // Find all existing notes with the exact same base slug
-  const result = await db.query(
-    `SELECT block_uuid FROM block_slug WHERE slug = $1`,
-    [baseSlug]
-  )
-
-  const existingBlocks = result.rows || []
-
-  // If no conflicts, return base slug
-  if (existingBlocks.length === 0) {
-    return baseSlug
-  }
-
-  // We have conflicts, need to add UUID fragments
-  // According to the spec, when there are conflicts, we need to suffix ALL notes
-
-  // First, check if the current note already has a unique slug with a suffix
-  // Try with 4-character suffix first
-  const suffix4 = noteUuid.substring(0, 4)
-  const slugWith4CharSuffix = `${baseSlug}-${suffix4}`
-
-  // Check if this conflicts with any existing slug
-  const existingResult = await db.query(
-    `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-    [slugWith4CharSuffix, noteUuid]
-  )
-
-  const existingSlugWith4Suffix = existingResult.rows && existingResult.rows.length > 0 ? existingResult.rows[0] : null
-
-  if (!existingSlugWith4Suffix) {
-    return slugWith4CharSuffix
-  }
-
-  // If 4-char suffix still conflicts, we need to keep adding more UUID characters
-  // until we get a unique slug
-  let fragmentLength = 9  // 8 characters (two 4-char segments) + 1 hyphen
-
-  while (fragmentLength <= noteUuid.length) {
-    const suffix = noteUuid.substring(0, fragmentLength)
-    const slugWithSuffix = `${baseSlug}-${suffix}`
-
-    // Check if this conflicts with any existing slug
-    const existingSuffixResult = await db.query(
-      `SELECT block_uuid FROM block_slug WHERE slug = $1 AND block_uuid != $2`,
-      [slugWithSuffix, noteUuid]
-    )
-
-    const existingSlugWithSuffix = existingSuffixResult.rows && existingSuffixResult.rows.length > 0 ? existingSuffixResult.rows[0] : null
-
-    if (!existingSlugWithSuffix) {
-      return slugWithSuffix
-    }
-
-    // Increase fragment length
-    fragmentLength += 5  // 4 more chars + 1 hyphen
-
-    // Safety check
-    if (fragmentLength > noteUuid.length) {
-      return `${baseSlug}-${noteUuid}`
-    }
-  }
-
-  // Fallback to full UUID
-  return `${baseSlug}-${noteUuid}`
 }
 
 /**
@@ -283,61 +195,15 @@ export async function indexSlugs(
         [note.block_uuid, note.version_uuid, now]
       )
 
-      // Handle slug updates
+      // Handle slug updates — duplicate slugs are allowed
       if (baseSlug && title) {
-        // Check if this base slug already exists for a different note
-        const existingSlugResult = await tx.query(
-          `SELECT block_uuid FROM block_slug WHERE slug = $1`,
-          [baseSlug]
+        await tx.query(
+          `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (block_uuid)
+           DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
+          [note.block_uuid, baseSlug, title, now]
         )
-
-        const existingSlugRow = existingSlugResult.rows && existingSlugResult.rows.length > 0 ? existingSlugResult.rows[0] as ExistingSlugResult : null
-        const existingSlug = existingSlugRow ? existingSlugRow : null
-
-        if (existingSlug && existingSlug.block_uuid !== note.block_uuid) {
-          // Conflict detected - update both notes to have UUID suffixes
-          const existingNoteResult = await tx.query(
-            `SELECT block_uuid, body FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
-            [existingSlug.block_uuid]
-          )
-
-          const existingNoteRow = existingNoteResult.rows && existingNoteResult.rows.length > 0 ? existingNoteResult.rows[0] as ExistingNoteResult : null
-
-          if (existingNoteRow) {
-            const existingTitle = extractTitleFromMarkdown(existingNoteRow.body)
-            const existingBaseSlug = existingTitle ? titleToSlug(existingTitle) : null
-
-            if (existingBaseSlug) {
-              const existingNoteSuffix = existingNoteRow.block_uuid.substring(0, 4)
-              const updatedExistingSlug = `${existingBaseSlug}-${existingNoteSuffix}`
-
-              await tx.query(
-                `UPDATE block_slug SET slug = $1, title = $2, indexed_at = $3 WHERE block_uuid = $4`,
-                [updatedExistingSlug, existingTitle || "Untitled", now, existingNoteRow.block_uuid]
-              )
-            }
-          }
-
-          const currentNoteSuffix = note.block_uuid.substring(0, 4)
-          const finalSlug = `${baseSlug}-${currentNoteSuffix}`
-
-          await tx.query(
-            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (block_uuid)
-             DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [note.block_uuid, finalSlug, title, now]
-          )
-        } else {
-          // No conflict or updating the same note
-          await tx.query(
-            `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (block_uuid)
-             DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-            [note.block_uuid, baseSlug, title, now]
-          )
-        }
 
         indexedCount++
       } else {
@@ -407,25 +273,35 @@ export async function getNoteSlugByUuid(
 }
 
 /**
- * Get note slug by slug
+ * Get all notes matching a slug
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
- * @returns The note slug or null if not found
+ * @returns Array of matching note slugs, or empty array if none found
+ */
+export async function getNotesBySlug(
+  db: TributaryLocal,
+  slug: string
+): Promise<NoteSlug[]> {
+  const result = await db.query(
+    `SELECT * FROM block_slug WHERE slug = $1`,
+    [slug]
+  )
+
+  return (result.rows || []) as NoteSlug[]
+}
+
+/**
+ * Get note slug by slug (returns first match for backwards compatibility)
+ * @param db The TributaryLocal database instance
+ * @param slug The slug to search for
+ * @returns The first matching note slug or null if not found
  */
 export async function getNoteBySlug(
   db: TributaryLocal,
   slug: string
 ) {
-  const result = await db.query(
-    `SELECT * FROM block_slug WHERE slug = $1`,
-    [slug]
-  )
-  
-  if (!result.rows || result.rows.length === 0) {
-    return null
-  }
-  
-  return result.rows[0]
+  const results = await getNotesBySlug(db, slug)
+  return results.length > 0 ? results[0] : null
 }
 
 /**

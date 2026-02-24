@@ -20,8 +20,8 @@ const EditorPage: React.FC = () => {
   const { client } = useTributary()
   const { globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   
-  // Extract the library prefix and optional slug id from params
-  const { prefix, slug } = useParams()
+  // Extract the library prefix, optional slug, and optional uuid from params
+  const { prefix, slug, uuid } = useParams()
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -59,13 +59,19 @@ const EditorPage: React.FC = () => {
           // Create local database for querying
           const localDb = stream.local()
           
-          // Get the note slug info
-          const noteSlugInfo = await getNoteBySlug(localDb, slug) as NoteSlug | null
-          
+          // Get the note slug info — by UUID if provided, otherwise by slug
+          let noteSlugInfo: NoteSlug | null = null
+          if (uuid) {
+            const { getNoteSlugByUuid } = await import('scribe-data')
+            noteSlugInfo = await getNoteSlugByUuid(localDb, uuid) as NoteSlug | null
+          } else {
+            noteSlugInfo = await getNoteBySlug(localDb, slug) as NoteSlug | null
+          }
+
           if (!noteSlugInfo) {
             throw new Error('Note not found')
           }
-          
+
           // Store the block UUID for updates
           setBlockUuid(noteSlugInfo.block_uuid)
           
@@ -92,7 +98,7 @@ const EditorPage: React.FC = () => {
     }
 
     loadNoteForEditing()
-  }, [isNewNote, slug, client, prefix, isSynced])
+  }, [isNewNote, slug, uuid, client, prefix, isSynced])
 
   // If not synced, show a waiting screen
   if (!isSynced) {

@@ -71,31 +71,33 @@ Depending on the lookup results, one of three outcomes occurs:
 - **Action**: Link resolves directly to that note
 - **Example**: `[Recipe](beef-stew)` links to the note with slug `beef-stew`
 
-#### Ambiguous Match
-- **Condition**: Multiple notes match the base slug (typically during conflict resolution)
-- **Action**: Link resolves to a disambiguation page listing all possible targets
-- **Example**: `[Note](same-title)` may resolve to a page listing all notes with base slug `same-title`
+#### Duplicate Slug Match
+- **Condition**: Multiple notes share the same slug
+- **Action**: Link resolves to a duplicate slug listing page showing each matching document's UUID and title
+- **Example**: `[Note](same-title)` resolves to a listing of all notes with slug `same-title`, from which the user selects the intended target
 
 #### No Match
 - **Condition**: No notes match the slug
 - **Action**: Link is treated as broken/invalid
 - **Example**: `[Missing](nonexistent)` has no target note
 
-## Disambiguation Handling
+## Duplicate Slug Handling
 
-When multiple notes could match a link target, Scribe tracks disambiguation in the database:
+Multiple notes may share the same slug. When a link target matches more than
+one note, the client presents a duplicate slug listing page:
 
-### Disambiguation Process
-1. Notes with conflicting base slugs are given unique suffixed slugs (e.g. `same-title-a1b2`)
-2. The `block_slug` table tracks which note owns which slug
-3. Clients can query the database to present disambiguation choices to the user
+### Resolution Process
+1. The `block_slug` table is queried for all notes matching the slug
+2. All matching notes are presented with their UUID and title
+3. The user selects the intended target
 
 ### Example
-If two notes both have the base slug `same-title`:
-- Note A: `same-title-abcd` with title "Same Title (Work)"
-- Note B: `same-title-1234` with title "Same Title (Personal)"
+If two notes both have the slug `same-title`:
+- Note A: `8f4187cb-...` with title "Same Title (Work)"
+- Note B: `a72626cf-...` with title "Same Title (Personal)"
 
-Both notes receive UUID-suffixed slugs so that each has a unique filename on disk.
+The link resolves to a listing page. The user can then navigate to the
+specific note via `slug/same-title/[uuid]`.
 
 ## Link Validation
 
@@ -117,13 +119,13 @@ The linking system works closely with the slug system:
 
 ### Slug Dependencies
 - Every internal link depends on accurate slug generation
-- When slugs change due to conflict resolution, links are automatically updated
+- When slugs change (e.g. title update), links targeting the old slug may break
 - The `block_slug` table serves as the authoritative lookup for link resolution
 
-### Conflict Impact
-- When slug conflicts are resolved by adding UUID suffixes, existing links may need updating
-- Links to base slugs continue to work if they remain unique
-- Links to specific suffixed slugs remain stable
+### Duplicate Slug Impact
+- Links to a slug shared by multiple notes resolve to a duplicate slug listing page
+- Links to a unique slug resolve directly to that note
+- Users can link to a specific note unambiguously via `slug/[uuid]`
 
 ## Future Enhancements
 

@@ -10,8 +10,9 @@ libraries, but are named and may have their own slugs (though, if they have
 no library they have no slug and must be referenced via their
 unique public key route).
 
-The slug resolution protocol for collections is the same as for notes within
-a collection, see indexing.md for details.
+The slug generation for collections uses the same algorithm as for notes.
+Duplicate slugs are allowed across collections and notes — see
+[Slug System](slugs.md) for details on how duplicates are handled.
 
 ## Structure
 
