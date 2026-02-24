@@ -72,6 +72,7 @@ export const SyncStatusProvider: React.FC<{
     let isMounted = true
     let isRunning = false // guard against concurrent execution
     let pendingWakeUp = false // track wakeUp calls that arrived mid-sync
+    let hasRunOnce = false // skip visibility sleep until first sync completes
 
     // Re-sync in case visibility changed between effect cleanup and re-mount
     // (e.g. during React StrictMode double-mount)
@@ -117,22 +118,23 @@ export const SyncStatusProvider: React.FC<{
     const syncLoop = async () => {
       if (!isMounted) { console.log('[sync] syncLoop: not mounted, skipping'); return }
 
-      // If the tab is hidden, skip the work entirely and just reschedule.
-      // The wakeUp callback will restart us immediately when the tab returns.
-      // We read document.hidden directly rather than visibleRef to guard
-      // against spurious visibilitychange events on page load that can
-      // permanently desync the ref.
-      if (document.hidden) {
+      // Always run the first sync regardless of tab visibility.  Browsers
+      // can fire a spurious visibilitychange (visible→hidden) during page
+      // load — or report document.hidden=true during navigation — while the
+      // tab is actually visible.  Sleeping on the very first iteration would
+      // leave the user staring at "loading your libraries" for 30+ seconds
+      // until the next check self-corrects.
+      if (hasRunOnce && document.hidden) {
         visibleRef.current = false
         console.log(`[sync] tab hidden, sleeping for ${pollInterval * 30}ms`)
         scheduleNext(pollInterval * 30)
         return
       }
-      visibleRef.current = true
+      visibleRef.current = !document.hidden
 
       // Prevent concurrent execution — the wakeUp function handles setting
       // pendingWakeUp when a sync is already in-flight.
-      if (isRunning) return
+      if (isRunning) { console.log('[sync] syncLoop: already running, skipping'); return }
       isRunning = true
       pendingWakeUp = false
 
@@ -198,6 +200,7 @@ export const SyncStatusProvider: React.FC<{
         }
 
         const allComplete = pushStatus()
+        hasRunOnce = true
         isRunning = false
         if (pendingWakeUp) {
           pendingWakeUp = false
@@ -214,7 +217,7 @@ export const SyncStatusProvider: React.FC<{
           scheduleNext(0)
         } else {
           // On error use 5× poll interval, but still respect background throttle
-          const errorDelay = visibleRef.current ? pollInterval * 5 : pollInterval * 30
+          const errorDelay = document.hidden ? pollInterval * 30 : pollInterval * 5
           scheduleNext(errorDelay)
         }
       }
