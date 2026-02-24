@@ -182,6 +182,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [passwordRecovery, setPasswordRecovery] = useState(initialPasswordRecovery)
   const [derivedKeyPair, setDerivedKeyPair] = useState<DerivedKeyPair | null>(null)
+  const [setupStep, setSetupStep] = useState<string | null>(null)
 
   // Logout: sign out of Supabase, wipe local DB, and reset client state
   async function logout() {
@@ -256,7 +257,8 @@ function App() {
     }
   }, [authReady, session])
 
-  // Post-login home stream registration: re-derive and register the home key
+  // Post-login home stream registration: re-derive and register the home key.
+  // Updates setupStep so the UI can show progress during the multi-step process.
   useEffect(() => {
     if (!client || !derivedKeyPair || !session) return
 
@@ -264,17 +266,17 @@ function App() {
 
     async function registerHomeKey() {
       try {
-        // Register the derived key with the client
+        if (mounted) setSetupStep('Registering encryption keys...')
         await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
 
-        // Set home stream if not already set
         const existingHome = await client!.getHomeStream()
         if (!existingHome) {
+          if (mounted) setSetupStep('Setting up your library...')
           const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
           await client!.setHomeStream(publicKeyBase64)
         }
 
-        // Sync the home stream
+        if (mounted) setSetupStep('Syncing your library...')
         const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
         const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
         if (stream) {
@@ -285,6 +287,7 @@ function App() {
       }
 
       if (mounted) {
+        setSetupStep(null)
         setDerivedKeyPair(null)
       }
     }
@@ -293,6 +296,7 @@ function App() {
 
     return () => {
       mounted = false
+      setSetupStep(null)
     }
   }, [client, derivedKeyPair, session])
 
@@ -311,7 +315,7 @@ function App() {
     client.getHomeStream().then(homeStream => {
       if (!homeStream && mounted) {
         console.warn('[app] No home stream and no derived key pair — forcing re-authentication')
-        logout()
+        logout().then(() => window.location.reload())
       }
     })
 
@@ -333,6 +337,25 @@ function App() {
   // Show login screen if auth is configured but user is not signed in
   if (supabaseAuth && authReady && !session) {
     return <LoginScreen onDerivedKeyPair={setDerivedKeyPair} />
+  }
+
+  // Show setup screen during initial account registration (registerHomeKey).
+  // This prevents the main app from rendering with an empty DB, which would
+  // flash "No libraries yet" before sync completes.
+  if (derivedKeyPair) {
+    const step = setupStep || (!client ? 'Connecting to Tributary...' : 'Preparing...')
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
+        <div className="text-center">
+          <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
+            <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Setting up Scribe</h2>
+          <p className="text-gray-600 mb-6">{step}</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    )
   }
 
   if (error) {

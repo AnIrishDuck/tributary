@@ -8,7 +8,7 @@ import { useSyncStatus } from '../context/syncStatusContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
-  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [copiedLibraryId, setCopiedLibraryId] = useState<string | null>(null)
@@ -162,8 +162,24 @@ const HomePage: React.FC = () => {
               </div>
             </div>
           </div>
+        ) : globalSyncStatus.isSyncing ? (
+          // Sync still in progress — don't show "No libraries" until we know for sure
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="px-8 py-16 text-center">
+              <h3 className="text-2xl font-semibold text-gray-900">Syncing your libraries</h3>
+              <p className="mt-2 text-gray-600">
+                Downloading and indexing your encrypted data...
+              </p>
+              {globalSyncStatus.finalIndex > 0 && (
+                <p className="mt-4 text-sm text-blue-600 font-medium">
+                  {globalSyncStatus.currentIndex} / {globalSyncStatus.finalIndex}
+                </p>
+              )}
+              <div className="mt-6 inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          </div>
         ) : (
-          // No libraries - show empty state
+          // Sync complete and genuinely no libraries — show empty state
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16 text-center">
               <h3 className="text-2xl font-semibold text-gray-900">No libraries yet</h3>
