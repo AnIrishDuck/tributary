@@ -18,8 +18,8 @@ const EditorPage: React.FC = () => {
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { globalSyncStatus, setFocusedLibrary } = useSyncStatus()
-  
+  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+
   // Extract the library prefix from params
   const { prefix } = useParams()
   const [searchParams] = useSearchParams()
@@ -37,9 +37,11 @@ const EditorPage: React.FC = () => {
   // Determine if this is a new note or editing an existing one
   const isNewNote = !editBlockUuid
 
-  // Check if we're currently syncing
-  const isSyncing = globalSyncStatus?.isSyncing ?? false
-  const isSynced = globalSyncStatus?.synced ?? false
+  // Check if THIS library is synced (not the global status, which can be blocked
+  // by other libraries that aren't being synced due to the focused-library optimization)
+  const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
+  const isSyncing = librarySyncStatus?.isSyncing ?? false
+  const isSynced = librarySyncStatus?.synced ?? false
 
   // If editing an existing note, load it once synced
   useEffect(() => {
@@ -93,8 +95,9 @@ const EditorPage: React.FC = () => {
     loadNoteForEditing()
   }, [isNewNote, editBlockUuid, client, prefix, isSynced])
 
-  // If not synced, show a waiting screen
-  if (!isSynced) {
+  // If editing an existing note and this library hasn't synced yet, show a waiting
+  // screen. New notes don't need to wait — there's no existing content to load.
+  if (!isNewNote && !isSynced) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
         <div className="text-center max-w-lg">
