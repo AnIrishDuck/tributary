@@ -224,6 +224,23 @@ describe('Note Operations', () => {
     expect(latestVersion).toBeNull()
   })
 
+  test('should create a note with a custom insert_datetime', async () => {
+    const customDate = '2024-06-15T12:00:00.000Z'
+
+    const createdNote = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Backdated\n\nA note with a custom timestamp.',
+      inserter: 'test-user',
+      insert_datetime: customDate
+    })
+
+    expect(createdNote.insert_datetime).toBe(customDate)
+
+    const retrieved = await getNoteByUuid(syncedDb, createdNote.block_uuid)
+    expect(retrieved).toBeDefined()
+    expect(retrieved!.insert_datetime).toBe(customDate)
+  })
+
   test('should count notes correctly', async () => {
     // Initially should be 0 notes
     let count = await getNoteCount(syncedDb)
