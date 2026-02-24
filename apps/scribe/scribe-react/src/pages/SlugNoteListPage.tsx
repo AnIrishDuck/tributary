@@ -129,12 +129,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs (collection view only) */}
         {!isRoot && ancestors && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
-        )}
-
-        {/* Collection title (collection view only) */}
-        {!isRoot && (
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">{collection.title}</h1>
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} libraryName={libraryName || undefined} />
         )}
 
         {totalItems === 0 ? (
