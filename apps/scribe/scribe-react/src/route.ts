@@ -3,7 +3,7 @@ import NewLibraryPage from './pages/NewLibraryPage'
 import ImportLibraryPage from './pages/ImportLibraryPage'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
 import EditorPage from './pages/EditorPage'
-import NoteViewPage from './pages/NoteViewPage'
+import SlugViewPage from './pages/SlugViewPage'
 import HomePage from './pages/HomePage'
 import NoteListPage from './pages/NoteListPage'
 import SearchPage from './pages/SearchPage'
@@ -68,7 +68,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: '/pk/:prefix/*',
-        Component: NoteViewPage,
+        Component: SlugViewPage,
         ErrorBoundary: NoteError
       }
     ]

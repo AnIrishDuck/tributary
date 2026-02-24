@@ -1,8 +1,11 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
+import { TributaryProvider } from '../src/context/tributaryContext'
+import { SyncStatusProvider } from '../src/context/syncStatusContext'
 import { routes } from '../src/route'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
 import { createNote } from 'scribe-data/src/note'
@@ -252,5 +255,90 @@ describe('EditorPage Additional Tests', () => {
     // Verify NO errors
     const errorEl = screen.queryByText(/Error|error/)
     expect(errorEl).toBeNull()
+  })
+})
+
+describe('EditorPage sync gate bug', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should show editor for new note even when a non-focused library has not finished syncing', async () => {
+    // Reproduce the production bug: the sync loop partially syncs the home library
+    // (synced: false) in an initial pass (when no focused library is set). Then
+    // user navigates to the editor, setting focused library. Subsequent sync
+    // iterations only sync the focused library. The home library stays synced:false
+    // in latestPerStream, so globalSyncStatus.synced remains false forever.
+    // The EditorPage checks globalSyncStatus.synced and shows a sync screen.
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Identify all streams — there's a home library + user library
+    const allStreamIds = await client.list()
+    const otherStreamId = allStreamIds.find(id => id !== base64Part)
+
+    // Mock client.get so that the OTHER (non-focused) stream reports incomplete sync.
+    // This simulates a large home library that hasn't finished syncing.
+    const originalGet = client.get.bind(client)
+    vi.spyOn(client, 'get').mockImplementation(async (appId: string, streamId: string) => {
+      const stream = await originalGet(appId, streamId)
+      if (stream && streamId === otherStreamId) {
+        stream.sync = async (max?: number) => {
+          // Return an incomplete sync status
+          return {
+            complete: () => false,
+            currentIndex: 5,
+            finalIndex: 100,
+            error: null,
+          } as any
+        }
+      }
+      return stream
+    })
+
+    function FastPollProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 100 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    // Start at the home page (no focused library set), so the sync loop
+    // syncs ALL libraries and records the home library as synced:false.
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/']
+    })
+
+    render(
+      <FastPollProviders>
+        <RouterProvider router={router} />
+      </FastPollProviders>
+    )
+
+    // Wait for the sync loop to run at least once with no focused library.
+    // This populates latestPerStream with home library synced:false.
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Now navigate to the editor. This sets focused library = base64Part.
+    // Subsequent sync iterations only sync the focused library.
+    // The home library entry stays synced:false in latestPerStream.
+    router.navigate(`/pk/${base64Part}/new`)
+
+    // The editor should appear within a reasonable time.
+    // BUG: globalSyncStatus.synced stays false because the home library is
+    // permanently incomplete (never re-synced while focused library is set).
+    // EditorPage gates on this and shows the sync screen instead.
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // The sync screen should NOT be visible
+    expect(screen.queryByText('Syncing Notes')).not.toBeInTheDocument()
+    expect(screen.queryByText('Notes Still Syncing')).not.toBeInTheDocument()
   })
 })
