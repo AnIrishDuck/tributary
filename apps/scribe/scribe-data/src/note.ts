@@ -22,6 +22,7 @@ export async function createNote(
     inserter: string
     prior_version_uuid?: string | null
     collection_id?: string | null
+    insert_datetime?: string
   }
 ): Promise<Note> {
   const now = new Date()
@@ -31,7 +32,7 @@ export async function createNote(
     block_type: noteData.block_type,
     version_uuid: uuidv4(),
     prior_version_uuid: noteData.prior_version_uuid !== undefined ? noteData.prior_version_uuid : null,
-    insert_datetime: now.toISOString(),
+    insert_datetime: noteData.insert_datetime ?? now.toISOString(),
     inserter: noteData.inserter,
     body: noteData.body,
     collection_id: noteData.collection_id ?? null

@@ -3,6 +3,8 @@ import {
   getAllNoteSlugs,
   getAuthoritativeVersionByNoteUuid,
   getNoteBySlug,
+  getNoteByVersion,
+  createNote,
   indexAll,
   getLibrary,
   getChildCollections,
@@ -14,7 +16,6 @@ import {
 import type { Collection } from '@tributary/scribe-data';
 import fs from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Validate that the local directory structure is correct for syncing
@@ -203,17 +204,12 @@ async function syncSlugsDirectory(
         }
 
         // Get the note content
-        const noteResult = await stream.query(
-          `SELECT * FROM block WHERE version_uuid = $1`,
-          [(authoritativeVersion as any).version_uuid]
-        );
+        const note = await getNoteByVersion(stream, noteUuid, (authoritativeVersion as any).version_uuid);
 
-        if (!noteResult.rows || noteResult.rows.length === 0) {
+        if (!note) {
           console.warn(`Note not found for version ${(authoritativeVersion as any).version_uuid}`);
           continue;
         }
-
-        const note = noteResult.rows[0] as any;
 
         let filePath: string;
         if (isDuplicate) {
@@ -345,21 +341,20 @@ async function syncFileToDatabase(
 
     if (authoritativeVersion) {
       const av = authoritativeVersion as any;
-      const currentNoteResult = await stream.query(
-        `SELECT * FROM block WHERE version_uuid = $1`,
-        [av.version_uuid]
-      );
+      const currentNote = await getNoteByVersion(stream, blockUuid, av.version_uuid);
 
-      if (currentNoteResult.rows && currentNoteResult.rows.length > 0) {
-        const currentNote = currentNoteResult.rows[0] as any;
-
+      if (currentNote) {
         if (currentNote.body !== content) {
           if (!dryRun) {
-            await stream.exec(
-              `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-              [blockUuid, 'scribe/markdown', uuidv4(), av.version_uuid, fileMtime, 'scribe-cli-sync', content, collectionId]
-            );
+            await createNote(stream, {
+              block_uuid: blockUuid,
+              block_type: 'scribe/markdown',
+              body: content,
+              inserter: 'scribe-cli-sync',
+              prior_version_uuid: av.version_uuid,
+              collection_id: collectionId,
+              insert_datetime: fileMtime,
+            });
             console.log(`Updated note ${blockUuid} with new version`);
           } else {
             console.log(`Would update note ${blockUuid} with new version (dry run)`);
@@ -372,11 +367,13 @@ async function syncFileToDatabase(
   } else {
     // New note
     if (!dryRun) {
-      await stream.exec(
-        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [uuidv4(), 'scribe/markdown', uuidv4(), null, fileMtime, 'scribe-cli-sync', content, collectionId]
-      );
+      await createNote(stream, {
+        block_type: 'scribe/markdown',
+        body: content,
+        inserter: 'scribe-cli-sync',
+        collection_id: collectionId,
+        insert_datetime: fileMtime,
+      });
       console.log(`Created new note for file: ${fileLabel}`);
     } else {
       console.log(`Would create new note for file: ${fileLabel} (dry run)`);
