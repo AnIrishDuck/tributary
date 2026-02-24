@@ -3,15 +3,22 @@ import {
   getAllNoteSlugs,
   getAuthoritativeVersionByNoteUuid,
   getNoteBySlug,
-  indexSlugs
-} from '@tributary/scribe-data/dist/indexing.js';
+  indexAll,
+  getLibrary,
+  getChildCollections,
+  getCollectionBySlugUnderParent,
+  getNotesBySlugInCollection,
+  getNoteSlugPath,
+  titleToSlug,
+} from '@tributary/scribe-data';
+import type { Collection } from '@tributary/scribe-data';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Validate that the local directory structure is correct for syncing
- * 
+ *
  * @param directory The local directory to validate
  * @throws Error if the directory structure is invalid
  */
@@ -30,14 +37,19 @@ export async function validateDirectoryStructure(directory: string): Promise<voi
 
 /**
  * Sync notes between local directory and Tributary Scribe library
- * 
+ *
  * This function:
  * 1. Validates the local directory structure
  * 2. Syncs with the server to get latest remote changes
  * 3. Reads all markdown files from the sync directory
  * 4. Updates the database with any changes
  * 5. Ensures slug filenames match the computed slug names
- * 
+ *
+ * Notes are laid out in directories reflecting their collection hierarchy:
+ *   - Root notes: {slug}.md or {slug}/{uuid}.md (for duplicate slugs)
+ *   - Collection notes: {collection-slug}/{note-slug}.md
+ *   - Nested collections: {collection-slug}/{sub-collection-slug}/{note-slug}.md
+ *
  * @param stream The TributaryStream instance for synced operations
  * @param client The TributaryClient instance for explicit sync operations
  * @param directory The local directory to sync with
@@ -53,25 +65,25 @@ export async function sync(
   } = {}
 ): Promise<void> {
   const { dryRun = false, limit = 100 } = options;
-  
+
   // Validate directory structure first - error immediately if not correct
   await validateDirectoryStructure(directory);
-  
+
   // 1. Sync with server first to get latest changes
   if (!dryRun) {
     console.log('Syncing with server...');
     const syncStatus = await stream.sync(1000);
     console.log(`Server sync completed: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
   }
-  
+
   // Get local database for index operations
   const localDb = stream.local();
-  
+
   // 2. Read local files and update database
   await syncLocalFilesToDatabase(stream, localDb, directory, { dryRun });
 
-  // 3. Re-index any newly added/updated notes
-  const reindexResult = await indexSlugs(localDb, { limit });
+  // 3. Re-index notes and collections
+  const reindexResult = await indexAll(localDb, { limit });
   console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
   if (reindexResult.hasMore) {
     console.log(`Has more to index: ${reindexResult.hasMore}`);
@@ -82,20 +94,24 @@ export async function sync(
 }
 
 /**
- * Sync the slugs directory with the current database state
+ * Sync the slugs directory with the current database state.
  *
- * Notes with unique slugs are written as flat files: {slug}.md
- * Notes with duplicate slugs are written in folders: {slug}/{uuid}.md
+ * Notes are placed into directories based on their collection slug path:
+ * - Root notes (no collection): {slug}.md or {slug}/{uuid}.md for duplicates
+ * - Collection notes: {collection-path}/{slug}.md or {collection-path}/{slug}/{uuid}.md
+ *
+ * Collection directories are created as needed. Empty collection directories are
+ * kept (they represent collections with no notes yet).
  *
  * @param stream The TributaryStream instance
  * @param localDb The TributaryLocal instance
- * @param slugsDir The slugs directory path
+ * @param rootDir The sync root directory path
  * @param options Sync options
  */
 async function syncSlugsDirectory(
   stream: TributaryStream,
   localDb: TributaryLocal,
-  slugsDir: string,
+  rootDir: string,
   options: {
     dryRun?: boolean;
   }
@@ -105,104 +121,201 @@ async function syncSlugsDirectory(
   // Get all current slugs from the database
   const noteSlugs = await getAllNoteSlugs(localDb);
 
-  // Group notes by slug to detect duplicates
-  const slugGroups = new Map<string, Array<{ block_uuid: string; slug: string }>>();
+  // Build the full slug path for each note and group by path
+  // pathKey → [{block_uuid, slug, pathSegments}]
+  interface NoteEntry {
+    block_uuid: string;
+    slug: string;
+    slugPath: string[];
+  }
+  const noteEntries: NoteEntry[] = [];
+
   for (const noteSlug of noteSlugs) {
-    const slug = (noteSlug as any).slug;
     const block_uuid = (noteSlug as any).block_uuid;
-    if (!slugGroups.has(slug)) {
-      slugGroups.set(slug, []);
+    const slug = (noteSlug as any).slug;
+
+    // Get the full slug path for this note (collection path + note slug)
+    const slugPath = await getNoteSlugPath(localDb, block_uuid);
+
+    if (slugPath.length === 0) {
+      // Fallback: use just the slug if no path could be computed
+      noteEntries.push({ block_uuid, slug, slugPath: [slug] });
+    } else {
+      noteEntries.push({ block_uuid, slug, slugPath });
     }
-    slugGroups.get(slug)!.push({ block_uuid, slug });
   }
 
-  // Track which paths we expect to exist after sync
+  // Group notes by their directory path (all segments except the last, which is the note slug)
+  // Within each directory, group by note slug to detect duplicates
+  interface DirGroup {
+    dirPath: string[];
+    slugGroups: Map<string, NoteEntry[]>;
+  }
+  const dirGroupsMap = new Map<string, DirGroup>();
+
+  for (const entry of noteEntries) {
+    const dirSegments = entry.slugPath.slice(0, -1);
+    const dirKey = dirSegments.join('/');
+    if (!dirGroupsMap.has(dirKey)) {
+      dirGroupsMap.set(dirKey, { dirPath: dirSegments, slugGroups: new Map() });
+    }
+    const dirGroup = dirGroupsMap.get(dirKey)!;
+    if (!dirGroup.slugGroups.has(entry.slug)) {
+      dirGroup.slugGroups.set(entry.slug, []);
+    }
+    dirGroup.slugGroups.get(entry.slug)!.push(entry);
+  }
+
+  // Track all paths we expect to exist
   const expectedPaths = new Set<string>();
+  // Track expected directory paths (for collections)
+  const expectedDirs = new Set<string>();
 
-  // Process each slug group
-  for (const [slug, notes] of slugGroups) {
-    const isDuplicate = notes.length > 1;
-
-    for (const { block_uuid: noteUuid } of notes) {
-      // Get the authoritative version of the note
-      const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteUuid);
-      if (!authoritativeVersion) {
-        console.warn(`No authoritative version found for note ${noteUuid}`);
-        continue;
-      }
-
-      // Get the note content
-      const noteResult = await stream.query(
-        `SELECT * FROM block WHERE version_uuid = $1`,
-        [(authoritativeVersion as any).version_uuid]
-      );
-
-      if (!noteResult.rows || noteResult.rows.length === 0) {
-        console.warn(`Note not found for version ${(authoritativeVersion as any).version_uuid}`);
-        continue;
-      }
-
-      const note = noteResult.rows[0] as any;
-
-      let filePath: string;
-      if (isDuplicate) {
-        // Duplicate slug — write to folder: {slug}/{uuid}.md
-        const slugDir = path.join(slugsDir, slug);
-        filePath = path.join(slugDir, `${noteUuid}.md`);
-        if (!dryRun) {
-          await fs.promises.mkdir(slugDir, { recursive: true });
-        }
-      } else {
-        // Unique slug — write as flat file: {slug}.md
-        filePath = path.join(slugsDir, `${slug}.md`);
-      }
-
-      expectedPaths.add(filePath);
-
-      if (!dryRun) {
-        await fs.promises.writeFile(filePath, note.body, 'utf8');
-
-        // Update file timestamps to match note datetime
-        const noteDate = new Date(note.insert_datetime);
-        await fs.promises.utimes(filePath, noteDate, noteDate);
-      }
-    }
+  // Also ensure collection directories exist even if they have no notes
+  const library = await getLibrary(localDb);
+  if (library) {
+    await ensureCollectionDirs(localDb, library.collection_uuid, rootDir, [], expectedDirs, dryRun);
   }
 
-  // Clean up files and directories that no longer correspond to any slug
-  if (fs.existsSync(slugsDir)) {
-    const entries = await fs.promises.readdir(slugsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
+  // Write notes
+  for (const [, dirGroup] of dirGroupsMap) {
+    const dirFsPath = dirGroup.dirPath.length > 0
+      ? path.join(rootDir, ...dirGroup.dirPath)
+      : rootDir;
 
-      const entryPath = path.join(slugsDir, entry.name);
+    // Ensure the directory exists
+    if (dirGroup.dirPath.length > 0) {
+      expectedDirs.add(dirFsPath);
+      if (!dryRun) {
+        await fs.promises.mkdir(dirFsPath, { recursive: true });
+      }
+    }
 
-      if (entry.isDirectory()) {
-        // Check if this directory corresponds to a duplicate slug group
-        const slug = entry.name;
-        if (!slugGroups.has(slug) || slugGroups.get(slug)!.length <= 1) {
-          // Directory no longer needed (slug is unique or gone)
+    for (const [slug, notes] of dirGroup.slugGroups) {
+      const isDuplicate = notes.length > 1;
+
+      for (const { block_uuid: noteUuid } of notes) {
+        // Get the authoritative version of the note
+        const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteUuid);
+        if (!authoritativeVersion) {
+          console.warn(`No authoritative version found for note ${noteUuid}`);
+          continue;
+        }
+
+        // Get the note content
+        const noteResult = await stream.query(
+          `SELECT * FROM block WHERE version_uuid = $1`,
+          [(authoritativeVersion as any).version_uuid]
+        );
+
+        if (!noteResult.rows || noteResult.rows.length === 0) {
+          console.warn(`Note not found for version ${(authoritativeVersion as any).version_uuid}`);
+          continue;
+        }
+
+        const note = noteResult.rows[0] as any;
+
+        let filePath: string;
+        if (isDuplicate) {
+          // Duplicate slug — write to folder: {dir}/{slug}/{uuid}.md
+          const slugDir = path.join(dirFsPath, slug);
+          filePath = path.join(slugDir, `${noteUuid}.md`);
+          expectedDirs.add(slugDir);
           if (!dryRun) {
-            await fs.promises.rm(entryPath, { recursive: true });
+            await fs.promises.mkdir(slugDir, { recursive: true });
           }
         } else {
-          // Clean up UUID files inside the directory that no longer belong
-          const subFiles = await fs.promises.readdir(entryPath);
-          for (const subFile of subFiles) {
-            const subPath = path.join(entryPath, subFile);
-            if (!expectedPaths.has(subPath)) {
-              if (!dryRun) {
-                await fs.promises.unlink(subPath);
-              }
-            }
-          }
+          // Unique slug — write as flat file: {dir}/{slug}.md
+          filePath = path.join(dirFsPath, `${slug}.md`);
         }
-      } else if (entry.name.endsWith('.md')) {
-        if (!expectedPaths.has(entryPath)) {
-          if (!dryRun) {
-            await fs.promises.unlink(entryPath);
-          }
+
+        expectedPaths.add(filePath);
+
+        if (!dryRun) {
+          await fs.promises.writeFile(filePath, note.body, 'utf8');
+
+          // Update file timestamps to match note datetime
+          const noteDate = new Date(note.insert_datetime);
+          await fs.promises.utimes(filePath, noteDate, noteDate);
         }
+      }
+    }
+  }
+
+  // Clean up files and directories that no longer correspond to any slug or collection
+  await cleanDirectory(rootDir, rootDir, expectedPaths, expectedDirs, dryRun);
+}
+
+/**
+ * Recursively ensure that collection directories exist.
+ */
+async function ensureCollectionDirs(
+  localDb: TributaryLocal,
+  parentCollectionUuid: string,
+  parentFsDir: string,
+  currentPath: string[],
+  expectedDirs: Set<string>,
+  dryRun: boolean
+): Promise<void> {
+  const children = await getChildCollections(localDb, parentCollectionUuid);
+  for (const child of children) {
+    const slug = titleToSlug(child.title);
+    if (!slug) continue;
+    const childPath = [...currentPath, slug];
+    const childFsDir = path.join(parentFsDir, slug);
+    expectedDirs.add(childFsDir);
+    if (!dryRun) {
+      await fs.promises.mkdir(childFsDir, { recursive: true });
+    }
+    // Recurse into subcollections
+    await ensureCollectionDirs(localDb, child.collection_uuid, childFsDir, childPath, expectedDirs, dryRun);
+  }
+}
+
+/**
+ * Clean up files and directories that no longer correspond to any note or collection.
+ */
+async function cleanDirectory(
+  dir: string,
+  rootDir: string,
+  expectedPaths: Set<string>,
+  expectedDirs: Set<string>,
+  dryRun: boolean
+): Promise<void> {
+  if (!fs.existsSync(dir)) return;
+
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+
+    const entryPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      if (expectedDirs.has(entryPath)) {
+        // This is a known directory (collection or duplicate-slug folder) — recurse into it
+        await cleanDirectory(entryPath, rootDir, expectedPaths, expectedDirs, dryRun);
+      } else {
+        // Unknown directory — remove it
+        if (!dryRun) {
+          await fs.promises.rm(entryPath, { recursive: true });
+        }
+      }
+    } else if (entry.name.endsWith('.md')) {
+      if (!expectedPaths.has(entryPath)) {
+        if (!dryRun) {
+          await fs.promises.unlink(entryPath);
+        }
+      }
+    }
+  }
+
+  // After cleaning, remove the directory if it's empty and not the root
+  if (dir !== rootDir) {
+    const remaining = await fs.promises.readdir(dir);
+    const nonDotEntries = remaining.filter(f => !f.startsWith('.'));
+    if (nonDotEntries.length === 0 && !expectedDirs.has(dir)) {
+      if (!dryRun) {
+        await fs.promises.rm(dir, { recursive: true });
       }
     }
   }
@@ -217,6 +330,7 @@ async function syncFileToDatabase(
   filePath: string,
   blockUuid: string | null,
   fileLabel: string,
+  collectionId: string | null,
   options: { dryRun?: boolean }
 ): Promise<void> {
   const { dryRun = false } = options;
@@ -242,9 +356,9 @@ async function syncFileToDatabase(
         if (currentNote.body !== content) {
           if (!dryRun) {
             await stream.exec(
-              `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [blockUuid, 'scribe/markdown', uuidv4(), av.version_uuid, fileMtime, 'scribe-cli-sync', content]
+              `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [blockUuid, 'scribe/markdown', uuidv4(), av.version_uuid, fileMtime, 'scribe-cli-sync', content, collectionId]
             );
             console.log(`Updated note ${blockUuid} with new version`);
           } else {
@@ -259,9 +373,9 @@ async function syncFileToDatabase(
     // New note
     if (!dryRun) {
       await stream.exec(
-        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [uuidv4(), 'scribe/markdown', uuidv4(), null, fileMtime, 'scribe-cli-sync', content]
+        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [uuidv4(), 'scribe/markdown', uuidv4(), null, fileMtime, 'scribe-cli-sync', content, collectionId]
       );
       console.log(`Created new note for file: ${fileLabel}`);
     } else {
@@ -271,56 +385,107 @@ async function syncFileToDatabase(
 }
 
 /**
- * Sync local files from the sync directory to the database
+ * Sync local files from the sync directory to the database.
  *
- * Reads both flat files ({slug}.md) and files inside slug folders ({slug}/{uuid}.md).
+ * Walks the directory tree. At each level:
+ * - .md files are matched to notes by slug (scoped to the current collection)
+ * - Directories are checked against collection slugs; if a directory matches a
+ *   collection, we recurse into it with that collection's UUID as context.
+ * - Directories inside a duplicate-slug folder contain UUID-named files.
  *
  * @param stream The TributaryStream instance
  * @param localDb The TributaryLocal instance
- * @param slugsDir The sync directory path
+ * @param rootDir The sync root directory path
  * @param options Sync options
  */
 async function syncLocalFilesToDatabase(
   stream: TributaryStream,
   localDb: TributaryLocal,
-  slugsDir: string,
+  rootDir: string,
   options: {
     dryRun?: boolean;
   }
 ): Promise<void> {
+  // Get the library root to determine collection hierarchy
+  const library = await getLibrary(localDb);
+  const libraryUuid = library?.collection_uuid ?? null;
+
+  await syncDirectoryLevel(stream, localDb, rootDir, null, libraryUuid, options);
+}
+
+/**
+ * Sync a single directory level to the database.
+ *
+ * @param stream The TributaryStream instance
+ * @param localDb The TributaryLocal instance
+ * @param dir The directory to process
+ * @param collectionId The collection UUID that notes in this directory belong to (null = root)
+ * @param parentCollectionUuid The parent collection UUID for looking up child collections (null if no library)
+ * @param options Sync options
+ */
+async function syncDirectoryLevel(
+  stream: TributaryStream,
+  localDb: TributaryLocal,
+  dir: string,
+  collectionId: string | null,
+  parentCollectionUuid: string | null,
+  options: { dryRun?: boolean }
+): Promise<void> {
   const { dryRun = false } = options;
 
-  if (!fs.existsSync(slugsDir)) {
-    console.log('Sync directory does not exist, skipping local file sync');
+  if (!fs.existsSync(dir)) {
     return;
   }
 
-  const entries = await fs.promises.readdir(slugsDir, { withFileTypes: true });
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
 
     if (entry.isDirectory()) {
-      // Slug folder — files inside are {uuid}.md
-      const slugDir = path.join(slugsDir, entry.name);
-      const subFiles = (await fs.promises.readdir(slugDir))
-        .filter(f => f.endsWith('.md') && !f.startsWith('.'));
+      const dirName = entry.name;
+      const dirPath = path.join(dir, dirName);
 
-      for (const subFile of subFiles) {
-        const filePath = path.join(slugDir, subFile);
-        // Extract UUID from filename (remove .md extension)
-        const fileUuid = subFile.slice(0, -3);
-        await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${entry.name}/${subFile}`, { dryRun });
+      // Check if this directory matches a child collection
+      let matchedCollection: Collection | null = null;
+      if (parentCollectionUuid) {
+        const collectionSlug = await getCollectionBySlugUnderParent(localDb, dirName, parentCollectionUuid);
+        if (collectionSlug) {
+          matchedCollection = { collection_uuid: collectionSlug.collection_uuid } as Collection;
+        }
+      }
+
+      if (matchedCollection) {
+        // This directory is a collection — recurse with the collection context
+        await syncDirectoryLevel(
+          stream, localDb, dirPath,
+          matchedCollection.collection_uuid,
+          matchedCollection.collection_uuid,
+          options
+        );
+      } else {
+        // Not a collection directory — treat as a duplicate-slug folder.
+        // Files inside are {uuid}.md
+        const subFiles = (await fs.promises.readdir(dirPath))
+          .filter(f => f.endsWith('.md') && !f.startsWith('.'));
+
+        for (const subFile of subFiles) {
+          const filePath = path.join(dirPath, subFile);
+          // Extract UUID from filename (remove .md extension)
+          const fileUuid = subFile.slice(0, -3);
+          await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${dirName}/${subFile}`, collectionId, { dryRun });
+        }
       }
     } else if (entry.name.endsWith('.md')) {
-      // Flat file — match by slug
-      const filePath = path.join(slugsDir, entry.name);
+      // Flat file — match by slug scoped to the current collection
+      const filePath = path.join(dir, entry.name);
       const fileSlug = entry.name.slice(0, -3);
 
-      const existingNoteSlug = await getNoteBySlug(localDb, fileSlug);
-      const blockUuid = existingNoteSlug ? (existingNoteSlug as any).block_uuid : null;
+      // Look up existing note by slug in the current collection scope
+      const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
+      const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
 
-      await syncFileToDatabase(stream, localDb, filePath, blockUuid, entry.name, { dryRun });
+      await syncFileToDatabase(stream, localDb, filePath, blockUuid, entry.name, collectionId, { dryRun });
     }
   }
 }
