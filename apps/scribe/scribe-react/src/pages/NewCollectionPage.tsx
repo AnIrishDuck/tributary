@@ -11,9 +11,10 @@ export interface NewCollectionPageProps {
   parentUuid?: string
   ancestors?: Collection[]
   cancelPath: string
+  libraryName?: string
 }
 
-const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUuid, ancestors = [], cancelPath }) => {
+const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUuid, ancestors = [], cancelPath, libraryName }) => {
   const [title, setTitle] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -135,7 +136,7 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} libraryName={libraryName} />
         )}
 
         {error && (

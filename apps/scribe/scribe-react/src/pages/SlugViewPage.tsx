@@ -27,12 +27,12 @@ interface AuthoritativeVersion {
 type PageMode =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[] }
+  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
-  | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string }
+  | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
   | { type: 'newNote'; collectionId?: string; parentSlugPath: string }
-  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[] }
+  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
 
 const SlugViewPage: React.FC = () => {
@@ -73,10 +73,13 @@ const SlugViewPage: React.FC = () => {
 
         const {
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
-          getLibrary, getCollectionByUuid, getChildCollections,
+          getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
           getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
+
+        // Fetch library display name once for breadcrumbs
+        const libraryName = await getLibraryDisplayName(localDb) || 'Library'
 
         // Parse the splat path into segments
         const segments = splatPath.split('/').filter(Boolean)
@@ -127,7 +130,7 @@ const SlugViewPage: React.FC = () => {
             ancestors = await getCollectionAncestors(localDb, parentUuid)
           }
 
-          setMode({ type: 'newCollection', parentUuid, parentSlugPath, ancestors })
+          setMode({ type: 'newCollection', parentUuid, parentSlugPath, ancestors, libraryName })
           return
         }
 
@@ -190,7 +193,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors })
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName })
           return
         }
 
@@ -217,7 +220,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors })
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName })
           return
         }
 
@@ -229,7 +232,7 @@ const SlugViewPage: React.FC = () => {
             getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug,
             fullSlugPath
           )
-          setMode({ type: 'collection', ...collectionData, slugPath: fullSlugPath })
+          setMode({ type: 'collection', ...collectionData, slugPath: fullSlugPath, libraryName })
           return
         }
       } catch (err: any) {
@@ -282,6 +285,7 @@ const SlugViewPage: React.FC = () => {
         notes={mode.notes}
         slugPath={mode.slugPath}
         prefix={prefix || ''}
+        libraryName={mode.libraryName}
       />
     )
   }
@@ -303,6 +307,7 @@ const SlugViewPage: React.FC = () => {
         parentUuid={mode.parentUuid}
         ancestors={mode.ancestors}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        libraryName={mode.libraryName}
       />
     )
   }
@@ -326,6 +331,7 @@ const SlugViewPage: React.FC = () => {
       prefix={prefix || ''}
       splatPath={splatPath}
       ancestors={mode.ancestors}
+      libraryName={mode.libraryName}
     />
   )
 }

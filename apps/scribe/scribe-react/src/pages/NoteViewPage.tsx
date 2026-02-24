@@ -12,9 +12,10 @@ interface NoteViewPageProps {
   prefix: string
   splatPath: string
   ancestors: Collection[]
+  libraryName: string
 }
 
-const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors }) => {
+const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName }) => {
   const navigate = useNavigate()
 
   // Compute parent collection path from slugPath (remove last segment which is the note)
@@ -80,7 +81,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs (show path to parent collection, not the note itself) */}
         {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks libraryName={libraryName} />
         )}
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">

@@ -7,9 +7,11 @@ interface BreadcrumbsProps {
   prefix: string
   /** When true, all items (including the last) are rendered as links. Used for note views where the note title is shown separately. */
   allLinks?: boolean
+  /** Display name for the library root. Defaults to "Library". */
+  libraryName?: string
 }
 
-export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks }) => {
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, libraryName }) => {
   if (ancestors.length === 0) return null
 
   // Build cumulative slug paths for each non-root ancestor
@@ -59,7 +61,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
           to={`/pk/${prefix}/`}
           className="hover:text-blue-600 transition-colors flex-shrink-0"
         >
-          Library
+          {libraryName || 'Library'}
         </Link>
       )}
       {showEllipsis && (
