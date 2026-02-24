@@ -7,6 +7,7 @@ import NoteViewPage from './pages/NoteViewPage'
 import HomePage from './pages/HomePage'
 import NoteListPage from './pages/NoteListPage'
 import SearchPage from './pages/SearchPage'
+import NewCollectionPage from './pages/NewCollectionPage'
 import Layout from './components/Layout'
 import React from 'react'
 
@@ -51,6 +52,11 @@ export const routes: RouteObject[] = [
         ErrorBoundary: NewNoteError
       },
       {
+        path: '/pk/:prefix/new-collection',
+        Component: NewCollectionPage,
+        ErrorBoundary: NoteError
+      },
+      {
         path: '/pk/:prefix/',
         Component: NoteListPage,
         ErrorBoundary: NoteError
@@ -61,22 +67,7 @@ export const routes: RouteObject[] = [
         ErrorBoundary: NoteError
       },
       {
-        path: '/pk/:prefix/:slug/:uuid/edit',
-        Component: EditorPage,
-        ErrorBoundary: NoteError
-      },
-      {
-        path: '/pk/:prefix/:slug/:uuid',
-        Component: NoteViewPage,
-        ErrorBoundary: NoteError
-      },
-      {
-        path: '/pk/:prefix/:slug/edit',
-        Component: EditorPage,
-        ErrorBoundary: NoteError
-      },
-      {
-        path: '/pk/:prefix/:slug',
+        path: '/pk/:prefix/*',
         Component: NoteViewPage,
         ErrorBoundary: NoteError
       }

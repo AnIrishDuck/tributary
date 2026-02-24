@@ -5,23 +5,26 @@ export async function saveNote(
   stream: TributaryStream,
   content: string,
   inserter: string = 'web-ui',
-  blockUuid?: string
+  blockUuid?: string,
+  collectionId?: string | null
 ) {
   let block: any
-  
+
   if (blockUuid) {
     // Update existing note by creating a new version
     block = await scribeData.createNoteVersion(stream, blockUuid, {
       block_type: 'scribe/markdown',
       body: content,
-      inserter
+      inserter,
+      ...(collectionId !== undefined ? { collection_id: collectionId } : {})
     })
   } else {
     // Create a new note using the scribe-data functions
     block = await scribeData.createNote(stream, {
       block_type: 'scribe/markdown',
       body: content,
-      inserter
+      inserter,
+      ...(collectionId !== undefined ? { collection_id: collectionId } : {})
     })
   }
   

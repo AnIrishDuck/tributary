@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { getAllNotesWithTitles, NoteSlugRow, getLibraryDisplayName } from 'scribe-data'
+import { getNotesInCollectionWithSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, titleToSlug, CollectionSlug } from 'scribe-data'
 import { TributaryLocal } from 'tributary-client'
-import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, MagnifyingGlassIcon, ArrowLeftIcon, FolderIcon, FolderPlusIcon } from '@heroicons/react/24/outline'
 
 const NoteListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
@@ -12,6 +12,7 @@ const NoteListPage: React.FC = () => {
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
   const [notes, setNotes] = useState<NoteSlugRow[]>([])
+  const [collections, setCollections] = useState<{ collection: Collection; slug: string }[]>([])
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -42,9 +43,26 @@ const NoteListPage: React.FC = () => {
           throw new Error('Could not get local database')
         }
 
-        // Get all notes with titles
-        const noteList = await getAllNotesWithTitles(localDb)
-        setNotes(noteList)
+        // Get library root collection
+        const library = await getLibrary(localDb)
+
+        if (library) {
+          // Get child collections of library root
+          const childCollections = await getChildCollections(localDb, library.collection_uuid)
+          setCollections(childCollections.map(c => ({
+            collection: c,
+            slug: titleToSlug(c.title)
+          })))
+
+          // Get root-level notes only (notes not in any collection)
+          const noteList = await getNotesInCollectionWithSlugs(localDb, null)
+          setNotes(noteList)
+        } else {
+          // No library root — all notes are root-level
+          const noteList = await getNotesInCollectionWithSlugs(localDb, null)
+          setNotes(noteList)
+          setCollections([])
+        }
 
         // Get library display name
         const name = await getLibraryDisplayName(localDb)
@@ -99,6 +117,8 @@ const NoteListPage: React.FC = () => {
   const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
   const showProgress = librarySyncStatus && !librarySyncStatus.synced
 
+  const totalItems = notes.length + collections.length
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sync Progress Banner */}
@@ -114,7 +134,7 @@ const NoteListPage: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 py-3">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -132,7 +152,7 @@ const NoteListPage: React.FC = () => {
                 {notes.length} note{notes.length !== 1 ? 's' : ''}
               </span>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate(`/pk/${prefix}/search`)}
@@ -141,7 +161,15 @@ const NoteListPage: React.FC = () => {
                 <MagnifyingGlassIcon className="w-4 h-4 mr-1.5" />
                 Search
               </button>
-              
+
+              <button
+                onClick={() => navigate(`/pk/${prefix}/new-collection`)}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <FolderPlusIcon className="w-4 h-4 mr-1.5" />
+                New Collection
+              </button>
+
               <button
                 onClick={handleNewNote}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
@@ -155,7 +183,7 @@ const NoteListPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {notes.length === 0 ? (
+        {totalItems === 0 ? (
           showProgress ? (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
               <div className="mx-auto w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
@@ -181,45 +209,76 @@ const NoteListPage: React.FC = () => {
             </div>
           )
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {notes.map((note) => (
-              <Link
-                key={note.block_uuid}
-                to={`/pk/${prefix}/${note.slug}`}
-                className="group block"
-              >
-                <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
-                  <div className="px-6 py-8">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-xl font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors mb-2">
-                          {note.title || 'Untitled'}
-                        </h3>
-                      </div>
-                      <div className="flex-shrink-0">
-                        <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                          <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+          <>
+            {/* Collections */}
+            {collections.length > 0 && (
+              <div className="mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {collections.map(({ collection, slug: collectionSlug }) => (
+                    <Link
+                      key={collection.collection_uuid}
+                      to={`/pk/${prefix}/${collectionSlug}`}
+                      className="group block"
+                    >
+                      <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-amber-200 transform hover:-translate-y-1">
+                        <div className="px-6 py-6">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                              <FolderIcon className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                              {collection.title}
+                            </h3>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                      <span className="text-sm text-gray-500">
-                        {new Date(note.insert_datetime).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </span>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                        {note.slug}
-                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {notes.map((note) => (
+                <Link
+                  key={note.block_uuid}
+                  to={`/pk/${prefix}/${note.slug}`}
+                  className="group block"
+                >
+                  <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
+                    <div className="px-6 py-8">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-xl font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors mb-2">
+                            {note.title || 'Untitled'}
+                          </h3>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                            <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <span className="text-sm text-gray-500">
+                          {new Date(note.insert_datetime).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </span>
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                          {note.slug}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+          </>
         )}
 
         {notes.length > 0 && (

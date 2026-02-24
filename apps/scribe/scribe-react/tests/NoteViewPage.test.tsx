@@ -9,6 +9,21 @@ import { saveNote } from '../src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
 describe('NoteViewPage', () => {
+  // Helper to create a collection and index it
+  async function createIndexedCollection(
+    stream: any,
+    title: string,
+    parentUuid: string
+  ) {
+    const col = await scribeData.createCollection(stream, {
+      title,
+      parent_collection_uuid: parentUuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(stream.local())
+    return col
+  }
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -123,5 +138,109 @@ describe('NoteViewPage', () => {
     // Verify NO errors
     const errorEl = screen.queryByText(/Error|error/)
     expect(errorEl).toBeNull()
+  })
+
+  it('should render collection contents when slug resolves to a collection', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Get the library root
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create a collection
+    const col = await createIndexedCollection(stream, 'My Recipes', library!.collection_uuid)
+
+    // Create a note in that collection
+    await saveNote(stream, '# Pasta\n\nDelicious pasta recipe.', 'web-ui', undefined, col.collection_uuid)
+
+    // Navigate to the collection slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/my-recipes`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show the collection view with its name (appears in breadcrumbs + h1)
+    await waitFor(() => {
+      expect(screen.getAllByText('My Recipes').length).toBeGreaterThanOrEqual(1)
+    }, { timeout: 5000 })
+
+    // Should show the note inside the collection
+    expect(screen.getByText('Pasta')).toBeInTheDocument()
+
+    // Should show "New Note" and "New Collection" buttons
+    expect(screen.getByRole('button', { name: /New Note/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /New Collection/ })).toBeInTheDocument()
+  })
+
+  it('should resolve note when slug matches both a note and a collection (note takes priority)', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create a collection with slug "recipes"
+    await createIndexedCollection(stream, 'Recipes', library!.collection_uuid)
+
+    // Create a note with the same slug "recipes"
+    await saveNote(stream, '# Recipes\n\nA note about recipes.')
+
+    // Navigate to the shared slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/recipes`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // In hierarchical routing, notes take priority over collections at the same scope
+    // Should show the note view with Edit button
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should show the note content
+    expect(screen.getByText(/A note about recipes/)).toBeInTheDocument()
+  })
+
+  it('should render note normally when slug matches only a note (no regression)', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note (no matching collection)
+    const testContent = '# Unique Note\n\nThis note has a unique slug.'
+    const { blockSlug } = await saveNote(stream, testContent)
+    expect(blockSlug).toBeDefined()
+    const slug = blockSlug!.slug
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show the note view with Edit button
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should show the note content
+    expect(screen.getByText('Unique Note')).toBeInTheDocument()
+    expect(screen.getByText(/This note has a unique slug/)).toBeInTheDocument()
   })
 })

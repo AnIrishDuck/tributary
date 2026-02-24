@@ -9,9 +9,17 @@ import {
   getLinkedLibraries,
   getLibrary,
   getNotesInCollection,
-  getLibraryDisplayName
+  getLibraryDisplayName,
+  getChildCollections,
+  getCollectionAncestors,
+  getCollectionsBySlug,
+  getCollectionBySlugUnderParent,
+  getSlugPath,
+  getNoteSlugPath
 } from '../src/collection.js'
 import { createNote, createNoteVersion } from '../src/note.js'
+import { indexCollectionSlugs, getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
+import { resolveSlugPath } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 describe('Collection Operations', () => {
@@ -740,7 +748,7 @@ describe('Collection Operations', () => {
     })
   })
 
-  describe('Nesting (Not Yet Supported)', () => {
+  describe('Nesting', () => {
     test('createCollection defaults to root level (parent = null)', async () => {
       const collection = await createCollection(syncedDb, {
         title: 'Defaults To Root',
@@ -768,6 +776,394 @@ describe('Collection Operations', () => {
       const all = await getAllCollections(syncedDb)
       expect(all).toHaveLength(1)
       expect(all[0].title).toBe('Recipes')
+    })
+
+    test('create nested collections (library → child → grandchild)', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const grandchild = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: child.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      expect(grandchild.parent_collection_uuid).toBe(child.collection_uuid)
+      expect(child.parent_collection_uuid).toBe(library.collection_uuid)
+      expect(library.parent_collection_uuid).toBeNull()
+    })
+
+    test('getChildCollections returns correct children at each level', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child1 = await createCollection(syncedDb, {
+        title: 'Alpha',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const child2 = await createCollection(syncedDb, {
+        title: 'Beta',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const grandchild = await createCollection(syncedDb, {
+        title: 'Gamma',
+        parent_collection_uuid: child1.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Library's children: Alpha, Beta (sorted by title)
+      const libraryChildren = await getChildCollections(syncedDb, library.collection_uuid)
+      expect(libraryChildren).toHaveLength(2)
+      expect(libraryChildren[0].title).toBe('Alpha')
+      expect(libraryChildren[1].title).toBe('Beta')
+
+      // Alpha's children: Gamma
+      const alphaChildren = await getChildCollections(syncedDb, child1.collection_uuid)
+      expect(alphaChildren).toHaveLength(1)
+      expect(alphaChildren[0].title).toBe('Gamma')
+
+      // Beta's children: none
+      const betaChildren = await getChildCollections(syncedDb, child2.collection_uuid)
+      expect(betaChildren).toHaveLength(0)
+
+      // Gamma's children: none
+      const gammaChildren = await getChildCollections(syncedDb, grandchild.collection_uuid)
+      expect(gammaChildren).toHaveLength(0)
+    })
+
+    test('getCollectionAncestors returns correct chain from root to leaf', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const grandchild = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: child.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Ancestors of grandchild: library → child → grandchild
+      const ancestors = await getCollectionAncestors(syncedDb, grandchild.collection_uuid)
+      expect(ancestors).toHaveLength(3)
+      expect(ancestors[0].collection_uuid).toBe(library.collection_uuid)
+      expect(ancestors[1].collection_uuid).toBe(child.collection_uuid)
+      expect(ancestors[2].collection_uuid).toBe(grandchild.collection_uuid)
+
+      // Ancestors of child: library → child
+      const childAncestors = await getCollectionAncestors(syncedDb, child.collection_uuid)
+      expect(childAncestors).toHaveLength(2)
+      expect(childAncestors[0].collection_uuid).toBe(library.collection_uuid)
+      expect(childAncestors[1].collection_uuid).toBe(child.collection_uuid)
+
+      // Ancestors of library: just itself
+      const libraryAncestors = await getCollectionAncestors(syncedDb, library.collection_uuid)
+      expect(libraryAncestors).toHaveLength(1)
+      expect(libraryAncestors[0].collection_uuid).toBe(library.collection_uuid)
+    })
+
+    test('notes in a subcollection do not appear in parent getNotesInCollectionWithSlugs', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create a root-level note (no collection)
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Root Note\n\nA root-level note.',
+        inserter: 'test-user'
+      })
+
+      // Create a note in the child collection
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Child Note\n\nA note in Recipes.',
+        inserter: 'test-user',
+        collection_id: child.collection_uuid
+      })
+
+      // Index so slugs exist
+      await indexAll(localDb)
+
+      // Root-level notes (collection_id IS NULL)
+      const rootNotes = await getNotesInCollectionWithSlugs(localDb, null)
+      expect(rootNotes).toHaveLength(1)
+      expect(rootNotes[0].title).toBe('Root Note')
+
+      // Notes in child collection
+      const childNotes = await getNotesInCollectionWithSlugs(localDb, child.collection_uuid)
+      expect(childNotes).toHaveLength(1)
+      expect(childNotes[0].title).toBe('Child Note')
+
+      // Notes in library collection itself (should be empty - notes are either root or in subcollection)
+      const libraryNotes = await getNotesInCollectionWithSlugs(localDb, library.collection_uuid)
+      expect(libraryNotes).toHaveLength(0)
+    })
+  })
+
+  describe('Scoped slug resolution', () => {
+    test('getCollectionBySlugUnderParent scopes to parent', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create "Ideas" under library root
+      const ideasRoot = await createCollection(syncedDb, {
+        title: 'Ideas',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create a child collection under ideasRoot
+      const child = await createCollection(syncedDb, {
+        title: 'Projects',
+        parent_collection_uuid: ideasRoot.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create another "Ideas" under the child collection
+      const ideasNested = await createCollection(syncedDb, {
+        title: 'Ideas',
+        parent_collection_uuid: child.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Index collection slugs
+      await indexCollectionSlugs(localDb)
+
+      // Looking up "ideas" under library should return ideasRoot
+      const resultUnderLibrary = await getCollectionBySlugUnderParent(localDb, 'ideas', library.collection_uuid)
+      expect(resultUnderLibrary).not.toBeNull()
+      expect(resultUnderLibrary!.collection_uuid).toBe(ideasRoot.collection_uuid)
+
+      // Looking up "ideas" under child should return ideasNested
+      const resultUnderChild = await getCollectionBySlugUnderParent(localDb, 'ideas', child.collection_uuid)
+      expect(resultUnderChild).not.toBeNull()
+      expect(resultUnderChild!.collection_uuid).toBe(ideasNested.collection_uuid)
+    })
+
+    test('getNotesBySlugInCollection scopes to collection', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const testCollection = await createCollection(syncedDb, {
+        title: 'Test',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create a note "Child" at root (collection_id=null)
+      const rootChild = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Child\n\nRoot-level child.',
+        inserter: 'test-user'
+      })
+
+      // Create a note "Child" inside collection "test"
+      const nestedChild = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Child\n\nNested child in test.',
+        inserter: 'test-user',
+        collection_id: testCollection.collection_uuid
+      })
+
+      // Index slugs
+      await indexAll(localDb)
+
+      // Looking up slug "child" in collection "test" should return only the nested one
+      const inCollection = await getNotesBySlugInCollection(localDb, 'child', testCollection.collection_uuid)
+      expect(inCollection).toHaveLength(1)
+      expect(inCollection[0].block_uuid).toBe(nestedChild.block_uuid)
+
+      // Looking up slug "child" at root (null) should return only the root one
+      const atRoot = await getNotesBySlugInCollection(localDb, 'child', null)
+      expect(atRoot).toHaveLength(1)
+      expect(atRoot[0].block_uuid).toBe(rootChild.block_uuid)
+    })
+
+    test('resolveSlugPath walks segments', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const italian = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: cooking.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const pasta = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nDelicious pasta recipe.',
+        inserter: 'test-user',
+        collection_id: italian.collection_uuid
+      })
+
+      // Index everything
+      await indexAll(localDb)
+
+      // Resolve ['cooking', 'italian', 'pasta'] → note
+      const pastaResult = await resolveSlugPath(localDb, ['cooking', 'italian', 'pasta'], library.collection_uuid)
+      expect(pastaResult).not.toBeNull()
+      expect(pastaResult!.type).toBe('note')
+      expect(pastaResult!.entity.block_uuid).toBe(pasta.block_uuid)
+
+      // Resolve ['cooking', 'italian'] → subcollection
+      const italianResult = await resolveSlugPath(localDb, ['cooking', 'italian'], library.collection_uuid)
+      expect(italianResult).not.toBeNull()
+      expect(italianResult!.type).toBe('collection')
+      expect(italianResult!.entity.collection_uuid).toBe(italian.collection_uuid)
+
+      // Resolve ['cooking'] → collection
+      const cookingResult = await resolveSlugPath(localDb, ['cooking'], library.collection_uuid)
+      expect(cookingResult).not.toBeNull()
+      expect(cookingResult!.type).toBe('collection')
+      expect(cookingResult!.entity.collection_uuid).toBe(cooking.collection_uuid)
+    })
+
+    test('resolveSlugPath returns null for nonexistent path', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPath(localDb, ['nonexistent'], library.collection_uuid)
+      expect(result).toBeNull()
+    })
+
+    test('resolveSlugPath handles slug collision across scopes', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const testCollection = await createCollection(syncedDb, {
+        title: 'Test',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // A note "child" at root
+      const rootChild = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Child\n\nRoot child.',
+        inserter: 'test-user'
+      })
+
+      // A note "child" inside collection "test"
+      const nestedChild = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Child\n\nNested child.',
+        inserter: 'test-user',
+        collection_id: testCollection.collection_uuid
+      })
+
+      await indexAll(localDb)
+
+      // Resolve ['child'] → root note
+      const rootResult = await resolveSlugPath(localDb, ['child'], library.collection_uuid)
+      expect(rootResult).not.toBeNull()
+      expect(rootResult!.type).toBe('note')
+      expect(rootResult!.entity.block_uuid).toBe(rootChild.block_uuid)
+
+      // Resolve ['test', 'child'] → nested note
+      const nestedResult = await resolveSlugPath(localDb, ['test', 'child'], library.collection_uuid)
+      expect(nestedResult).not.toBeNull()
+      expect(nestedResult!.type).toBe('note')
+      expect(nestedResult!.entity.block_uuid).toBe(nestedChild.block_uuid)
+    })
+
+    test('getSlugPath builds full path for a collection', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const italian = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: cooking.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const slugPath = await getSlugPath(localDb, italian.collection_uuid)
+      expect(slugPath).toEqual(['cooking', 'italian'])
+    })
+
+    test('getNoteSlugPath builds full path for a note', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const italian = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: cooking.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const pasta = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nPasta recipe.',
+        inserter: 'test-user',
+        collection_id: italian.collection_uuid
+      })
+
+      // Index to create slug entries
+      await indexAll(localDb)
+
+      const slugPath = await getNoteSlugPath(localDb, pasta.block_uuid)
+      expect(slugPath).toEqual(['cooking', 'italian', 'pasta'])
     })
   })
 })

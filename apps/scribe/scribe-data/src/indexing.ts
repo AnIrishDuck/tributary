@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
+import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow, Collection } from './types'
 
 
 // Add proper typing for the query results
@@ -396,7 +396,7 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
  */
 export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
   const result = await db.query(
-    `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, bs.slug, bs.title, bs.indexed_at
+    `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
@@ -405,6 +405,113 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
   )
 
   return (result.rows || []) as NoteSlugRow[]
+}
+
+/**
+ * Get notes in a specific collection with their slugs.
+ * Pass null for collectionId to get notes not in any collection (library-root notes).
+ *
+ * @param db The TributaryLocal database instance
+ * @param collectionId The collection UUID, or null for library-root notes
+ * @returns Array of notes with titles and slugs, sorted by most recently edited first
+ */
+export async function getNotesInCollectionWithSlugs(
+  db: TributaryLocal,
+  collectionId: string | null
+): Promise<NoteSlugRow[]> {
+  let result
+  if (collectionId === null) {
+    result = await db.query(
+      `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
+       FROM block b
+       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+       LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
+       WHERE b.collection_id IS NULL
+       ORDER BY b.insert_datetime DESC`,
+      []
+    )
+  } else {
+    result = await db.query(
+      `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
+       FROM block b
+       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+       LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
+       WHERE b.collection_id = $1
+       ORDER BY b.insert_datetime DESC`,
+      [collectionId]
+    )
+  }
+
+  return (result.rows || []) as NoteSlugRow[]
+}
+
+/**
+ * Index slugs for all non-root collections.
+ * Collections don't have versioning, so this is a full resync every time.
+ *
+ * @param localDb The TributaryLocal database instance
+ */
+export async function indexCollectionSlugs(localDb: TributaryLocal): Promise<void> {
+  // Query all non-root collections (those with a parent)
+  const result = await localDb.query(
+    `SELECT * FROM collection WHERE parent_collection_uuid IS NOT NULL`,
+    []
+  )
+
+  const collections = (result.rows || []) as Collection[]
+  const now = new Date().toISOString()
+
+  await localDb.transaction(async (tx: any) => {
+    // Clear existing collection slugs and rebuild
+    await tx.query(`DELETE FROM collection_slug`, [])
+
+    for (const col of collections) {
+      const slug = titleToSlug(col.title)
+      if (slug) {
+        await tx.query(
+          `INSERT INTO collection_slug (collection_uuid, slug, title, indexed_at, parent_collection_uuid)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [col.collection_uuid, slug, col.title, now, col.parent_collection_uuid]
+        )
+      }
+    }
+  })
+}
+
+/**
+ * Get notes matching a slug scoped to a specific collection.
+ * Pass null for collectionId to get notes at the library root (collection_id IS NULL).
+ *
+ * @param db The TributaryLocal database instance
+ * @param slug The slug to search for
+ * @param collectionId The collection UUID, or null for root-level notes
+ * @returns Array of matching note slugs
+ */
+export async function getNotesBySlugInCollection(
+  db: TributaryLocal,
+  slug: string,
+  collectionId: string | null
+): Promise<NoteSlug[]> {
+  let result
+  if (collectionId === null) {
+    result = await db.query(
+      `SELECT bs.* FROM block_slug bs
+       INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
+       INNER JOIN block b ON av.block_uuid = b.block_uuid AND av.version_uuid = b.version_uuid
+       WHERE bs.slug = $1 AND b.collection_id IS NULL`,
+      [slug]
+    )
+  } else {
+    result = await db.query(
+      `SELECT bs.* FROM block_slug bs
+       INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
+       INNER JOIN block b ON av.block_uuid = b.block_uuid AND av.version_uuid = b.version_uuid
+       WHERE bs.slug = $1 AND b.collection_id = $2`,
+      [slug, collectionId]
+    )
+  }
+
+  return (result.rows || []) as NoteSlug[]
 }
 
 /**
@@ -441,6 +548,9 @@ export async function indexAll(
 
   // First index slugs and tags
   const slugResult = await indexSlugs(localDb, options)
+
+  // Index collection slugs (cheap — few rows)
+  await indexCollectionSlugs(localDb)
 
   // Then index search vectors only for the notes that were just processed,
   // avoiding a redundant full-table scan to find unindexed notes.

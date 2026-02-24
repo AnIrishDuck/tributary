@@ -108,6 +108,17 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     USING GIN (search_vector)
   `)
 
+  // Create the collection_slug table for storing collection slugs (non-synchronized)
+  await local.exec(`
+    CREATE TABLE IF NOT EXISTS collection_slug (
+      collection_uuid TEXT NOT NULL PRIMARY KEY,
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      indexed_at TEXT NOT NULL,
+      parent_collection_uuid TEXT
+    )
+  `)
+
 }
 
 /**
@@ -122,6 +133,7 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  * Migration to drop the block table
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
+  await localDb.exec('DROP TABLE IF EXISTS collection_slug')
   await localDb.exec('DROP TABLE IF EXISTS block_search_index')
   await localDb.exec('DROP TABLE IF EXISTS block_tag')
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
