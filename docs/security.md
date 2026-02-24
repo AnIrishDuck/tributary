@@ -107,8 +107,7 @@ been performed by PBKDF2. Two domains are currently defined:
 
 ### Stream Keys
 
-Each stream is identified by an Ed25519 keypair derived from the user's
-password (as described above). The keypair serves two roles:
+Each stream is identified by an Ed25519 keypair. The keypair serves two roles:
 
 - **Signing (write key):** The full 64-byte Ed25519 private key signs every
   blob uploaded to the server, proving authorship.
@@ -128,6 +127,39 @@ password (as described above). The keypair serves two roles:
 **Schema ID:** The first 16 hex characters of `SHA-256(public_key)`, with a
 counter-based collision resolution mechanism to ensure uniqueness within the
 local database.
+
+#### Root Streams vs. Secondary Streams
+
+The key derivation pipeline described above produces a **root stream** for each
+`appId`. This is the only stream whose keypair is deterministically derived from
+the user's password. Applications may create additional **secondary streams**
+with independently generated keypairs:
+
+- **Root stream:** Derived via `HKDF(master_key, "tributary-stream:{appId}")`.
+  Recoverable from the user's password on any device.
+- **Secondary streams:** Generated via `nacl.sign.keyPair()` (random). Not
+  recoverable from the password alone.
+
+Because secondary stream keypairs are not password-derived, the application
+**must** persist their private keys somewhere the user can recover them. The
+intended pattern is to store secondary private keys as encrypted data within the
+root stream (which is itself encrypted and synced). This way, secondary keys are
+protected by the same end-to-end encryption as all other stream data and are
+recoverable on any device that can reconstruct the root stream.
+
+The security properties of this storage pattern depend on the application.
+Auditors should verify that each application:
+
+1. Stores secondary private keys only inside an encrypted root stream -- never
+   in plaintext on the server, in local storage, or in URLs that persist beyond
+   initial import.
+2. Does not leak secondary private keys through logging, error reporting, or
+   other side channels.
+3. Limits the blast radius of a single compromised secondary key to the data in
+   that stream alone.
+
+See application-specific security documents for analysis of how each app
+implements this pattern (e.g., [`apps/scribe/docs/security.md`](../apps/scribe/docs/security.md)).
 
 ### Encryption
 
@@ -343,3 +375,17 @@ Things an auditor should specifically verify:
 5. **Auth key never exposes password.** The auth key sent to Supabase is an
    HKDF derivation of the PBKDF2 master key, not the password itself. Verify
    that the password is never transmitted in any other form.
+6. **Secondary key storage.** Applications that create secondary streams must
+   store private keys only inside encrypted root stream data. Verify that keys
+   are not leaked through logs, error messages, persistent URLs, or unencrypted
+   local storage. See application-specific security documents for details.
+
+### Application-Specific Security Documents
+
+Each application built on Tributary has its own security considerations around
+secondary key management, data model design, and sharing mechanisms. Auditors
+should review the corresponding application-level documents:
+
+| Application | Document                                                      |
+|-------------|---------------------------------------------------------------|
+| Scribe      | [`apps/scribe/docs/security.md`](../apps/scribe/docs/security.md) |
