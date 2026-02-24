@@ -296,6 +296,28 @@ function App() {
     }
   }, [client, derivedKeyPair, session])
 
+  // Detect unrecoverable state: client is ready but has no home stream and
+  // no derivedKeyPair to register one.  This happens when the page is
+  // refreshed before the initial registerHomeKey flushes to IndexedDB —
+  // the Supabase session survives (localStorage) but the PGlite writes
+  // are lost and derivedKeyPair (React state) is gone.  Force a clean
+  // re-authentication so the user can re-enter their password and
+  // re-derive the key pair.
+  useEffect(() => {
+    if (!client || derivedKeyPair) return
+
+    let mounted = true
+
+    client.getHomeStream().then(homeStream => {
+      if (!homeStream && mounted) {
+        console.warn('[app] No home stream and no derived key pair — forcing re-authentication')
+        logout()
+      }
+    })
+
+    return () => { mounted = false }
+  }, [client, derivedKeyPair])
+
   // Show SetPasswordPage during password recovery flow (wait for client to be ready)
   if (passwordRecovery && session && supabaseAuth && client) {
     return (
