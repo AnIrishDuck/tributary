@@ -93,8 +93,9 @@ const EditorPage: React.FC = () => {
     loadNoteForEditing()
   }, [isNewNote, editBlockUuid, client, prefix, isSynced])
 
-  // If not synced, show a waiting screen
-  if (!isSynced) {
+  // If editing an existing note and not synced yet, show a waiting screen.
+  // New notes don't need to wait for sync.
+  if (!isNewNote && !isSynced) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
         <div className="text-center max-w-lg">
