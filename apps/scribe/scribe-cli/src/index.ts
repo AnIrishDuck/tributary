@@ -84,6 +84,12 @@ program
   .option('-l, --limit <number>', 'Maximum number of notes to process in this run', '100')
   .action(async (directory, options) => {
     try {
+      // Validate auth token before doing any work
+      const authToken = await getCliAuthToken();
+      if (!authToken) {
+        throw new Error('Not logged in. Please run `scribe login` first.');
+      }
+
       const libraryPk = resolveLibraryPk(directory, options.libraryPk);
 
       // Store the library PK for future use
@@ -123,6 +129,12 @@ program
   .option('--empty', 'Initialize database tables only, without creating a seed note')
   .action(async (directory, options) => {
     try {
+      // Validate auth token before doing any work
+      const authToken = await getCliAuthToken();
+      if (!authToken) {
+        throw new Error('Not logged in. Please run `scribe login` first.');
+      }
+
       const libraryPk = resolveLibraryPk(directory, options.libraryPk);
 
       // Ensure the directory exists
