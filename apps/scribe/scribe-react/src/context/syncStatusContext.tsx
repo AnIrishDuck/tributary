@@ -106,9 +106,11 @@ export const SyncStatusProvider: React.FC<{
     }
 
     // Compute the delay for the next sync iteration based on tab visibility
-    // and sync completeness.
+    // and sync completeness.  Read document.hidden directly so a stale
+    // visibleRef (from a spurious visibilitychange on page load) can't
+    // permanently stall sync.
     const nextDelay = (allComplete: boolean) => {
-      if (!visibleRef.current) return pollInterval * 30 // ~30s background
+      if (document.hidden) return pollInterval * 30 // ~30s background
       return allComplete ? pollInterval : 10
     }
 
@@ -117,11 +119,16 @@ export const SyncStatusProvider: React.FC<{
 
       // If the tab is hidden, skip the work entirely and just reschedule.
       // The wakeUp callback will restart us immediately when the tab returns.
-      if (!visibleRef.current) {
+      // We read document.hidden directly rather than visibleRef to guard
+      // against spurious visibilitychange events on page load that can
+      // permanently desync the ref.
+      if (document.hidden) {
+        visibleRef.current = false
         console.log(`[sync] tab hidden, sleeping for ${pollInterval * 30}ms`)
         scheduleNext(pollInterval * 30)
         return
       }
+      visibleRef.current = true
 
       // Prevent concurrent execution — the wakeUp function handles setting
       // pendingWakeUp when a sync is already in-flight.
