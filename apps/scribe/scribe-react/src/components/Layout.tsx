@@ -38,7 +38,7 @@ const Layout: React.FC = () => {
   return (
     <div className="min-h-dvh bg-gray-50 flex flex-col">
       <OfflineBanner />
-      {logout && (
+      {logout && isHome && (
         <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-3 sm:px-4 flex justify-end h-10 items-center">
             <button
