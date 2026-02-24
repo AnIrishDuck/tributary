@@ -160,6 +160,8 @@ export const SyncStatusProvider: React.FC<{
           ? { type: 'library', id: focused }
           : { type: 'home' }
 
+        const homeStreamId = await client.getHomeStream()
+
         let streamsToSync: Array<{ id: string; stream: TributaryStream }>
         if (syncFocus.type === 'library') {
           streamsToSync = streams.filter(s => s.id === syncFocus.id)
@@ -169,7 +171,9 @@ export const SyncStatusProvider: React.FC<{
           if (streams.length > 0) {
             const index = roundRobinIndex % streams.length
             streamsToSync = [streams[index]]
-            console.log(`[sync] focus: Home, round-robin ${index + 1}/${streams.length}, syncing library ${streams[index].id}`)
+            const isHome = streams[index].id === homeStreamId
+            const label = isHome ? '*home* library' : 'library'
+            console.log(`[sync] focus: Home, round-robin ${index + 1}/${streams.length}, syncing ${label} ${streams[index].id}`)
             roundRobinIndex = (index + 1) % streams.length
           } else {
             streamsToSync = []
