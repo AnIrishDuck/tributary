@@ -1,8 +1,8 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { up } from '../src/migrations.js'
-import { 
-  searchNotes, 
+import {
+  searchNotes,
   indexSearchVectors,
   extractSearchableText,
   type SearchResult
@@ -11,6 +11,7 @@ import { indexSlugs, indexAll } from '../src/indexing.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { createNote, createNoteVersion } from '../src/note.js'
+import { createCollection } from '../src/collection.js'
 
 describe('Full-text search', () => {
   let syncedDb: TributaryStream
@@ -576,18 +577,153 @@ describe('Full-text search', () => {
         body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
         inserter: 'test-user'
       })
-      
+
       await indexAll(localDb)
-      
+
       // Search with different cases
       const results1 = await searchNotes(localDb, 'javascript')
       expect(results1).toHaveLength(1)
-      
+
       const results2 = await searchNotes(localDb, 'JAVASCRIPT')
       expect(results2).toHaveLength(1)
-      
+
       const results3 = await searchNotes(localDb, 'JavaScript')
       expect(results3).toHaveLength(1)
+    })
+  })
+
+  describe('Collection-aware search slugs', () => {
+    test('should include collection path in slug for notes inside a collection', async () => {
+      // Create library (root collection)
+      const library = await createCollection(syncedDb, {
+        title: 'Notes',
+        inserter: 'test-user'
+      })
+
+      // Create a child collection
+      const collection = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create a note inside the collection
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta Recipe\n\nBoil water and add spaghetti.',
+        inserter: 'test-user',
+        collection_id: collection.collection_uuid
+      })
+
+      await indexAll(localDb)
+
+      const results = await searchNotes(localDb, 'spaghetti')
+      expect(results).toHaveLength(1)
+      // The slug should include the collection path prefix
+      expect(results[0].slug).toBe('cooking/pasta-recipe')
+    })
+
+    test('should not add collection prefix for root-level notes', async () => {
+      // Create library (root collection)
+      await createCollection(syncedDb, {
+        title: 'Notes',
+        inserter: 'test-user'
+      })
+
+      // Create a note at the root (no collection)
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Root Note\n\nThis note is at the root level.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const results = await searchNotes(localDb, 'root')
+      expect(results).toHaveLength(1)
+      // Root-level notes should have a plain slug with no path prefix
+      expect(results[0].slug).toBe('root-note')
+    })
+
+    test('should handle nested collections in slug path', async () => {
+      // Create library (root collection)
+      const library = await createCollection(syncedDb, {
+        title: 'Notes',
+        inserter: 'test-user'
+      })
+
+      // Create parent collection
+      const parentCollection = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create child collection
+      const childCollection = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: parentCollection.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create a note inside the nested collection
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Tiramisu\n\nA classic Italian dessert recipe.',
+        inserter: 'test-user',
+        collection_id: childCollection.collection_uuid
+      })
+
+      await indexAll(localDb)
+
+      const results = await searchNotes(localDb, 'tiramisu')
+      expect(results).toHaveLength(1)
+      // Should include the full nested collection path
+      expect(results[0].slug).toBe('cooking/italian/tiramisu')
+    })
+
+    test('should differentiate same-slug notes in different collections', async () => {
+      // Create library
+      const library = await createCollection(syncedDb, {
+        title: 'Notes',
+        inserter: 'test-user'
+      })
+
+      // Create two collections
+      const collection1 = await createCollection(syncedDb, {
+        title: 'Work',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const collection2 = await createCollection(syncedDb, {
+        title: 'Personal',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create notes with the same title in different collections
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Meeting Notes\n\nDiscussed quarterly targets and revenue projections.',
+        inserter: 'test-user',
+        collection_id: collection1.collection_uuid
+      })
+
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Meeting Notes\n\nPlanned family reunion and vacation logistics.',
+        inserter: 'test-user',
+        collection_id: collection2.collection_uuid
+      })
+
+      await indexAll(localDb)
+
+      const results = await searchNotes(localDb, 'meeting')
+      expect(results).toHaveLength(2)
+
+      const slugs = results.map(r => r.slug).sort()
+      expect(slugs).toEqual(['personal/meeting-notes', 'work/meeting-notes'])
     })
   })
 })
