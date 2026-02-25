@@ -308,7 +308,7 @@ function App() {
   // re-authentication so the user can re-enter their password and
   // re-derive the key pair.
   useEffect(() => {
-    if (!client || derivedKeyPair) return
+    if (!client || derivedKeyPair || passwordRecovery) return
 
     let mounted = true
 
@@ -320,7 +320,7 @@ function App() {
     })
 
     return () => { mounted = false }
-  }, [client, derivedKeyPair])
+  }, [client, derivedKeyPair, passwordRecovery])
 
   // Show SetPasswordPage during password recovery flow (wait for client to be ready)
   if (passwordRecovery && session && supabaseAuth && client) {
