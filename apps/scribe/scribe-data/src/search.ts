@@ -285,20 +285,42 @@ export async function searchNotes(
   
   try {
     const result = await localDb.query(
-      `SELECT 
+      `WITH RECURSIVE coll_path(collection_uuid, path) AS (
+         -- Base case: library roots have empty path
+         SELECT c.collection_uuid, ''::text AS path
+         FROM collection c
+         WHERE c.parent_collection_uuid IS NULL
+
+         UNION ALL
+
+         -- Recursive: child collections build path from parent
+         SELECT cs.collection_uuid,
+           CASE WHEN cp.path = '' THEN cs.slug
+                ELSE cp.path || '/' || cs.slug
+           END AS path
+         FROM collection_slug cs
+         INNER JOIN coll_path cp ON cs.parent_collection_uuid = cp.collection_uuid
+       )
+       SELECT
          b.block_uuid,
-         bs.slug,
+         CASE
+           WHEN bs.slug IS NOT NULL AND cp.path IS NOT NULL AND cp.path != ''
+           THEN cp.path || '/' || bs.slug
+           ELSE bs.slug
+         END AS slug,
          bs.title,
          ts_rank(bsi.search_vector, query) AS rank,
-         ts_headline('english', b.body, query, 
+         ts_headline('english', b.body, query,
            'MaxWords=30, MinWords=15, MaxFragments=1, FragmentDelimiter=" ... "'
          ) AS snippet
        FROM block_search_index bsi
-       INNER JOIN block b 
-         ON bsi.block_uuid = b.block_uuid 
+       INNER JOIN block b
+         ON bsi.block_uuid = b.block_uuid
          AND bsi.version_uuid = b.version_uuid
-       LEFT JOIN block_slug bs 
+       LEFT JOIN block_slug bs
          ON b.block_uuid = bs.block_uuid
+       LEFT JOIN coll_path cp
+         ON b.collection_id = cp.collection_uuid
        CROSS JOIN to_tsquery('english', $1) query
        WHERE bsi.search_vector @@ query
        ORDER BY rank DESC, bs.title ASC NULLS LAST
