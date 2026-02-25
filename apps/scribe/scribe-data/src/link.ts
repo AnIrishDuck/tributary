@@ -26,9 +26,6 @@ export function resolveLink(collection: string, link: string): ResolvedLink {
   // Absolute links resolve from root
   if (link.startsWith('/')) {
     const segments = link.split('/').filter(s => s.length > 0)
-    if (segments.length === 0) {
-      return { type: 'InvalidLink' }
-    }
     return { type: 'AbsoluteLink', path: '/' + segments.join('/') }
   }
 
@@ -55,10 +52,6 @@ export function resolveLink(collection: string, link: string): ResolvedLink {
     } else {
       result.push(segment)
     }
-  }
-
-  if (result.length === 0) {
-    return { type: 'InvalidLink' }
   }
 
   return { type: 'AbsoluteLink', path: '/' + result.join('/') }

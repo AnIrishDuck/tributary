@@ -52,9 +52,14 @@ describe('resolveLink', () => {
       expect(result).toEqual({ type: 'AbsoluteLink', path: '/b/c/d' })
     })
 
-    test('returns InvalidLink for bare root link', () => {
+    test('resolves bare root link to root', () => {
       const result = resolveLink('/a', '/')
-      expect(result).toEqual({ type: 'InvalidLink' })
+      expect(result).toEqual({ type: 'AbsoluteLink', path: '/' })
+    })
+
+    test('resolves root link from nested collection', () => {
+      const result = resolveLink('/a/b/c', '/')
+      expect(result).toEqual({ type: 'AbsoluteLink', path: '/' })
     })
   })
 
@@ -121,9 +126,14 @@ describe('resolveLink', () => {
       expect(result).toEqual({ type: 'AbsoluteLink', path: '/a/b/c' })
     })
 
-    test('returns InvalidLink when ../ resolves to empty path', () => {
+    test('resolves ../ to root when at top-level collection', () => {
       const result = resolveLink('/a', '..')
-      expect(result).toEqual({ type: 'InvalidLink' })
+      expect(result).toEqual({ type: 'AbsoluteLink', path: '/' })
+    })
+
+    test('resolves ../ to root from nested collection', () => {
+      const result = resolveLink('/a/b', '../../')
+      expect(result).toEqual({ type: 'AbsoluteLink', path: '/' })
     })
   })
 })
