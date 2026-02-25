@@ -1,26 +1,35 @@
 import { PGlite } from '@electric-sql/pglite'
+import { PGliteWorker } from '@electric-sql/pglite/worker'
 
 /**
  * PGlite database instance with IndexedDB persistence
- * Uses a singleton pattern to prevent multiple WASM instances
+ * Uses a multi-tab worker so a single PGlite connection is shared across tabs
  */
-let dbInstance: PGlite | null = null
+let dbInstance: PGliteWorker | null = null
+let currentDbName: string | null = null
 
 /**
- * Get or create the PGlite instance with IndexedDB persistence
+ * Get or create the PGlite instance backed by a shared multi-tab worker
  * @param dbName - Name of the IndexedDB database (optional, defaults to 'scribe-db')
- * @returns PGlite instance
+ * @returns PGlite-compatible instance
  */
 export function getPGlite(dbName?: string): PGlite {
   if (dbInstance) {
-    return dbInstance
+    return dbInstance as unknown as PGlite
   }
 
   const databaseName = dbName || 'scribe-db'
-  // Use idb:// prefix for IndexedDB persistence
-  dbInstance = new PGlite(`idb://${databaseName}`)
+  currentDbName = databaseName
+  dbInstance = new PGliteWorker(
+    new Worker(new URL('./pglite-worker.ts', import.meta.url), {
+      type: 'module',
+    }),
+    {
+      dataDir: `idb://${databaseName}`,
+    },
+  )
 
-  return dbInstance
+  return dbInstance as unknown as PGlite
 }
 
 /**
@@ -31,6 +40,7 @@ export async function closePGlite(): Promise<void> {
   if (dbInstance) {
     await dbInstance.close()
     dbInstance = null
+    currentDbName = null
   }
 }
 
@@ -61,10 +71,5 @@ export async function wipePGlite(): Promise<void> {
  * Get the database name being used
  */
 export function getDatabaseName(): string {
-  // Extract database name from the instance if available
-  const url = dbInstance?.dataDir
-  if (url && url.startsWith('idb://')) {
-    return url.slice(6) // Remove 'idb://' prefix
-  }
-  return 'scribe-db'
+  return currentDbName || 'scribe-db'
 }

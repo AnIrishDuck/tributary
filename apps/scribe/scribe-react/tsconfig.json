@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "tributary-client/*": ["../../../tributary-client/dist/*"]
+      "tributary-client/*": ["../../../tributary-client/dist/*"],
+      "@electric-sql/pglite/worker": ["./node_modules/@electric-sql/pglite/dist/worker/index"]
     }
   },
   "include": ["src"],
