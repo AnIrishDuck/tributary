@@ -32,6 +32,7 @@ export interface SyncStatus {
 
 export class TributaryStream {
   private pglite: PGliteInterface;
+  private dataPglite: PGliteInterface;
   private server: Server;
   private privateKey: Uint8Array;
   private publicKey: Uint8Array;
@@ -43,11 +44,13 @@ export class TributaryStream {
   private schemaId: string;
   private schemaName: string;
   private searchPathSQL: string;
+  private splitDb: boolean;
 
   constructor(options: {
     server: Server;
     privateKey: Uint8Array;
     pglite: PGliteInterface;
+    dataPglite?: PGliteInterface;
     appId: string;
     schemaId: string;
   }) {
@@ -58,6 +61,8 @@ export class TributaryStream {
     // Ensure publicKey is also a proper Uint8Array
     this.publicKey = new Uint8Array(this.privateKey.slice(32));
     this.pglite = options.pglite;
+    this.dataPglite = options.dataPglite || options.pglite;
+    this.splitDb = this.dataPglite !== this.pglite;
     this.appId = options.appId;
     this.schemaId = options.schemaId;
     // Quote the schema name to handle special characters
@@ -99,7 +104,7 @@ export class TributaryStream {
     // Remove quotes from schema name if already quoted
     const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
     // Return a TributaryLocal instance with the correct schema
-    return new TributaryLocal(this.pglite, cleanSchemaName);
+    return new TributaryLocal(this.dataPglite, cleanSchemaName);
   }
 
   /**
@@ -109,7 +114,7 @@ export class TributaryStream {
     try {
       // Create the schema for this stream if it doesn't exist
       // Properly quote the schema name to handle special characters
-      await this.pglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
+      await this.dataPglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
     } catch (error: unknown) {
       warn('Could not initialize schema:', error as Error);
     }
@@ -171,7 +176,7 @@ export class TributaryStream {
     // For read operations, wrap in a transaction with SET LOCAL search_path
     // so the search_path is scoped and cannot be changed by concurrent streams.
     if (this.isReadQuery(query)) {
-      return await this.pglite.transaction(async (tx) => {
+      return await this.dataPglite.transaction(async (tx) => {
         await tx.exec(this.searchPathSQL);
         // @ts-ignore
         return await tx.query(query, params);
@@ -191,7 +196,7 @@ export class TributaryStream {
     await this.ensureServerPersistence(transactionEntry);
 
     // Now execute locally since we have server confirmation
-    const result = await this.pglite.transaction(async (tx) => {
+    const result = await this.dataPglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // @ts-ignore
       return await tx.query(query, params);
@@ -229,7 +234,7 @@ export class TributaryStream {
     await this.ensureServerPersistence(transactionEntry);
 
     // Now execute locally with SET LOCAL search_path scoped to this transaction
-    await this.pglite.transaction(async (tx) => {
+    await this.dataPglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // Use query instead of exec for parameterized operations to work around PGLite issue
       // @ts-ignore
@@ -266,7 +271,7 @@ export class TributaryStream {
     info('TRANSACTION: About to call pglite.transaction');
 
     // Execute the transaction with immediate command execution and recording
-    const result = await this.pglite.transaction(async (tx) => {
+    const result = await this.dataPglite.transaction(async (tx) => {
       // Set search_path locally within this transaction so concurrent
       // operations on other streams cannot interfere.
       await tx.exec(this.searchPathSQL);
@@ -349,15 +354,21 @@ export class TributaryStream {
   }
 
   /**
-   * Load the last sync index from the database
+   * Load the last sync index from the database.
+   * In split-db mode (home library on memory), always starts from 0
+   * so the stream re-syncs fully on each page load.
    */
   private async loadLastSyncIndex(): Promise<void> {
+    if (this.splitDb) {
+      this.lastSyncIndex = 0;
+      return;
+    }
     try {
       const result: any = await this.pglite.query(
         `SELECT last_sync_index FROM tributary.streams WHERE id = $1`,
         [this.getId()]
       );
-      
+
       if (result.rows && result.rows.length > 0 && result.rows[0].last_sync_index !== null) {
         this.lastSyncIndex = result.rows[0].last_sync_index;
       }
@@ -367,9 +378,11 @@ export class TributaryStream {
   }
 
   /**
-   * Save the last sync index to the database
+   * Save the last sync index to the database.
+   * In split-db mode, this is a no-op since the sync index is ephemeral.
    */
   private async saveLastSyncIndex(): Promise<void> {
+    if (this.splitDb) return;
     try {
       debug('About to update last sync index:', this.lastSyncIndex, this.getId());
       await this.pglite.query(
@@ -481,7 +494,7 @@ export class TributaryStream {
     const cryptoMs = Math.round(performance.now() - cryptoStart);
     const dbStart = performance.now();
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
-      await this.pglite.transaction(async (tx) => {
+      await this.dataPglite.transaction(async (tx) => {
         // Set search_path once for the entire batch
         await tx.exec(this.searchPathSQL);
 
@@ -500,12 +513,16 @@ export class TributaryStream {
           }
         }
 
-        // Update sync index once for the entire batch
-        // @ts-ignore
-        await tx.query(
-          `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
-          [finalSyncIndex, this.getId()]
-        );
+        // Update sync index once for the entire batch.
+        // In split-db mode (home library on memory), skip the DB update
+        // since we always re-sync from scratch on page load.
+        if (!this.splitDb) {
+          // @ts-ignore
+          await tx.query(
+            `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+            [finalSyncIndex, this.getId()]
+          );
+        }
       });
       this.lastSyncIndex = finalSyncIndex;
     }

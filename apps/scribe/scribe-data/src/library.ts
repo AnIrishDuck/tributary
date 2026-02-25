@@ -28,12 +28,15 @@ export async function createHomeLibrary(
   name: string,
   keyPair: { publicKey: Uint8Array; secretKey: Uint8Array }
 ): Promise<{ stream: TributaryStream; streamId: string }> {
+  const streamId = base64url.encode(Buffer.from(keyPair.publicKey))
+
+  // Set home stream ID before addWriteKey so the client can route
+  // the home stream's data to the memory database when configured.
+  await client.setHomeStream(streamId)
+
   const stream = await client.addWriteKey('scribe', keyPair.secretKey)
   await initLibrary(stream, name)
   await stream.sync(1000)
-
-  const streamId = base64url.encode(Buffer.from(keyPair.publicKey))
-  await client.setHomeStream(streamId)
 
   return { stream, streamId }
 }

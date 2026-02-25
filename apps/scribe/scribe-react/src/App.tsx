@@ -7,7 +7,7 @@ import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed } fro
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { getPGlite, wipePGlite } from './db/persistence'
+import { getPGlite, getHomePGlite, wipePGlite } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -42,10 +42,11 @@ async function createTributaryClient(session: Session | null) {
       server.setWriteAuthToken(session.access_token)
     }
 
-    // Use IndexedDB for persistence
+    // Use IndexedDB for persistence, memory:// for the home library
     const pglite = getPGlite(CONFIG.DB_NAME)
+    const homeDb = getHomePGlite()
 
-    return { client: new TributaryClient({ server, db: pglite }), server }
+    return { client: new TributaryClient({ server, db: pglite, homeDb }), server }
   })()
 
   return clientPromise
@@ -266,18 +267,20 @@ function App() {
 
     async function registerHomeKey() {
       try {
-        if (mounted) setSetupStep('Registering encryption keys...')
-        await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
+        const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
 
+        // Set home stream ID before addWriteKey so the client routes
+        // the home stream's data to the memory database.
         const existingHome = await client!.getHomeStream()
         if (!existingHome) {
           if (mounted) setSetupStep('Setting up your library...')
-          const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
           await client!.setHomeStream(publicKeyBase64)
         }
 
+        if (mounted) setSetupStep('Registering encryption keys...')
+        await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
+
         if (mounted) setSetupStep('Syncing your library...')
-        const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
         const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
         if (stream) {
           await stream.sync(1000)

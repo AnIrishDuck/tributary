@@ -15,6 +15,12 @@ let dbInstance: PGliteInterface | null = null
 let currentDbName: string | null = null
 
 /**
+ * In-memory PGlite instance for the home library.
+ * The home library is re-synced from the server on each page load.
+ */
+let homeDbInstance: PGliteInterface | null = null
+
+/**
  * Get or create the PGlite instance.
  *
  * When USE_BACKGROUND_WORKER is true the instance is a PGliteWorker backed by
@@ -51,10 +57,26 @@ export function getPGlite(dbName?: string): PGliteInterface {
 }
 
 /**
- * Close the PGlite instance
+ * Get or create the in-memory PGlite instance for the home library.
+ * The home library uses memory:// so it re-syncs from the server on each page load.
+ */
+export function getHomePGlite(): PGliteInterface {
+  if (homeDbInstance) {
+    return homeDbInstance
+  }
+  homeDbInstance = new PGlite('memory://')
+  return homeDbInstance
+}
+
+/**
+ * Close the PGlite instances
  * Should be called on application shutdown
  */
 export async function closePGlite(): Promise<void> {
+  if (homeDbInstance) {
+    await homeDbInstance.close()
+    homeDbInstance = null
+  }
   if (dbInstance) {
     await dbInstance.close()
     dbInstance = null
@@ -65,6 +87,7 @@ export async function closePGlite(): Promise<void> {
 /**
  * Close PGlite and wipe all IndexedDB databases.
  * Used during logout to ensure no local data persists.
+ * The in-memory home database is also closed (its data is already ephemeral).
  */
 export async function wipePGlite(): Promise<void> {
   await closePGlite()

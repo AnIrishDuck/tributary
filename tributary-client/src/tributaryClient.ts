@@ -9,6 +9,7 @@ import * as base64url from 'urlsafe-base64';
 
 export class TributaryClient {
   private pglite: PGliteInterface;
+  private homeDb: PGliteInterface | null;
   private server: Server;
   private streams: Map<string, TributaryStream> = new Map();
   private initialized: Promise<void>;
@@ -17,16 +18,18 @@ export class TributaryClient {
   constructor(options: {
     server: Server;
     db?: PGliteInterface; // Optional existing PGlite instance
+    homeDb?: PGliteInterface; // Optional memory PGlite for home stream data
     privateKey?: string | Uint8Array; // Optional private key for default stream
     collectionId?: string; // Optional collection ID for stream
   }) {
     this.server = options.server;
     // Use provided DB or create a new one
     this.pglite = options.db || new PGlite();
-    
+    this.homeDb = options.homeDb || null;
+
     // Initialize the tributary schema
     this.initialized = this.initializeTributarySchema();
-    
+
     // If privateKey is provided, create a default stream
     if (options.privateKey) {
       // Use collectionId or default to 'default'
@@ -175,16 +178,22 @@ export class TributaryClient {
     // Generate schema ID from the public key
     const schemaId = await this.generateSchemaId(publicKey);
     info('Generated schema id', schemaId);
-    
+
+    // Check if this is the home stream — if so, use the memory database for data
+    const homeStreamId = await this.getHomeStream();
+    const isHome = homeStreamId !== null && homeStreamId === streamIdStr;
+    const dataPglite = (isHome && this.homeDb) ? this.homeDb : undefined;
+
     // Create a new TributaryStream
     const stream = new TributaryStream({
       server: this.server,
       privateKey: privateKey,
       pglite: this.pglite,
+      dataPglite: dataPglite,
       appId: appId,
       schemaId: schemaId
     });
-    
+
     info('Created TributaryStream, about to initialize schema');
     
     // Initialize the stream
@@ -300,12 +309,18 @@ export class TributaryClient {
         if (!writeKey) {
           throw new Error('Write key is required but not found for stream');
         }
-        
+
+        // Check if this is the home stream — if so, use the memory database for data
+        const homeStreamId = await this.getHomeStream();
+        const isHome = homeStreamId !== null && homeStreamId === id;
+        const dataPglite = (isHome && this.homeDb) ? this.homeDb : undefined;
+
         // Create a new TributaryStream with the write key
         const stream = new TributaryStream({
           server: this.server,
           privateKey: writeKey,
           pglite: this.pglite,
+          dataPglite: dataPglite,
           appId: appId, // Use provided app ID
           schemaId: schemaId
         });
@@ -365,12 +380,17 @@ export class TributaryClient {
         // We found the stream in the database
         const row = result.rows[0];
         const schemaId = row.schema_id;
-        
+
         // Create a schema name using the provided app ID
         const schemaName = `${appId}_${schemaId}`;
-        
+
+        // Check if this is the home stream — if so, use the memory database
+        const homeStreamId = await this.getHomeStream();
+        const isHome = homeStreamId !== null && homeStreamId === id;
+        const db = (isHome && this.homeDb) ? this.homeDb : this.pglite;
+
         // Return a TributaryLocal instance with the correct schema
-        return new TributaryLocal(this.pglite, schemaName);
+        return new TributaryLocal(db, schemaName);
       } else {
         debug('No local stream found in database for ID:', id);
       }
