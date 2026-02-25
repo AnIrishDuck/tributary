@@ -431,129 +431,85 @@ export class TributaryStream {
     }
     
     // Process each blob in sequence order
+    // Phase 1: Decrypt and deserialize all blobs (CPU-only, no DB round-trips).
+    // This separates the crypto work from the DB work so we can batch all SQL
+    // into a single transaction in phase 2.
+    interface DeserializedBlob {
+      entry: TransactionLogEntry;
+      sequenceNumber: number;
+    }
+    const writeBlobs: DeserializedBlob[] = [];
+    let finalSyncIndex = this.lastSyncIndex;
+
     for (let i = 0; i < result.blobs.length; i++) {
       const blob = result.blobs[i];
-      try {
-        info(`SYNC PROCESSING: Processing blob with sequence ${blob.sequenceNumber} and hash ${blob.hash}`);
-        
-        // For chain verification, we need to compute what the hash should be based on the previous blob
-        // The Arrow endpoint doesn't include prior_hash, so we verify by recomputing
-        if (i === 0 && expectedHash !== '') {
-          // Verify the first blob chains from the previous sync point
-          // We'll decrypt and verify the hash matches after decryption
-          info(`SYNC: First blob should chain from hash ${expectedHash}`);
-        } else if (i > 0) {
-          // For subsequent blobs, the previous blob's hash should be used
-          const prevBlob = result.blobs[i - 1];
-          expectedHash = prevBlob.hash;
-          info(`SYNC: Blob ${blob.sequenceNumber} should chain from hash ${expectedHash}`);
-        }
-        
-        // We now have the blob data directly from the Arrow response
-        if (blob.data) {
-          try {
-            // Decrypt the blob data
-            const decryptedData = await this.decryptData(blob.data);
-            
-            // Deserialize the transaction data
-            const transactionData = new TextDecoder().decode(decryptedData);
-            const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
-            
-            info(`SYNC APPLYING: Processing blob with sequence ${blob.sequenceNumber}`);
+      info(`SYNC PROCESSING: Processing blob with sequence ${blob.sequenceNumber} and hash ${blob.hash}`);
 
-            // Apply to local database only if it's a write operation
-            const newSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
-            if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
-              // Handle transaction - wrap in a try-catch to handle existing table cases
-              try {
-                await this.pglite.transaction(async (tx) => {
-                  // Set search_path locally within this transaction so concurrent
-                  // operations on other streams cannot interfere.
-                  await tx.exec(this.searchPathSQL);
-                  for (const command of transactionEntry.params as Array<{ query: string, params?: any[] }>) {
-                    if (command.query) {
-                      try {
-                        // @ts-ignore - PGLite transaction exec has different typing
-                        await tx.exec(command.query, command.params);
-                      } catch (cmdError) {
-                        // Throw errors during sync rather than just warning
-                        // Synced SQL expressions should never fail (otherwise they would've failed locally first)
-                        throw new Error(`Command failed during sync: ${command.query} - ${(cmdError as Error).message}`);
-                      }
-                    }
-                  }
-                  // Update sync index inside the same transaction to avoid an
-                  // extra worker round-trip (PGliteWorker batches the whole
-                  // transaction callback into a single postMessage exchange).
-                  // @ts-ignore
-                  await tx.query(
-                    `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
-                    [newSyncIndex, this.getId()]
-                  );
-                });
-                this.lastSyncIndex = newSyncIndex;
-              } catch (txError) {
-                // Log but don't fail on transaction errors
-                warn(`Transaction failed during sync`, txError);
-                // Still advance past this blob to avoid reprocessing
-                this.lastSyncIndex = newSyncIndex;
-                await this.saveLastSyncIndex();
-              }
-            } else {
-              // Handle regular query/exec
-              if (this.isReadQuery(transactionEntry.query)) {
-                // Skip read queries as they don't modify state.
-                // Update in-memory index; persisted by the final save after the loop.
-                this.lastSyncIndex = newSyncIndex;
-                continue;
-              } else {
-                // Execute all other operations including INSERT, with scoped search_path
-                try {
-                  await this.pglite.transaction(async (tx) => {
-                    await tx.exec(this.searchPathSQL);
-                    // @ts-ignore
-                    await tx.query(transactionEntry.query, transactionEntry.params || []);
-                    // Update sync index inside the same transaction
-                    // @ts-ignore
-                    await tx.query(
-                      `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
-                      [newSyncIndex, this.getId()]
-                    );
-                  });
-                  this.lastSyncIndex = newSyncIndex;
-                } catch (execError) {
-                  // Throw errors during sync rather than just warning
-                  // Synced SQL expressions should never fail (otherwise they would've failed locally first)
-                  throw new Error(`Exec failed during sync: ${transactionEntry.query} - ${(execError as Error).message}`);
-                }
+      // Chain verification logging
+      if (i === 0 && expectedHash !== '') {
+        info(`SYNC: First blob should chain from hash ${expectedHash}`);
+      } else if (i > 0) {
+        const prevBlob = result.blobs[i - 1];
+        expectedHash = prevBlob.hash;
+        info(`SYNC: Blob ${blob.sequenceNumber} should chain from hash ${expectedHash}`);
+      }
+
+      if (!blob.data) continue;
+
+      try {
+        const decryptedData = await this.decryptData(blob.data);
+        const transactionData = new TextDecoder().decode(decryptedData);
+        const transactionEntry: TransactionLogEntry = JSON.parse(transactionData);
+
+        finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
+
+        if (!this.isReadQuery(transactionEntry.query)) {
+          writeBlobs.push({ entry: transactionEntry, sequenceNumber: blob.sequenceNumber });
+        }
+      } catch (parseError: any) {
+        error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError as Error);
+        warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
+        // Advance past unparseable blobs so we don't re-fetch them
+        finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
+      }
+    }
+
+    // Phase 2: Apply all write blobs in a single transaction (1 DB round-trip).
+    // PGliteWorker batches the entire transaction callback into one postMessage
+    // exchange, so this is dramatically faster than one transaction per blob.
+    if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
+      await this.pglite.transaction(async (tx) => {
+        // Set search_path once for the entire batch
+        await tx.exec(this.searchPathSQL);
+
+        for (const { entry, sequenceNumber } of writeBlobs) {
+          info(`SYNC APPLYING: Applying blob with sequence ${sequenceNumber}`);
+          if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
+            for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
+              if (command.query) {
+                // @ts-ignore - PGLite transaction exec has different typing
+                await tx.exec(command.query, command.params);
               }
             }
-            
-            info(`SYNC PROCESSED: Successfully processed blob with sequence ${blob.sequenceNumber}`);
-          } catch (parseError: any) {
-            // If we can't parse the blob data, log the error and skip this blob
-            // This could happen if the blob contains corrupted data or is not a valid transaction
-            error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError as Error);
-            warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
-            
-            // Still update the last sync index to avoid reprocessing this problematic blob
-            this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
-            await this.saveLastSyncIndex();
+          } else {
+            // @ts-ignore
+            await tx.query(entry.query, entry.params || []);
           }
+          info(`SYNC PROCESSED: Successfully applied blob with sequence ${sequenceNumber}`);
         }
-      } catch (err: unknown) {
-        error(`Failed to sync blob with sequence ${blob.sequenceNumber}:`, err as Error);
-        throw new Error(`Failed to sync blob with sequence ${blob.sequenceNumber} - ${(err as Error).message}`);
-      }
+
+        // Update sync index once for the entire batch
+        // @ts-ignore
+        await tx.query(
+          `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+          [finalSyncIndex, this.getId()]
+        );
+      });
+      this.lastSyncIndex = finalSyncIndex;
     }
     
     // Log end sequence number when sync ends
     info(`SYNC END: Last sync index changed from ${initialLastSyncIndex} to ${this.lastSyncIndex}`);
-
-    // Save the last sync index for future sessions (skip if unchanged)
-    if (this.lastSyncIndex !== initialLastSyncIndex) {
-      await this.saveLastSyncIndex();
-    }
     
     // Return SyncStatus with current and final index
     const syncStatus: SyncStatus = {
