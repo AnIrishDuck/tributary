@@ -441,6 +441,7 @@ export class TributaryStream {
     const writeBlobs: DeserializedBlob[] = [];
     let finalSyncIndex = this.lastSyncIndex;
 
+    const cryptoStart = performance.now();
     for (let i = 0; i < result.blobs.length; i++) {
       const blob = result.blobs[i];
       info(`SYNC PROCESSING: Processing blob with sequence ${blob.sequenceNumber} and hash ${blob.hash}`);
@@ -477,6 +478,8 @@ export class TributaryStream {
     // Phase 2: Apply all write blobs in a single transaction (1 DB round-trip).
     // PGliteWorker batches the entire transaction callback into one postMessage
     // exchange, so this is dramatically faster than one transaction per blob.
+    const cryptoMs = Math.round(performance.now() - cryptoStart);
+    const dbStart = performance.now();
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
       await this.pglite.transaction(async (tx) => {
         // Set search_path once for the entire batch
@@ -495,7 +498,6 @@ export class TributaryStream {
             // @ts-ignore
             await tx.query(entry.query, entry.params || []);
           }
-          info(`SYNC PROCESSED: Successfully applied blob with sequence ${sequenceNumber}`);
         }
 
         // Update sync index once for the entire batch
@@ -506,6 +508,13 @@ export class TributaryStream {
         );
       });
       this.lastSyncIndex = finalSyncIndex;
+    }
+    const dbMs = Math.round(performance.now() - dbStart);
+
+    if (result.blobs.length > 0) {
+      const startSeq = result.blobs[0].sequenceNumber;
+      const endSeq = result.blobs[result.blobs.length - 1].sequenceNumber;
+      info(`SYNC BATCH: Successfully applied ${startSeq}..${endSeq} (crypto ${cryptoMs}ms, db ${dbMs}ms)`);
     }
     
     // Log end sequence number when sync ends
