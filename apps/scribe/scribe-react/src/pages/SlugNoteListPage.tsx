@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
+import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from '../drafts/draftStorage'
 
 interface NoteListViewProps {
   collections: { collection: Collection; slug: string | null }[]
@@ -28,6 +29,27 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const isRoot = !collection
 
   const showSyncProgress = syncProgress && !syncProgress.synced
+
+  // Determine which collection id to use for draft queries
+  const collectionId = collection?.collection_uuid ?? null
+
+  // Get draft data for this collection
+  const { newNoteDrafts, draftBlockUuids } = useMemo(() => {
+    const summaries = getDraftSummariesForCollection(prefix, collectionId)
+    const newNoteDrafts = summaries.filter((d) => d.blockUuid === null)
+    const draftBlockUuids = getBlockUuidsWithDrafts(prefix)
+    return { newNoteDrafts, draftBlockUuids }
+  }, [prefix, collectionId])
+
+  // Sort notes: those with drafts first, then by date
+  const sortedNotes = useMemo(() => {
+    return [...notes].sort((a, b) => {
+      const aDraft = draftBlockUuids.has(a.block_uuid) ? 0 : 1
+      const bDraft = draftBlockUuids.has(b.block_uuid) ? 0 : 1
+      if (aDraft !== bDraft) return aDraft - bDraft
+      return new Date(b.insert_datetime).getTime() - new Date(a.insert_datetime).getTime()
+    })
+  }, [notes, draftBlockUuids])
 
   const handleNewNote = () => {
     if (slugPath) {
@@ -55,7 +77,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   const linkPrefix = slugPath ? `/pk/${prefix}/${slugPath}` : `/pk/${prefix}`
 
-  const totalItems = notes.length + collections.length
+  const totalItems = notes.length + collections.length + newNoteDrafts.length
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -181,45 +203,113 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               </div>
             )}
 
-            {/* Notes */}
+            {/* Notes (new-note drafts first, then persisted notes sorted with drafts on top) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {notes.map((note) => (
+              {/* New-note drafts */}
+              {newNoteDrafts.map((draft) => (
                 <Link
-                  key={note.block_uuid}
-                  to={`${linkPrefix}/${note.slug}`}
+                  key={`draft-${draft.draftId}`}
+                  to={slugPath
+                    ? `${linkPrefix}/+draft/${draft.draftId}`
+                    : `/pk/${prefix}/+draft/${draft.draftId}`}
                   className="group block"
                 >
-                  <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
+                  <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-amber-200 hover:border-amber-300 transform hover:-translate-y-1">
                     <div className="px-6 py-8">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-xl font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors mb-2">
-                            {note.title || 'Untitled'}
+                          <h3 className="text-xl font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors mb-2">
+                            {draft.title || 'Untitled'}
                           </h3>
                         </div>
                         <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                            <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                          <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                            <PencilSquareIcon className="w-6 h-6 text-amber-600" />
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                         <span className="text-sm text-gray-500">
-                          {new Date(note.insert_datetime).toLocaleDateString('en-US', {
+                          {new Date(draft.updatedAt).toLocaleDateString('en-US', {
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric'
                           })}
                         </span>
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                          {note.slug}
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                          Draft
                         </span>
                       </div>
                     </div>
                   </div>
                 </Link>
               ))}
+
+              {/* Persisted notes */}
+              {sortedNotes.map((note) => {
+                const hasDraft = draftBlockUuids.has(note.block_uuid)
+                return (
+                  <Link
+                    key={note.block_uuid}
+                    to={`${linkPrefix}/${note.slug}${hasDraft ? '&edit' : ''}`}
+                    className="group block"
+                  >
+                    <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
+                      hasDraft
+                        ? 'border border-amber-200 hover:border-amber-300'
+                        : 'border border-gray-100 hover:border-blue-200'
+                    }`}>
+                      <div className="px-6 py-8">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className={`text-xl font-bold text-gray-900 truncate transition-colors mb-2 ${
+                              hasDraft ? 'group-hover:text-amber-600' : 'group-hover:text-blue-600'
+                            }`}>
+                              {note.title || 'Untitled'}
+                            </h3>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${
+                              hasDraft
+                                ? 'bg-amber-50 group-hover:bg-amber-100'
+                                : 'bg-blue-50 group-hover:bg-blue-100'
+                            }`}>
+                              {hasDraft ? (
+                                <PencilSquareIcon className="w-6 h-6 text-amber-600" />
+                              ) : (
+                                <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                          <span className="text-sm text-gray-500">
+                            {new Date(note.insert_datetime).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {hasDraft && (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                                Draft
+                              </span>
+                            )}
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                              hasDraft ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                            }`}>
+                              {note.slug}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           </>
         )}
