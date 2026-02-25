@@ -1,15 +1,26 @@
-import { PGliteInterface } from '@electric-sql/pglite'
+import { PGlite, PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
 
 /**
- * PGlite database instance with IndexedDB persistence
- * Uses a multi-tab worker so a single PGlite connection is shared across tabs
+ * Whether to run PGlite in a background Web Worker or in the foreground
+ * (main thread). Foreground avoids worker overhead but blocks the UI during
+ * heavy queries; background keeps the main thread free.
  */
-let dbInstance: PGliteWorker | null = null
+const USE_BACKGROUND_WORKER = false
+
+/**
+ * PGlite database instance with IndexedDB persistence
+ */
+let dbInstance: PGliteInterface | null = null
 let currentDbName: string | null = null
 
 /**
- * Get or create the PGlite instance backed by a shared multi-tab worker
+ * Get or create the PGlite instance.
+ *
+ * When USE_BACKGROUND_WORKER is true the instance is a PGliteWorker backed by
+ * a dedicated Web Worker thread. When false the instance runs directly on the
+ * main thread.
+ *
  * @param dbName - Name of the IndexedDB database (optional, defaults to 'scribe-db')
  * @returns PGlite-compatible instance
  */
@@ -20,14 +31,21 @@ export function getPGlite(dbName?: string): PGliteInterface {
 
   const databaseName = dbName || 'scribe-db'
   currentDbName = databaseName
-  dbInstance = new PGliteWorker(
-    new Worker(new URL('./pglite-worker.ts', import.meta.url), {
-      type: 'module',
-    }),
-    {
+
+  if (USE_BACKGROUND_WORKER) {
+    dbInstance = new PGliteWorker(
+      new Worker(new URL('./pglite-worker.ts', import.meta.url), {
+        type: 'module',
+      }),
+      {
+        dataDir: `idb://${databaseName}`,
+      },
+    )
+  } else {
+    dbInstance = new PGlite({
       dataDir: `idb://${databaseName}`,
-    },
-  )
+    })
+  }
 
   return dbInstance
 }
