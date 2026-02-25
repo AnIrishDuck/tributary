@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { PencilIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { renderMarkdown } from '../utils/markdown'
@@ -54,6 +54,13 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
                 <span className="hidden md:inline">Back</span>
               </button>
             </div>
+            <Link
+              to={editUrl}
+              className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <PencilIcon className="w-4 h-4" />
+              Edit
+            </Link>
           </div>
         </div>
       </div>
