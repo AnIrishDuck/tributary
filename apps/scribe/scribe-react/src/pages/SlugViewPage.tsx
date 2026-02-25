@@ -10,6 +10,7 @@ import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
 import EditorPage from './EditorPage'
 import NewCollectionPage from './NewCollectionPage'
+import { getDraftForNote } from '../drafts/draftStorage'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -34,6 +35,7 @@ type PageMode =
   | { type: 'newNote'; collectionId?: string; parentSlugPath: string }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
+  | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string }
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -110,6 +112,27 @@ const SlugViewPage: React.FC = () => {
           return
         }
 
+        // --- Handle +draft/{draftId} (resume a new-note draft) ---
+        if (segments.length >= 2 && segments[segments.length - 2] === '+draft') {
+          const draftId = lastSegment
+          const parentSegments = segments.slice(0, -2)
+          let collectionId: string | undefined = undefined
+          const parentSlugPath = parentSegments.join('/')
+
+          if (parentSegments.length > 0) {
+            const library = await getLibrary(localDb)
+            if (!library) throw new Error('Library not found')
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            collectionId = resolved.entity.collection_uuid
+          }
+
+          setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath })
+          return
+        }
+
         // --- Handle +collection (new collection creation) ---
         if (lastSegment === '+collection') {
           const parentSegments = segments.slice(0, -1)
@@ -180,6 +203,13 @@ const SlugViewPage: React.FC = () => {
             throw new Error('Note not found')
           }
 
+          // Auto-redirect to edit page if the note has a local draft
+          if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
+            const noteSlugPath = segments.join('/')
+            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath })
+            return
+          }
+
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
           const fullSlugPath = segments.join('/')
 
@@ -208,6 +238,14 @@ const SlugViewPage: React.FC = () => {
 
         if (resolved.type === 'note') {
           const blockSlugInfo = resolved.entity as BlockSlugInfo
+
+          // Auto-redirect to edit page if the note has a local draft
+          if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
+            const noteSlugPath = segments.join('/')
+            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath })
+            return
+          }
+
           const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
 
           // Get parent collection ancestors for breadcrumbs
@@ -295,6 +333,17 @@ const SlugViewPage: React.FC = () => {
       <EditorPage
         prefix={prefix || ''}
         collectionId={mode.collectionId}
+        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+      />
+    )
+  }
+
+  if (mode.type === 'resumeDraft') {
+    return (
+      <EditorPage
+        prefix={prefix || ''}
+        collectionId={mode.collectionId}
+        draftId={mode.draftId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
       />
     )

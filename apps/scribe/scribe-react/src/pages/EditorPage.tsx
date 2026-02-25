@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
@@ -9,15 +9,18 @@ import { languages } from '@codemirror/language-data'
 import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 
 export interface EditorPageProps {
   prefix: string
   collectionId?: string
   editBlockUuid?: string
+  /** For resuming a new-note draft that was previously auto-saved. */
+  draftId?: string
   cancelPath: string
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, cancelPath }) => {
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath }) => {
   const [content, setContent] = useState<string>('# New Note\n\nStart writing here...')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -25,6 +28,26 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
+
+  // Stable draft id: for existing notes use blockUuid; for new notes use
+  // the provided draftId (resuming a draft) or generate a fresh one.
+  const stableDraftId = useRef<string>(
+    editBlockUuid ?? draftId ?? crypto.randomUUID()
+  )
+
+  // Keep a ref to the latest content so the auto-save hook can read it
+  // without re-creating the interval on every keystroke.
+  const contentRef = useRef(content)
+  contentRef.current = content
+  const getBody = useCallback(() => contentRef.current, [])
+
+  const { loadDraft, clearDraft, saveNow } = useDraftAutoSave({
+    prefix,
+    draftId: stableDraftId.current,
+    blockUuid: editBlockUuid ?? null,
+    collectionId: collectionId ?? null,
+    getBody,
+  })
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -43,7 +66,16 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const isSyncing = librarySyncStatus?.isSyncing ?? false
   const isSynced = librarySyncStatus?.synced ?? false
 
-  // If editing an existing note, load it once synced
+  // For new notes, check for an existing draft on mount.
+  useEffect(() => {
+    if (isNewNote) {
+      const draftBody = loadDraft()
+      if (draftBody) setContent(draftBody)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // If editing an existing note, load it once synced — but prefer a local draft.
   useEffect(() => {
     const loadNoteForEditing = async () => {
       if (!isSynced) return
@@ -70,6 +102,13 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           // Store the block UUID for updates
           setBlockUuid(noteSlugInfo.block_uuid)
 
+          // Prefer local draft over server content
+          const draftBody = loadDraft()
+          if (draftBody) {
+            setContent(draftBody)
+            return
+          }
+
           // Get the authoritative version
           const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid) as AuthoritativeVersion | null
 
@@ -93,7 +132,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
     }
 
     loadNoteForEditing()
-  }, [isNewNote, editBlockUuid, client, prefix, isSynced])
+  }, [isNewNote, editBlockUuid, client, prefix, isSynced, loadDraft])
 
   // If editing an existing note and this library hasn't synced yet, show a waiting
   // screen. New notes don't need to wait — there's no existing content to load.
@@ -156,6 +195,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
       const { block, blockSlug: blockSlugResult } = await saveNote(stream, content, 'web-ui', blockUuid, collectionId)
 
+      // Successful save — clear the local draft
+      clearDraft()
+
       // After saving, navigate to the note view using its full slug path
       if (prefix) {
         try {
@@ -201,7 +243,10 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => navigate(cancelPath)}
+                onClick={() => {
+                  saveNow()
+                  navigate(cancelPath)
+                }}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 <XMarkIcon className="w-4 h-4 mr-1.5" />
