@@ -9,6 +9,8 @@ jobs:
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       tributary-client: ${{ steps.filter.outputs.tributary-client }}
+      tributary-cli: ${{ steps.filter.outputs.tributary-cli }}
+      kysely-tributary: ${{ steps.filter.outputs.kysely-tributary }}
       scribe-data: ${{ steps.filter.outputs.scribe-data }}
       scribe-react: ${{ steps.filter.outputs.scribe-react }}
       scribe-cli: ${{ steps.filter.outputs.scribe-cli }}
@@ -22,6 +24,10 @@ jobs:
               - '.github/**'
             tributary-client:
               - 'tributary-client/**'
+            tributary-cli:
+              - 'tributary-cli/**'
+            kysely-tributary:
+              - 'kysely-tributary/**'
             scribe-data:
               - 'apps/scribe/scribe-data/**'
             scribe-react:
@@ -42,8 +48,57 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: tributary-client
+      - run: npm run typecheck
+        working-directory: tributary-client
       - run: npm test
         working-directory: tributary-client
+
+  test-tributary-cli:
+    needs: changes
+    if: >-
+      needs.changes.outputs.tributary-cli == 'true' ||
+      needs.changes.outputs.tributary-client == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: tributary-client
+      - run: npm run build
+        working-directory: tributary-client
+      - run: npm ci
+        working-directory: tributary-cli
+      - run: npm run typecheck
+        working-directory: tributary-cli
+
+  test-kysely-tributary:
+    needs: changes
+    if: >-
+      needs.changes.outputs.kysely-tributary == 'true' ||
+      needs.changes.outputs.tributary-client == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - run: npm ci
+        working-directory: tributary-client
+      - run: npm run build
+        working-directory: tributary-client
+      - run: pnpm install
+        working-directory: kysely-tributary
+      - run: pnpm run typecheck
+        working-directory: kysely-tributary
+      - run: pnpm test
+        working-directory: kysely-tributary
 
   test-scribe-data:
     needs: changes
@@ -62,6 +117,8 @@ jobs:
       - run: npm run build
         working-directory: tributary-client
       - run: npm ci
+        working-directory: apps/scribe/scribe-data
+      - run: npm run typecheck
         working-directory: apps/scribe/scribe-data
       - run: npm test
         working-directory: apps/scribe/scribe-data
@@ -89,6 +146,8 @@ jobs:
         working-directory: apps/scribe/scribe-data
       - run: npm ci
         working-directory: apps/scribe/scribe-react
+      - run: npm run typecheck
+        working-directory: apps/scribe/scribe-react
       - run: npm test
         working-directory: apps/scribe/scribe-react
 
@@ -110,6 +169,8 @@ jobs:
       - run: npm ci
         working-directory: apps/scribe/scribe-data
       - run: npm ci
+        working-directory: apps/scribe/scribe-cli
+      - run: npm run typecheck
         working-directory: apps/scribe/scribe-cli
       - run: npm test
         working-directory: apps/scribe/scribe-cli

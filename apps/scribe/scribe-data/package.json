@@ -7,6 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "test": "TRIBUTARY_LOG_LEVEL=5 vitest run tests/",
     "test:verbose": "vitest run tests/",
     "test:watch": "vitest tests/"
