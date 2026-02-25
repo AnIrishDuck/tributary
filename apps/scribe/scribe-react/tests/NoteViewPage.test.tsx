@@ -40,8 +40,8 @@ describe('NoteViewPage', () => {
 
     // Wait for the component to finish loading and show content
     await waitFor(() => {
-      // Look for the edit button to confirm the page loaded successfully
-      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+      // Look for the edit action in the bottom nav to confirm the page loaded
+      expect(screen.getByText('Edit')).toBeInTheDocument()
     }, { timeout: 3000 })
 
     // Check that the title is displayed (the title comes from markdown rendering, so only 1 instance)
@@ -61,9 +61,6 @@ describe('NoteViewPage', () => {
     const boldElement = contentDiv?.querySelector('strong')
     expect(boldElement).toBeInTheDocument()
     expect(boldElement?.textContent).toBe('test')
-
-    // Check for the new note button
-    expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
   })
 
   it('should render NoteViewPage at /pk/:prefix/:slug route and load without errors', async () => {
@@ -124,9 +121,9 @@ describe('NoteViewPage', () => {
       </WithProviders>
     )
 
-    // Should show the note view with Edit button
+    // Should show the note view with Edit action in bottom nav
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+      expect(screen.getByText('Edit')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Should show the note content

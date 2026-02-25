@@ -64,9 +64,9 @@ describe('SlugViewPage', () => {
     )
 
     // In hierarchical routing, notes take priority over collections at the same scope
-    // Should show the note view with Edit button
+    // Should show the note view with Edit action in bottom nav
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+      expect(screen.getByText('Edit')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Should show the note content
