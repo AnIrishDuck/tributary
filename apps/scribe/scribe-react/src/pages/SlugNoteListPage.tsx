@@ -85,13 +85,11 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 <ArrowLeftIcon className="w-4 h-4 md:mr-1" />
                 <span className="hidden md:inline">{isRoot ? 'Libraries' : 'Back'}</span>
               </button>
+              <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
               {isRoot && (
-                <>
-                  <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
-                  <span className="hidden md:inline text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
-                    {notes.length} note{notes.length !== 1 ? 's' : ''}
-                  </span>
-                </>
+                <span className="hidden md:inline text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
+                  {notes.length} note{notes.length !== 1 ? 's' : ''}
+                </span>
               )}
             </div>
 
@@ -121,7 +119,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs (collection view only) */}
         {!isRoot && ancestors && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} libraryName={libraryName || undefined} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
         )}
 
         {totalItems === 0 ? (

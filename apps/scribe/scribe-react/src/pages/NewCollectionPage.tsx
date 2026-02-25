@@ -136,7 +136,7 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} libraryName={libraryName} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
         )}
 
         {error && (
