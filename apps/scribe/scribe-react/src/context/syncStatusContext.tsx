@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -11,6 +11,10 @@ export interface SyncStatus {
   finalIndex: number
   lastSyncedAt: Date | null
   hasError: boolean
+  /** Most recent note edit time (ISO string), populated by the sync loop. */
+  lastEdited: string | null
+  /** Library display name, populated by the sync loop. */
+  libraryTitle: string | null
 }
 
 export interface SyncStatusContextType {
@@ -38,6 +42,8 @@ export const SyncStatusProvider: React.FC<{
     finalIndex: 0,
     lastSyncedAt: null,
     hasError: false,
+    lastEdited: null,
+    libraryTitle: null,
   })
   const [focusedLibraryId, setFocusedLibrary] = useState<string | null>(null)
   const focusedLibraryRef = useRef<string | null>(null)
@@ -199,6 +205,7 @@ export const SyncStatusProvider: React.FC<{
             }
 
             latestPerStream[id] = {
+              ...latestPerStream[id],
               synced: isComplete,
               isSyncing: !isComplete,
               currentIndex: tributaryStatus.currentIndex,
@@ -224,13 +231,24 @@ export const SyncStatusProvider: React.FC<{
         // Skip when nothing changed to avoid unnecessary DB writes
         // (indexCollectionSlugs rewrites its entire table on every call).
         if (hadChanges) {
-          for (const { stream } of streamsToSync) {
+          for (const { id, stream } of streamsToSync) {
             if (!isMounted) { isRunning = false; return }
             try {
               // Ensure local-only tables exist (idempotent; needed for streams
               // loaded via sync that never went through initializeLibrary)
               await localMigrations(stream.local())
               await indexAll(stream.local())
+
+              // Compute library metadata alongside indexing so the home page
+              // never needs to fire independent queries per library.
+              const lastEdited = await getLastEditedTime(stream.local())
+              const libraryTitle = await getLibraryDisplayName(stream)
+
+              latestPerStream[id] = {
+                ...latestPerStream[id],
+                lastEdited,
+                libraryTitle,
+              }
             } catch (error) {
               console.error('Error reindexing library:', error)
             }
@@ -335,6 +353,8 @@ const defaultSyncStatus: SyncStatus = {
   finalIndex: 0,
   lastSyncedAt: null,
   hasError: false,
+  lastEdited: null,
+  libraryTitle: null,
 }
 
 /** Like useSyncStatus but returns a default value when no provider is present */

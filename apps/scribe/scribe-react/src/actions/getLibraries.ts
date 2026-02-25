@@ -1,5 +1,4 @@
 import { TributaryClient } from 'tributary-client'
-import { getLastEditedTime, getLibraryDisplayName } from 'scribe-data'
 
 /**
  * Information about a library including last edit time and display name
@@ -11,40 +10,23 @@ export interface LibraryInfo {
 }
 
 /**
- * Get all libraries tracked by the TributaryClient
+ * Get all libraries tracked by the TributaryClient.
+ *
+ * Returns a lightweight list of library IDs.  Per-library metadata
+ * (lastEdited, libraryTitle) is populated by the sync loop and stored
+ * in SyncStatus, so this function never queries individual library DBs
+ * (which may not have synced yet and would error / block the PGliteWorker).
+ *
  * @param client The TributaryClient instance
- * @returns Array of library info objects with last edit times
+ * @returns Array of library info objects (metadata fields are null; the
+ *   caller merges real values from SyncStatus at render time)
  */
 export async function getLibraries(client: TributaryClient): Promise<LibraryInfo[]> {
   const libraryIds = await client.list()
 
-  // Get last edit time for each library
-  const libraryInfos: LibraryInfo[] = await Promise.all(
-    libraryIds.map(async (libraryId) => {
-      try {
-        const localDb = await client.getLocal('scribe', libraryId)
-        if (!localDb) {
-          return { libraryId, lastEdited: null, libraryTitle: null }
-        }
-
-        const lastEdited = await getLastEditedTime(localDb)
-        const libraryTitle = await getLibraryDisplayName(localDb)
-
-        return { libraryId, lastEdited, libraryTitle }
-      } catch (error) {
-        console.error(`Error getting info for library ${libraryId}:`, error)
-        return { libraryId, lastEdited: null, libraryTitle: null }
-      }
-    })
-  )
-
-  // Sort by most recently edited first
-  libraryInfos.sort((a, b) => {
-    if (!a.lastEdited && !b.lastEdited) return 0
-    if (!a.lastEdited) return 1
-    if (!b.lastEdited) return -1
-    return new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime()
-  })
-
-  return libraryInfos
+  return libraryIds.map(libraryId => ({
+    libraryId,
+    lastEdited: null,
+    libraryTitle: null,
+  }))
 }
