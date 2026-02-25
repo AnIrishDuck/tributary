@@ -80,17 +80,24 @@ export async function sync(
   // Get local database for index operations
   const localDb = stream.local();
 
-  // 2. Read local files and update database
+  // 2. Index existing notes and collections so that directory walking
+  //    can match collection slugs and note slugs correctly
+  const preIndexResult = await indexAll(localDb, { limit });
+  if (preIndexResult.indexedCount > 0) {
+    console.log(`Pre-indexed ${preIndexResult.indexedCount} slugs`);
+  }
+
+  // 3. Read local files and update database
   await syncLocalFilesToDatabase(stream, localDb, directory, { dryRun });
 
-  // 3. Re-index notes and collections
+  // 4. Re-index notes and collections (including any newly created notes)
   const reindexResult = await indexAll(localDb, { limit });
   console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
   if (reindexResult.hasMore) {
     console.log(`Has more to index: ${reindexResult.hasMore}`);
   }
 
-  // 4. Update slugs directory with current database state
+  // 5. Update slugs directory with current database state
   await syncSlugsDirectory(stream, localDb, directory, { dryRun });
 }
 
