@@ -1,4 +1,4 @@
-import { PGlite } from '@electric-sql/pglite'
+import { PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
 
 /**
@@ -13,9 +13,9 @@ let currentDbName: string | null = null
  * @param dbName - Name of the IndexedDB database (optional, defaults to 'scribe-db')
  * @returns PGlite-compatible instance
  */
-export function getPGlite(dbName?: string): PGlite {
+export function getPGlite(dbName?: string): PGliteInterface {
   if (dbInstance) {
-    return dbInstance as unknown as PGlite
+    return dbInstance
   }
 
   const databaseName = dbName || 'scribe-db'
@@ -29,7 +29,7 @@ export function getPGlite(dbName?: string): PGlite {
     },
   )
 
-  return dbInstance as unknown as PGlite
+  return dbInstance
 }
 
 /**

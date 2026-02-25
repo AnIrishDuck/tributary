@@ -1,5 +1,5 @@
 // Main TributaryClient class that manages multiple streams
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite, PGliteInterface } from '@electric-sql/pglite';
 import { Server } from './server.js';
 import { TributaryStream, SyncStatus } from './tributaryStream.js';
 import { TributaryLocal } from './tributaryLocal.js';
@@ -8,7 +8,7 @@ import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
 export class TributaryClient {
-  private pglite: PGlite;
+  private pglite: PGliteInterface;
   private server: Server;
   private streams: Map<string, TributaryStream> = new Map();
   private initialized: Promise<void>;
@@ -16,7 +16,7 @@ export class TributaryClient {
 
   constructor(options: {
     server: Server;
-    db?: PGlite; // Optional existing PGlite instance
+    db?: PGliteInterface; // Optional existing PGlite instance
     privateKey?: string | Uint8Array; // Optional private key for default stream
     collectionId?: string; // Optional collection ID for stream
   }) {

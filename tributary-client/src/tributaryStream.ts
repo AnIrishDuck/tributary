@@ -1,5 +1,5 @@
 // TributaryStream class for managing individual streams
-import { PGlite } from '@electric-sql/pglite';
+import { PGliteInterface } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 import { Server } from './server.js';
@@ -31,7 +31,7 @@ export interface SyncStatus {
 }
 
 export class TributaryStream {
-  private pglite: PGlite;
+  private pglite: PGliteInterface;
   private server: Server;
   private privateKey: Uint8Array;
   private publicKey: Uint8Array;
@@ -47,7 +47,7 @@ export class TributaryStream {
   constructor(options: {
     server: Server;
     privateKey: Uint8Array;
-    pglite: PGlite;
+    pglite: PGliteInterface;
     appId: string;
     schemaId: string;
   }) {
