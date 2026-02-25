@@ -462,6 +462,7 @@ export class TributaryStream {
             info(`SYNC APPLYING: Processing blob with sequence ${blob.sequenceNumber}`);
 
             // Apply to local database only if it's a write operation
+            const newSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
             if (transactionEntry.query === 'TRANSACTION' && Array.isArray(transactionEntry.params)) {
               // Handle transaction - wrap in a try-catch to handle existing table cases
               try {
@@ -481,15 +482,29 @@ export class TributaryStream {
                       }
                     }
                   }
+                  // Update sync index inside the same transaction to avoid an
+                  // extra worker round-trip (PGliteWorker batches the whole
+                  // transaction callback into a single postMessage exchange).
+                  // @ts-ignore
+                  await tx.query(
+                    `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+                    [newSyncIndex, this.getId()]
+                  );
                 });
+                this.lastSyncIndex = newSyncIndex;
               } catch (txError) {
                 // Log but don't fail on transaction errors
                 warn(`Transaction failed during sync`, txError);
+                // Still advance past this blob to avoid reprocessing
+                this.lastSyncIndex = newSyncIndex;
+                await this.saveLastSyncIndex();
               }
             } else {
               // Handle regular query/exec
               if (this.isReadQuery(transactionEntry.query)) {
-                // Skip read queries as they don't modify state
+                // Skip read queries as they don't modify state.
+                // Update in-memory index; persisted by the final save after the loop.
+                this.lastSyncIndex = newSyncIndex;
                 continue;
               } else {
                 // Execute all other operations including INSERT, with scoped search_path
@@ -498,7 +513,14 @@ export class TributaryStream {
                     await tx.exec(this.searchPathSQL);
                     // @ts-ignore
                     await tx.query(transactionEntry.query, transactionEntry.params || []);
+                    // Update sync index inside the same transaction
+                    // @ts-ignore
+                    await tx.query(
+                      `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+                      [newSyncIndex, this.getId()]
+                    );
                   });
+                  this.lastSyncIndex = newSyncIndex;
                 } catch (execError) {
                   // Throw errors during sync rather than just warning
                   // Synced SQL expressions should never fail (otherwise they would've failed locally first)
@@ -506,12 +528,6 @@ export class TributaryStream {
                 }
               }
             }
-            
-            // Update last sync index for ALL processed blobs, not just executed ones
-            this.lastSyncIndex = Math.max(this.lastSyncIndex, blob.sequenceNumber);
-            
-            // Save the last sync index after each blob to track progress
-            await this.saveLastSyncIndex();
             
             info(`SYNC PROCESSED: Successfully processed blob with sequence ${blob.sequenceNumber}`);
           } catch (parseError: any) {
