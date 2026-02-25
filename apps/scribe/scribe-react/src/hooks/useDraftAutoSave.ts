@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { saveDraft, deleteDraft, getDraft, type Draft } from '../drafts/draftStorage'
 
-const AUTO_SAVE_INTERVAL_MS = 30_000
+const AUTO_SAVE_INTERVAL_MS = 5_000
 
 interface UseDraftAutoSaveOptions {
   /** Library prefix. */
