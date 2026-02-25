@@ -1,10 +1,15 @@
 import { TributaryClient } from 'tributary-client'
-import { getLinkedLibraries, getLastEditedTime, localMigrations } from 'scribe-data'
+import { getLinkedLibraries, localMigrations } from 'scribe-data'
 import { LibraryInfo } from './getLibraries'
 
 /**
  * Load the home collections from the configured home library.
  * Returns null if no home library is configured (signals fallback to getLibraries).
+ *
+ * This function only reads the linked-library list from the home stream's
+ * collection table.  Per-library metadata (lastEdited, libraryTitle) is
+ * populated by the sync loop and stored in SyncStatus, so the home page
+ * never fires independent DB queries that could block the PGliteWorker.
  */
 export async function getHomeCollections(client: TributaryClient): Promise<LibraryInfo[] | null> {
   const homeStreamId = await client.getHomeStream()
@@ -34,20 +39,11 @@ export async function getHomeCollections(client: TributaryClient): Promise<Libra
         }
       }
 
-      // Look up last-edited time from the linked library's local DB
-      let lastEdited: string | null = null
-      try {
-        const linkedLocalDb = await client.getLocal('scribe', linkedStreamId)
-        if (linkedLocalDb) {
-          lastEdited = await getLastEditedTime(linkedLocalDb)
-        }
-      } catch (err) {
-        console.error(`Error getting info for linked library ${linkedStreamId}:`, err)
-      }
-
+      // lastEdited is populated by the sync loop (stored in SyncStatus).
+      // libraryTitle comes from the linked collection metadata — no per-library query needed.
       return {
         libraryId: linkedStreamId,
-        lastEdited,
+        lastEdited: null,
         libraryTitle: collection.title
       }
     })

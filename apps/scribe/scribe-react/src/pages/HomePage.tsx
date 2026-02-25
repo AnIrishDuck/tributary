@@ -102,18 +102,23 @@ const HomePage: React.FC = () => {
             <div className="px-8 py-6 bg-gray-50">
               <div className="space-y-3">
                 {libraries!.map((library) => {
-                    const displayName = library.libraryTitle || 'Notes'
+                    // Merge per-library metadata from the sync loop
+                    const libStatus = syncStatus[library.libraryId]
+                    const displayName = libStatus?.libraryTitle || library.libraryTitle || 'Notes'
                     const displayId = `pk/${library.libraryId.substring(0, 16)}...`
-                    const lastEditedText = library.lastEdited
-                      ? new Date(library.lastEdited).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })
-                      : 'No edits yet'
+                    const hasSynced = libStatus?.lastSyncedAt != null
+                    const showProgress = libStatus && !libStatus.synced
 
-                    const librarySyncStatus = syncStatus[library.libraryId]
-                    const showProgress = librarySyncStatus && !librarySyncStatus.synced
+                    const lastEdited = libStatus?.lastEdited ?? library.lastEdited
+                    const lastEditedText = !hasSynced
+                      ? 'Awaiting sync'
+                      : lastEdited
+                        ? new Date(lastEdited).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })
+                        : 'No edits yet'
 
                     return (
                       <Link
@@ -134,7 +139,7 @@ const HomePage: React.FC = () => {
                             <p className="text-sm text-gray-500">{lastEditedText}</p>
                             {showProgress && (
                               <span className="text-xs text-blue-600 font-medium">
-                                Syncing {librarySyncStatus.currentIndex}/{librarySyncStatus.finalIndex}
+                                Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
                               </span>
                             )}
                           </div>

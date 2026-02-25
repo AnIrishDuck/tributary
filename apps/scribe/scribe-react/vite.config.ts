@@ -61,6 +61,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000
   },
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     // Exclude PGlite from optimization to prevent WASM loading issues
     exclude: ['@electric-sql/pglite'],

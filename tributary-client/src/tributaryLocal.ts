@@ -1,13 +1,13 @@
 // TributaryLocal class for local (non-synced) database operations
-import { PGlite } from '@electric-sql/pglite';
+import { PGliteInterface } from '@electric-sql/pglite';
 import { logger, debug } from './logger.js';
 
 export class TributaryLocal {
-  private pglite: PGlite;
+  private pglite: PGliteInterface;
   private schemaName: string;
   private searchPathSQL: string;
 
-  constructor(pglite: PGlite, schemaName: string) {
+  constructor(pglite: PGliteInterface, schemaName: string) {
     this.pglite = pglite;
     this.schemaName = schemaName;
     // Pre-compute the SET LOCAL statement to avoid string building on every call.
