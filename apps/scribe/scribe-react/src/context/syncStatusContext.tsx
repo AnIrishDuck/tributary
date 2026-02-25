@@ -101,6 +101,7 @@ export const SyncStatusProvider: React.FC<{
       const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
       const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
       setGlobalSyncStatus(prev => ({
+        ...prev,
         synced: allComplete,
         isSyncing: !allComplete,
         currentIndex: totalCurrent,
