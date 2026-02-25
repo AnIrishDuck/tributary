@@ -62,8 +62,7 @@ describe('SlugNoteListPage', () => {
     // Should show the note inside the collection
     expect(screen.getByText('Pasta')).toBeInTheDocument()
 
-    // Should show "New Note" and "New Collection" buttons
-    expect(screen.getByRole('button', { name: /New Note/ })).toBeInTheDocument()
+    // Should show "New Collection" button (icon-only on mobile, text visible on desktop)
     expect(screen.getByRole('button', { name: /New Collection/ })).toBeInTheDocument()
   })
 

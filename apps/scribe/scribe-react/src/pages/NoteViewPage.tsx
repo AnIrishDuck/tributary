@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { PencilIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { renderMarkdown } from '../utils/markdown'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { useBottomNav } from '../context/bottomNavContext'
 
 interface NoteViewPageProps {
   content: string
@@ -17,21 +18,18 @@ interface NoteViewPageProps {
 
 const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName }) => {
   const navigate = useNavigate()
+  const { setFloatingAction } = useBottomNav()
 
   // Compute parent collection path from slugPath (remove last segment which is the note)
   const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
 
-  const handleEdit = () => {
-    navigate(`/pk/${prefix}/${slugPath}&edit`)
-  }
+  const editUrl = `/pk/${prefix}/${slugPath}&edit`
 
-  const handleNewNote = () => {
-    if (parentSlugPath) {
-      navigate(`/pk/${prefix}/${parentSlugPath}/+note`)
-    } else {
-      navigate(`/pk/${prefix}/+note`)
-    }
-  }
+  // Set Edit as the floating action button in the bottom nav
+  useEffect(() => {
+    setFloatingAction({ icon: PencilIcon, label: 'Edit', to: editUrl })
+    return () => setFloatingAction(null)
+  }, [editUrl, setFloatingAction])
 
   const handleBack = () => {
     if (parentSlugPath) {
@@ -52,26 +50,8 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
                 onClick={handleBack}
                 className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center font-medium"
               >
-                <ArrowLeftIcon className="w-4 h-4 mr-1.5" />
-                Back
-              </button>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleEdit}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-              >
-                <PencilIcon className="w-4 h-4 mr-1.5" />
-                Edit
-              </button>
-
-              <button
-                onClick={handleNewNote}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-              >
-                <PlusIcon className="w-4 h-4 mr-1.5" />
-                New
+                <ArrowLeftIcon className="w-4 h-4 md:mr-1.5" />
+                <span className="hidden md:inline">Back</span>
               </button>
             </div>
           </div>
@@ -81,7 +61,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs (show path to parent collection, not the note itself) */}
         {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks libraryName={libraryName} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
         )}
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">

@@ -7,11 +7,9 @@ interface BreadcrumbsProps {
   prefix: string
   /** When true, all items (including the last) are rendered as links. Used for note views where the note title is shown separately. */
   allLinks?: boolean
-  /** Display name for the library root. Defaults to "Library". */
-  libraryName?: string
 }
 
-export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, libraryName }) => {
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks }) => {
   if (ancestors.length === 0) return null
 
   // Build cumulative slug paths for each non-root ancestor
@@ -51,24 +49,11 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
 
   const visibleAncestors = nonRootAncestors.slice(hiddenCount)
   const showEllipsis = hiddenCount > 0
-  // If all non-root ancestors are hidden, also hide the Library link
-  const showLibrary = hiddenCount < nonRootAncestors.length || nonRootAncestors.length === 0
 
   return (
     <nav ref={navRef} className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
-      {showLibrary && (
-        <Link
-          to={`/pk/${prefix}/`}
-          className="hover:text-blue-600 transition-colors flex-shrink-0"
-        >
-          {libraryName || 'Library'}
-        </Link>
-      )}
       {showEllipsis && (
-        <>
-          {showLibrary && <span className="mx-1 text-gray-400 flex-shrink-0">/</span>}
-          <span className="text-gray-400 flex-shrink-0">&hellip;</span>
-        </>
+        <span className="text-gray-400 flex-shrink-0">&hellip;</span>
       )}
       {visibleAncestors.map((ancestor, visIndex) => {
         // Map back to the original index for cumulative path building
@@ -79,10 +64,11 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
           .join('/')
 
         const isLast = originalIndex === nonRootAncestors.length - 1
+        const showSeparator = visIndex > 0 || showEllipsis
 
         return (
           <React.Fragment key={ancestor.collection_uuid}>
-            <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+            {showSeparator && <span className="mx-1 text-gray-400 flex-shrink-0">/</span>}
             {isLast && !allLinks ? (
               <span className="text-gray-900 font-bold text-lg flex-shrink-0">{ancestor.title}</span>
             ) : (

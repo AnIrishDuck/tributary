@@ -82,16 +82,14 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 onClick={handleBack}
                 className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
-                <ArrowLeftIcon className="w-4 h-4 mr-1" />
-                {isRoot ? 'Libraries' : 'Back'}
+                <ArrowLeftIcon className="w-4 h-4 md:mr-1" />
+                <span className="hidden md:inline">{isRoot ? 'Libraries' : 'Back'}</span>
               </button>
+              <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
               {isRoot && (
-                <>
-                  <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
-                  <span className="text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
-                    {notes.length} note{notes.length !== 1 ? 's' : ''}
-                  </span>
-                </>
+                <span className="hidden md:inline text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
+                  {notes.length} note{notes.length !== 1 ? 's' : ''}
+                </span>
               )}
             </div>
 
@@ -99,7 +97,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               {isRoot && (
                 <button
                   onClick={() => navigate(`/pk/${prefix}/search`)}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                  className="hidden md:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
                 >
                   <MagnifyingGlassIcon className="w-4 h-4 mr-1.5" />
                   Search
@@ -110,16 +108,8 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 onClick={handleNewCollection}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
-                <FolderPlusIcon className="w-4 h-4 mr-1.5" />
-                New Collection
-              </button>
-
-              <button
-                onClick={handleNewNote}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-              >
-                <PlusIcon className="w-4 h-4 mr-1.5" />
-                {isRoot ? 'New' : 'New Note'}
+                <FolderPlusIcon className="w-4 h-4 md:mr-1.5" />
+                <span className="hidden md:inline">New Collection</span>
               </button>
             </div>
           </div>
@@ -129,7 +119,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs (collection view only) */}
         {!isRoot && ancestors && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} libraryName={libraryName || undefined} />
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
         )}
 
         {totalItems === 0 ? (
@@ -235,7 +225,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
         )}
 
         {notes.length > 0 && isRoot && (
-          <div className="mt-8 text-center">
+          <div className="mt-8 text-center hidden md:block">
             <button
               onClick={handleNewNote}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"

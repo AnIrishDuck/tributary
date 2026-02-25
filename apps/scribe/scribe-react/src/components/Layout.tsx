@@ -4,6 +4,7 @@ import { HomeIcon, PlusIcon, MagnifyingGlassIcon, ArrowRightStartOnRectangleIcon
 import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
 import { useTributary } from '../context/tributaryContext'
+import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
 
 const Layout: React.FC = () => {
   const location = useLocation()
@@ -35,7 +36,12 @@ const Layout: React.FC = () => {
   // Show sync indicator dot
   const showSyncDot = globalSyncStatus ? globalSyncStatus.isSyncing && !globalSyncStatus.synced : false
 
+  // Allow child pages to override the floating action button
+  const [floatingAction, setFloatingAction] = useState<FloatingAction | null>(null)
+  const bottomNavCtx = React.useMemo(() => ({ setFloatingAction }), [])
+
   return (
+    <BottomNavProvider value={bottomNavCtx}>
     <div className="min-h-dvh bg-gray-50 flex flex-col">
       <OfflineBanner />
       {logout && isHome && (
@@ -89,15 +95,15 @@ const Layout: React.FC = () => {
                 </Link>
 
                 <Link
-                  to={`/pk/${prefix}/+note`}
+                  to={floatingAction ? floatingAction.to : `/pk/${prefix}/+note`}
                   className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
-                    isNew ? 'text-blue-600' : 'text-gray-500'
+                    !floatingAction && isNew ? 'text-blue-600' : floatingAction ? 'text-blue-600' : 'text-gray-500'
                   }`}
                 >
                   <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center -mt-3 shadow-lg">
-                    <PlusIcon className="w-6 h-6 text-white" />
+                    {floatingAction ? <floatingAction.icon className="w-6 h-6 text-white" /> : <PlusIcon className="w-6 h-6 text-white" />}
                   </div>
-                  <span className="text-xs mt-0.5 text-blue-600">New</span>
+                  <span className="text-xs mt-0.5 text-blue-600">{floatingAction ? floatingAction.label : 'New'}</span>
                 </Link>
               </>
             ) : (
@@ -130,6 +136,7 @@ const Layout: React.FC = () => {
         </nav>
       )}
     </div>
+    </BottomNavProvider>
   )
 }
 
