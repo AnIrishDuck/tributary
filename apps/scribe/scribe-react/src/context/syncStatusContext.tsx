@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
 import { indexAll, localMigrations } from 'scribe-data'
 
+type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
+
 export interface SyncStatus {
   synced: boolean
   isSyncing: boolean
@@ -73,6 +75,7 @@ export const SyncStatusProvider: React.FC<{
     let isRunning = false // guard against concurrent execution
     let pendingWakeUp = false // track wakeUp calls that arrived mid-sync
     let hasRunOnce = false // skip visibility sleep until first sync completes
+    let roundRobinIndex = 0 // tracks which library to sync next in Home mode
 
     // Re-sync in case visibility changed between effect cleanup and re-mount
     // (e.g. during React StrictMode double-mount)
@@ -151,19 +154,49 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) { isRunning = false; return }
 
-        // When a focused library is set, only sync that library
+        // Determine sync focus
         const focused = focusedLibraryRef.current
-        const streamsToSync = focused
-          ? streams.filter(s => s.id === focused)
-          : streams
+        const syncFocus: SyncFocus = focused
+          ? { type: 'library', id: focused }
+          : { type: 'home' }
 
-        // Sync each library in a small batch, updating UI after each
+        const homeStreamId = await client.getHomeStream()
+
+        let streamsToSync: Array<{ id: string; stream: TributaryStream }>
+        if (syncFocus.type === 'library') {
+          streamsToSync = streams.filter(s => s.id === syncFocus.id)
+          console.log(`[sync] focus: library ${syncFocus.id}`)
+        } else {
+          // Round-robin: sync one library per tick
+          if (streams.length > 0) {
+            const index = roundRobinIndex % streams.length
+            streamsToSync = [streams[index]]
+            const isHome = streams[index].id === homeStreamId
+            const label = isHome ? '*home* library' : 'library'
+            console.log(`[sync] focus: Home, round-robin ${index + 1}/${streams.length}, syncing ${label} ${streams[index].id}`)
+            roundRobinIndex = (index + 1) % streams.length
+          } else {
+            streamsToSync = []
+            console.log('[sync] focus: Home, no libraries to sync')
+          }
+        }
+
+        // Sync the selected library, tracking whether any data changed
+        let hadChanges = false
         for (const { id, stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
 
           try {
+            const prevStatus = latestPerStream[id]
             const tributaryStatus = await stream.sync(10)
             const isComplete = tributaryStatus.complete()
+
+            // Detect whether anything changed since the last sync
+            if (!prevStatus ||
+                prevStatus.currentIndex !== tributaryStatus.currentIndex ||
+                prevStatus.finalIndex !== tributaryStatus.finalIndex) {
+              hadChanges = true
+            }
 
             latestPerStream[id] = {
               synced: isComplete,
@@ -180,22 +213,27 @@ export const SyncStatusProvider: React.FC<{
               isSyncing: false,
               hasError: true,
             }
+            hadChanges = true // treat errors as "changed" to avoid fast-looping
           }
           pushStatus()
         }
 
         if (!isMounted) { isRunning = false; return }
 
-        // Reindex synced libraries so notes appear in the UI
-        for (const { stream } of streamsToSync) {
-          if (!isMounted) { isRunning = false; return }
-          try {
-            // Ensure local-only tables exist (idempotent; needed for streams
-            // loaded via sync that never went through initializeLibrary)
-            await localMigrations(stream.local())
-            await indexAll(stream.local())
-          } catch (error) {
-            console.error('Error reindexing library:', error)
+        // Reindex synced libraries so notes appear in the UI.
+        // Skip when nothing changed to avoid unnecessary DB writes
+        // (indexCollectionSlugs rewrites its entire table on every call).
+        if (hadChanges) {
+          for (const { stream } of streamsToSync) {
+            if (!isMounted) { isRunning = false; return }
+            try {
+              // Ensure local-only tables exist (idempotent; needed for streams
+              // loaded via sync that never went through initializeLibrary)
+              await localMigrations(stream.local())
+              await indexAll(stream.local())
+            } catch (error) {
+              console.error('Error reindexing library:', error)
+            }
           }
         }
 
@@ -206,7 +244,11 @@ export const SyncStatusProvider: React.FC<{
           pendingWakeUp = false
           scheduleNext(0)
         } else {
-          scheduleNext(nextDelay(allComplete))
+          const delay = nextDelay(allComplete)
+          // Halve the wait when the synced library had no changes,
+          // so we cycle through the round-robin faster when idle
+          const adjustedDelay = hadChanges ? delay : Math.max(Math.floor(delay / 2), 10)
+          scheduleNext(adjustedDelay)
         }
       } catch (error) {
         console.error('Background sync error:', error)

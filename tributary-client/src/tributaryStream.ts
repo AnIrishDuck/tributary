@@ -533,9 +533,11 @@ export class TributaryStream {
     
     // Log end sequence number when sync ends
     info(`SYNC END: Last sync index changed from ${initialLastSyncIndex} to ${this.lastSyncIndex}`);
-    
-    // Save the last sync index for future sessions
-    await this.saveLastSyncIndex();
+
+    // Save the last sync index for future sessions (skip if unchanged)
+    if (this.lastSyncIndex !== initialLastSyncIndex) {
+      await this.saveLastSyncIndex();
+    }
     
     // Return SyncStatus with current and final index
     const syncStatus: SyncStatus = {
