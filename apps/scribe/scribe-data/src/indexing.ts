@@ -164,74 +164,126 @@ export async function indexSlugs(
   }
 
   console.log(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
-  const slugStartTime = performance.now()
 
-  // Process all notes in a single transaction for atomicity and performance
-  let indexedCount = 0
-  const indexedBlockUuids: string[] = []
+  // Phase 1: CPU-only work — extract titles, slugs, and tags from markdown.
+  const cpuStart = performance.now()
+  const now = new Date().toISOString()
+
+  interface ProcessedNote {
+    block_uuid: string
+    version_uuid: string
+    title: string | null
+    slug: string | null
+    tags: string[]
+  }
+
+  const processed: ProcessedNote[] = unindexedNotes.map(note => ({
+    block_uuid: note.block_uuid,
+    version_uuid: note.version_uuid,
+    title: extractTitleFromMarkdown(note.body),
+    slug: (() => { const t = extractTitleFromMarkdown(note.body); return t ? titleToSlug(t) : null })(),
+    tags: extractTagsFromMarkdown(note.body)
+  }))
+
+  const withSlugs = processed.filter(n => n.slug && n.title)
+  const withoutSlugs = processed.filter(n => !n.slug || !n.title)
+  const allTags: { block_uuid: string, tag: string }[] = []
+  for (const n of processed) {
+    for (const tag of n.tags) {
+      allTags.push({ block_uuid: n.block_uuid, tag })
+    }
+  }
+
+  const indexedBlockUuids = processed.map(n => n.block_uuid)
+  let indexedCount = withSlugs.length
+  const cpuMs = Math.round(performance.now() - cpuStart)
+
+  // Phase 2: Batch DB writes — a small constant number of multi-row queries
+  // instead of ~5N + M individual round-trips through PGliteWorker.
+  const dbStart = performance.now()
 
   await localDb.transaction(async (tx: any) => {
-    for (const note of unindexedNotes) {
-      const title = extractTitleFromMarkdown(note.body)
-      const baseSlug = title ? titleToSlug(title) : null
-      const tags = extractTagsFromMarkdown(note.body)
-      const now = new Date().toISOString()
-
-      // Mark the note as indexed
+    // Batch upsert indexed_block (N rows, 1 query)
+    {
+      const vals = processed.map((_, i) => {
+        const b = i * 4
+        return `($${b+1}, $${b+2}, $${b+3}, $${b+4})`
+      }).join(', ')
+      const params = processed.flatMap(n => [n.block_uuid, n.version_uuid, true, now])
       await tx.query(
         `INSERT INTO indexed_block (block_uuid, version_uuid, indexed, last_indexed_at)
-         VALUES ($1, $2, $3, $4)
+         VALUES ${vals}
          ON CONFLICT (block_uuid)
-         DO UPDATE SET version_uuid = $2, indexed = $3, last_indexed_at = $4`,
-        [note.block_uuid, note.version_uuid, true, now]
+         DO UPDATE SET version_uuid = EXCLUDED.version_uuid, indexed = EXCLUDED.indexed, last_indexed_at = EXCLUDED.last_indexed_at`,
+        params
       )
+    }
 
-      // Update the authoritative version mapping
+    // Batch upsert authoritative_version (N rows, 1 query)
+    {
+      const vals = processed.map((_, i) => {
+        const b = i * 3
+        return `($${b+1}, $${b+2}, $${b+3})`
+      }).join(', ')
+      const params = processed.flatMap(n => [n.block_uuid, n.version_uuid, now])
       await tx.query(
         `INSERT INTO authoritative_version (block_uuid, version_uuid, indexed_at)
-         VALUES ($1, $2, $3)
+         VALUES ${vals}
          ON CONFLICT (block_uuid)
-         DO UPDATE SET version_uuid = $2, indexed_at = $3`,
-        [note.block_uuid, note.version_uuid, now]
+         DO UPDATE SET version_uuid = EXCLUDED.version_uuid, indexed_at = EXCLUDED.indexed_at`,
+        params
       )
+    }
 
-      // Handle slug updates — duplicate slugs are allowed
-      if (baseSlug && title) {
-        await tx.query(
-          `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (block_uuid)
-           DO UPDATE SET slug = $2, title = $3, indexed_at = $4`,
-          [note.block_uuid, baseSlug, title, now]
-        )
-
-        indexedCount++
-      } else {
-        await tx.query(
-          `DELETE FROM block_slug WHERE block_uuid = $1`,
-          [note.block_uuid]
-        )
-      }
-
-      // Handle tag updates
+    // Batch upsert block_slug for notes that have slugs
+    if (withSlugs.length > 0) {
+      const vals = withSlugs.map((_, i) => {
+        const b = i * 4
+        return `($${b+1}, $${b+2}, $${b+3}, $${b+4})`
+      }).join(', ')
+      const params = withSlugs.flatMap(n => [n.block_uuid, n.slug, n.title, now])
       await tx.query(
-        `DELETE FROM block_tag WHERE block_uuid = $1`,
-        [note.block_uuid]
+        `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
+         VALUES ${vals}
+         ON CONFLICT (block_uuid)
+         DO UPDATE SET slug = EXCLUDED.slug, title = EXCLUDED.title, indexed_at = EXCLUDED.indexed_at`,
+        params
       )
+    }
 
-      for (const tag of tags) {
-        await tx.query(
-          `INSERT INTO block_tag (block_uuid, tag, indexed_at) VALUES ($1, $2, $3)`,
-          [note.block_uuid, tag, now]
-        )
-      }
+    // Delete block_slug for notes without slugs
+    if (withoutSlugs.length > 0) {
+      const placeholders = withoutSlugs.map((_, i) => `$${i+1}`).join(', ')
+      await tx.query(
+        `DELETE FROM block_slug WHERE block_uuid IN (${placeholders})`,
+        withoutSlugs.map(n => n.block_uuid)
+      )
+    }
 
-      indexedBlockUuids.push(note.block_uuid)
+    // Delete all old tags for processed notes in one shot, then bulk-insert new ones
+    {
+      const placeholders = processed.map((_, i) => `$${i+1}`).join(', ')
+      await tx.query(
+        `DELETE FROM block_tag WHERE block_uuid IN (${placeholders})`,
+        processed.map(n => n.block_uuid)
+      )
+    }
+
+    if (allTags.length > 0) {
+      const vals = allTags.map((_, i) => {
+        const b = i * 3
+        return `($${b+1}, $${b+2}, $${b+3})`
+      }).join(', ')
+      const params = allTags.flatMap(t => [t.block_uuid, t.tag, now])
+      await tx.query(
+        `INSERT INTO block_tag (block_uuid, tag, indexed_at) VALUES ${vals}`,
+        params
+      )
     }
   })
 
-  const slugElapsed = (performance.now() - slugStartTime).toFixed(1)
-  console.log(`indexSlugs: indexed ${indexedCount} slugs in ${slugElapsed}ms`)
+  const dbMs = Math.round(performance.now() - dbStart)
+  console.log(`indexSlugs: indexed ${indexedCount} slugs (cpu ${cpuMs}ms, db ${dbMs}ms)`)
 
   return {
     indexedCount,
@@ -461,19 +513,25 @@ export async function indexCollectionSlugs(localDb: TributaryLocal): Promise<voi
   const collections = (result.rows || []) as Collection[]
   const now = new Date().toISOString()
 
+  const withSlugs = collections
+    .map(col => ({ ...col, slug: titleToSlug(col.title) }))
+    .filter(col => col.slug)
+
   await localDb.transaction(async (tx: any) => {
     // Clear existing collection slugs and rebuild
     await tx.query(`DELETE FROM collection_slug`, [])
 
-    for (const col of collections) {
-      const slug = titleToSlug(col.title)
-      if (slug) {
-        await tx.query(
-          `INSERT INTO collection_slug (collection_uuid, slug, title, indexed_at, parent_collection_uuid)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [col.collection_uuid, slug, col.title, now, col.parent_collection_uuid]
-        )
-      }
+    if (withSlugs.length > 0) {
+      const vals = withSlugs.map((_, i) => {
+        const b = i * 5
+        return `($${b+1}, $${b+2}, $${b+3}, $${b+4}, $${b+5})`
+      }).join(', ')
+      const params = withSlugs.flatMap(col => [col.collection_uuid, col.slug, col.title, now, col.parent_collection_uuid])
+      await tx.query(
+        `INSERT INTO collection_slug (collection_uuid, slug, title, indexed_at, parent_collection_uuid)
+         VALUES ${vals}`,
+        params
+      )
     }
   })
 }

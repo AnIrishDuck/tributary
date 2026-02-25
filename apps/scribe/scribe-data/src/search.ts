@@ -210,39 +210,59 @@ export async function indexSearchVectors(
   }
 
   console.log(`indexSearchVectors: ${unindexedNotes.length} notes to update`)
-  const searchStartTime = performance.now()
 
-  // Index all notes in a single transaction for atomicity and performance
-  let indexedCount = 0
+  // Phase 1: CPU-only work — extract searchable text from markdown.
+  const cpuStart = performance.now()
+  const now = new Date().toISOString()
+
+  const withText: { block_uuid: string, version_uuid: string, searchableText: string }[] = []
+  const emptyUuids: string[] = []
+
+  for (const note of unindexedNotes) {
+    const searchableText = extractSearchableText(note.body)
+    if (searchableText.trim().length > 0) {
+      withText.push({ block_uuid: note.block_uuid, version_uuid: note.version_uuid, searchableText })
+    } else {
+      emptyUuids.push(note.block_uuid)
+    }
+  }
+
+  let indexedCount = withText.length
+  const cpuMs = Math.round(performance.now() - cpuStart)
+
+  // Phase 2: Batch DB writes — 2 queries instead of N round-trips.
+  const dbStart = performance.now()
 
   await localDb.transaction(async (tx: any) => {
-    for (const note of unindexedNotes) {
-      const searchableText = extractSearchableText(note.body)
-      const now = new Date().toISOString()
+    if (withText.length > 0) {
+      const vals = withText.map((_, i) => {
+        const b = i * 4
+        return `($${b+1}, $${b+2}, to_tsvector('english', $${b+3}), $${b+4})`
+      }).join(', ')
+      const params = withText.flatMap(n => [n.block_uuid, n.version_uuid, n.searchableText, now])
+      await tx.query(
+        `INSERT INTO block_search_index (block_uuid, version_uuid, search_vector, indexed_at)
+         VALUES ${vals}
+         ON CONFLICT (block_uuid)
+         DO UPDATE SET
+           version_uuid = EXCLUDED.version_uuid,
+           search_vector = EXCLUDED.search_vector,
+           indexed_at = EXCLUDED.indexed_at`,
+        params
+      )
+    }
 
-      if (searchableText.trim().length > 0) {
-        await tx.query(
-          `INSERT INTO block_search_index (block_uuid, version_uuid, search_vector, indexed_at)
-           VALUES ($1, $2, to_tsvector('english', $3), $4)
-           ON CONFLICT (block_uuid)
-           DO UPDATE SET
-             version_uuid = $2,
-             search_vector = to_tsvector('english', $3),
-             indexed_at = $4`,
-          [note.block_uuid, note.version_uuid, searchableText, now]
-        )
-        indexedCount++
-      } else {
-        await tx.query(
-          `DELETE FROM block_search_index WHERE block_uuid = $1`,
-          [note.block_uuid]
-        )
-      }
+    if (emptyUuids.length > 0) {
+      const placeholders = emptyUuids.map((_, i) => `$${i+1}`).join(', ')
+      await tx.query(
+        `DELETE FROM block_search_index WHERE block_uuid IN (${placeholders})`,
+        emptyUuids
+      )
     }
   })
 
-  const searchElapsed = (performance.now() - searchStartTime).toFixed(1)
-  console.log(`indexSearchVectors: updated ${indexedCount} search vectors in ${searchElapsed}ms`)
+  const dbMs = Math.round(performance.now() - dbStart)
+  console.log(`indexSearchVectors: updated ${indexedCount} search vectors (cpu ${cpuMs}ms, db ${dbMs}ms)`)
 
   return {
     indexedCount,
