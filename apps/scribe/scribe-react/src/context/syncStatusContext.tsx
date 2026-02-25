@@ -220,16 +220,20 @@ export const SyncStatusProvider: React.FC<{
 
         if (!isMounted) { isRunning = false; return }
 
-        // Reindex synced libraries so notes appear in the UI
-        for (const { stream } of streamsToSync) {
-          if (!isMounted) { isRunning = false; return }
-          try {
-            // Ensure local-only tables exist (idempotent; needed for streams
-            // loaded via sync that never went through initializeLibrary)
-            await localMigrations(stream.local())
-            await indexAll(stream.local())
-          } catch (error) {
-            console.error('Error reindexing library:', error)
+        // Reindex synced libraries so notes appear in the UI.
+        // Skip when nothing changed to avoid unnecessary DB writes
+        // (indexCollectionSlugs rewrites its entire table on every call).
+        if (hadChanges) {
+          for (const { stream } of streamsToSync) {
+            if (!isMounted) { isRunning = false; return }
+            try {
+              // Ensure local-only tables exist (idempotent; needed for streams
+              // loaded via sync that never went through initializeLibrary)
+              await localMigrations(stream.local())
+              await indexAll(stream.local())
+            } catch (error) {
+              console.error('Error reindexing library:', error)
+            }
           }
         }
 
