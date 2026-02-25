@@ -5,6 +5,7 @@ import {
   getNoteBySlug,
   getNoteByVersion,
   createNote,
+  createCollection,
   indexAll,
   getLibrary,
   getChildCollections,
@@ -80,17 +81,24 @@ export async function sync(
   // Get local database for index operations
   const localDb = stream.local();
 
-  // 2. Read local files and update database
+  // 2. Index existing notes and collections so that directory walking
+  //    can match collection slugs and note slugs correctly
+  const preIndexResult = await indexAll(localDb, { limit });
+  if (preIndexResult.indexedCount > 0) {
+    console.log(`Pre-indexed ${preIndexResult.indexedCount} slugs`);
+  }
+
+  // 3. Read local files and update database
   await syncLocalFilesToDatabase(stream, localDb, directory, { dryRun });
 
-  // 3. Re-index notes and collections
+  // 4. Re-index notes and collections (including any newly created notes)
   const reindexResult = await indexAll(localDb, { limit });
   console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
   if (reindexResult.hasMore) {
     console.log(`Has more to index: ${reindexResult.hasMore}`);
   }
 
-  // 4. Update slugs directory with current database state
+  // 5. Update slugs directory with current database state
   await syncSlugsDirectory(stream, localDb, directory, { dryRun });
 }
 
@@ -411,6 +419,17 @@ async function syncLocalFilesToDatabase(
 }
 
 /**
+ * Convert a slug back to a human-readable title.
+ * e.g. "my-recipes" → "My Recipes"
+ */
+function slugToTitle(slug: string): string {
+  return slug
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
  * Sync a single directory level to the database.
  *
  * @param stream The TributaryStream instance
@@ -461,16 +480,45 @@ async function syncDirectoryLevel(
           options
         );
       } else {
-        // Not a collection directory — treat as a duplicate-slug folder.
-        // Files inside are {uuid}.md
-        const subFiles = (await fs.promises.readdir(dirPath))
-          .filter(f => f.endsWith('.md') && !f.startsWith('.'));
+        // Check if this directory name matches an existing note slug in the
+        // current scope — if so, it's a duplicate-slug folder with {uuid}.md files.
+        const matchingNoteSlugs = await getNotesBySlugInCollection(localDb, dirName, collectionId);
 
-        for (const subFile of subFiles) {
-          const filePath = path.join(dirPath, subFile);
-          // Extract UUID from filename (remove .md extension)
-          const fileUuid = subFile.slice(0, -3);
-          await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${dirName}/${subFile}`, collectionId, { dryRun });
+        if (matchingNoteSlugs.length > 0) {
+          // Duplicate-slug folder — files inside are {uuid}.md
+          const subFiles = (await fs.promises.readdir(dirPath))
+            .filter(f => f.endsWith('.md') && !f.startsWith('.'));
+
+          for (const subFile of subFiles) {
+            const filePath = path.join(dirPath, subFile);
+            const fileUuid = subFile.slice(0, -3);
+            await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${dirName}/${subFile}`, collectionId, { dryRun });
+          }
+        } else if (parentCollectionUuid) {
+          // Unrecognized directory that doesn't correspond to a duplicate slug —
+          // create a new collection for it and recurse into it.
+          const title = slugToTitle(dirName);
+          let newCollectionUuid: string;
+
+          if (!dryRun) {
+            const newCollection = await createCollection(stream, {
+              title,
+              parent_collection_uuid: parentCollectionUuid,
+              inserter: 'scribe-cli-sync',
+            });
+            newCollectionUuid = newCollection.collection_uuid;
+            console.log(`Created new collection: ${title}`);
+          } else {
+            newCollectionUuid = `dry-run-${dirName}`;
+            console.log(`Would create new collection: ${title} (dry run)`);
+          }
+
+          await syncDirectoryLevel(
+            stream, localDb, dirPath,
+            newCollectionUuid,
+            newCollectionUuid,
+            options
+          );
         }
       }
     } else if (entry.name.endsWith('.md')) {

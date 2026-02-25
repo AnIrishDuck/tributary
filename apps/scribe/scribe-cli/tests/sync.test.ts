@@ -13,6 +13,7 @@ import {
   createNoteVersion,
   getNoteByUuid,
   getNotesInCollection,
+  getAllCollections,
   indexAll,
 } from '@tributary/scribe-data'
 import { sync, validateDirectoryStructure } from '../src/sync.js'
@@ -390,6 +391,151 @@ describe('sync — collections', () => {
     const jambalaya = notesInRecipes.find(n => n.body.includes('Jambalaya'))
     expect(jambalaya).toBeDefined()
     expect(jambalaya!.collection_id).toBe(recipes.collection_uuid)
+  })
+
+  it('should create new notes in collection directories on first sync (no prior indexing)', async () => {
+    const library = await createCollection(stream, {
+      title: 'My Library',
+      inserter: 'test'
+    })
+
+    const recipes = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library.collection_uuid,
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // Create the collection directory and note file BEFORE any sync has run
+    // (so collection_slug index has never been populated)
+    const recipesDir = path.join(tmpDir, 'recipes')
+    await fs.promises.mkdir(recipesDir, { recursive: true })
+    await fs.promises.writeFile(
+      path.join(recipesDir, 'jambalaya.md'),
+      '# Jambalaya\n\nSpicy rice dish.',
+      'utf8'
+    )
+
+    // Single sync should create the note with the correct collection_id
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Verify the new note exists in the database with the correct collection_id
+    const notesInRecipes = await getNotesInCollection(stream, recipes.collection_uuid)
+    const jambalaya = notesInRecipes.find(n => n.body.includes('Jambalaya'))
+    expect(jambalaya).toBeDefined()
+    expect(jambalaya!.collection_id).toBe(recipes.collection_uuid)
+
+    // Verify the file persists on disk after sync
+    expect(fs.existsSync(path.join(recipesDir, 'jambalaya.md'))).toBe(true)
+  })
+
+  it('should create new root-level notes from new .md files', async () => {
+    // Create an existing note in the database
+    await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Existing Note\n\nAlready here.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // First sync to write existing note to disk
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Add a new .md file at the root level
+    await fs.promises.writeFile(
+      path.join(tmpDir, 'brand-new.md'),
+      '# Brand New\n\nThis is a brand new note.',
+      'utf8'
+    )
+
+    // Sync again — should create the new note in the database
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Verify both notes exist in the database
+    const allNotes = await getNotesInCollection(stream, null)
+    const newNote = allNotes.find(n => n.body.includes('brand new note'))
+    expect(newNote).toBeDefined()
+    expect(newNote!.body).toContain('# Brand New')
+
+    // Verify the file persists on disk
+    expect(fs.existsSync(path.join(tmpDir, 'brand-new.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'existing-note.md'))).toBe(true)
+  })
+
+  it('should create a new collection when a new directory with notes is synced', async () => {
+    const library = await createCollection(stream, {
+      title: 'My Library',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // Create a new directory with a note inside — no prior collection exists
+    const recipesDir = path.join(tmpDir, 'recipes')
+    await fs.promises.mkdir(recipesDir, { recursive: true })
+    await fs.promises.writeFile(
+      path.join(recipesDir, 'gumbo.md'),
+      '# Gumbo\n\nA classic cajun stew.',
+      'utf8'
+    )
+
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Verify a "Recipes" collection was created
+    const collections = await getAllCollections(stream)
+    const recipesCollection = collections.find(c => c.title === 'Recipes')
+    expect(recipesCollection).toBeDefined()
+    expect(recipesCollection!.parent_collection_uuid).toBe(library.collection_uuid)
+
+    // Verify the note was created inside the new collection
+    const notesInRecipes = await getNotesInCollection(stream, recipesCollection!.collection_uuid)
+    const gumbo = notesInRecipes.find(n => n.body.includes('Gumbo'))
+    expect(gumbo).toBeDefined()
+    expect(gumbo!.collection_id).toBe(recipesCollection!.collection_uuid)
+
+    // Verify files persist on disk
+    expect(fs.existsSync(path.join(recipesDir, 'gumbo.md'))).toBe(true)
+  })
+
+  it('should create nested collections from nested directories', async () => {
+    const library = await createCollection(stream, {
+      title: 'My Library',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // Create a nested directory structure with notes
+    const cookingDir = path.join(tmpDir, 'cooking')
+    const italianDir = path.join(cookingDir, 'italian')
+    await fs.promises.mkdir(italianDir, { recursive: true })
+    await fs.promises.writeFile(
+      path.join(italianDir, 'pasta.md'),
+      '# Pasta\n\nDelicious pasta recipe.',
+      'utf8'
+    )
+
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Verify both collections were created
+    const collections = await getAllCollections(stream)
+    const cookingCollection = collections.find(c => c.title === 'Cooking')
+    expect(cookingCollection).toBeDefined()
+    expect(cookingCollection!.parent_collection_uuid).toBe(library.collection_uuid)
+
+    const italianCollection = collections.find(c => c.title === 'Italian')
+    expect(italianCollection).toBeDefined()
+    expect(italianCollection!.parent_collection_uuid).toBe(cookingCollection!.collection_uuid)
+
+    // Verify the note is in the innermost collection
+    const notesInItalian = await getNotesInCollection(stream, italianCollection!.collection_uuid)
+    const pasta = notesInItalian.find(n => n.body.includes('Pasta'))
+    expect(pasta).toBeDefined()
+
+    // Verify the file persists
+    expect(fs.existsSync(path.join(italianDir, 'pasta.md'))).toBe(true)
   })
 
   it('should handle duplicate slugs within a collection', async () => {
