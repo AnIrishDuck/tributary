@@ -19,10 +19,13 @@ export interface EditorPageProps {
   /** For resuming a new-note draft that was previously auto-saved. */
   draftId?: string
   cancelPath: string
+  /** Optional initial title for new notes (used when creating from a missing slug). */
+  initialTitle?: string
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath }) => {
-  const [content, setContent] = useState<string>('# New Note\n\nStart writing here...')
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle }) => {
+  const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
+  const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)

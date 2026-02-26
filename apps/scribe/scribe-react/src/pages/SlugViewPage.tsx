@@ -10,6 +10,8 @@ import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
 import EditorPage from './EditorPage'
 import NewCollectionPage from './NewCollectionPage'
+import MissingSlugPage from './MissingSlugPage'
+import MissingParentPage from './MissingParentPage'
 import { getDraftForNote } from '../drafts/draftStorage'
 
 interface BlockSlugInfo {
@@ -32,10 +34,12 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
-  | { type: 'newNote'; collectionId?: string; parentSlugPath: string }
-  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string }
+  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string }
+  | { type: 'missingSlug'; slugPath: string }
+  | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -76,7 +80,7 @@ const SlugViewPage: React.FC = () => {
         const {
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
-          getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug,
+          getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug, slugToTitle,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
 
@@ -157,6 +161,52 @@ const SlugViewPage: React.FC = () => {
           return
         }
 
+        // --- Handle slug+note suffix (create note at missing slug) ---
+        if (lastSegment.endsWith('+note') && lastSegment !== '+note') {
+          const slugName = lastSegment.slice(0, -'+note'.length)
+          const parentSegments = segments.slice(0, -1)
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          // Resolve the parent path to get the collection id
+          let collectionId: string | undefined = undefined
+          if (parentSegments.length > 0) {
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            collectionId = resolved.entity.collection_uuid
+          }
+
+          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName) })
+          return
+        }
+
+        // --- Handle slug+collection suffix (create collection at missing slug) ---
+        if (lastSegment.endsWith('+collection') && lastSegment !== '+collection') {
+          const slugName = lastSegment.slice(0, -'+collection'.length)
+          const parentSegments = segments.slice(0, -1)
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          let parentUuid: string = library.collection_uuid
+          let ancestors: Collection[] = []
+
+          if (parentSegments.length > 0) {
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            parentUuid = resolved.entity.collection_uuid
+            ancestors = await getCollectionAncestors(localDb, parentUuid)
+          }
+
+          setMode({ type: 'newCollection', parentUuid, parentSlugPath: parentSegments.join('/'), ancestors, libraryName, initialTitle: slugToTitle(slugName) })
+          return
+        }
+
         // --- Handle &edit suffix (edit existing note) ---
         if (lastSegment.endsWith('&edit')) {
           const noteSlug = lastSegment.slice(0, -'&edit'.length)
@@ -231,7 +281,23 @@ const SlugViewPage: React.FC = () => {
         const resolved = await resolveSlugPath(localDb, segments, library.collection_uuid)
 
         if (!resolved) {
-          throw new Error('Not found')
+          // Slug not found — determine if it's a missing slug (parent exists)
+          // or missing parent (intermediate collections don't exist)
+          const { resolveSlugPathPartial } = await import('scribe-data')
+          const partial = await resolveSlugPathPartial(localDb, segments, library.collection_uuid)
+          const fullSlugPath = segments.join('/')
+
+          if (partial.parentExists) {
+            setMode({ type: 'missingSlug', slugPath: fullSlugPath })
+          } else {
+            setMode({
+              type: 'missingParent',
+              slugPath: fullSlugPath,
+              resolvedSegments: partial.resolvedSegments,
+              missingSegments: partial.missingSegments
+            })
+          }
+          return
         }
 
         const fullSlugPath = segments.join('/')
@@ -334,6 +400,7 @@ const SlugViewPage: React.FC = () => {
         prefix={prefix || ''}
         collectionId={mode.collectionId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        initialTitle={mode.initialTitle}
       />
     )
   }
@@ -357,6 +424,27 @@ const SlugViewPage: React.FC = () => {
         ancestors={mode.ancestors}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
         libraryName={mode.libraryName}
+        initialTitle={mode.initialTitle}
+      />
+    )
+  }
+
+  if (mode.type === 'missingSlug') {
+    return (
+      <MissingSlugPage
+        prefix={prefix || ''}
+        slugPath={mode.slugPath}
+      />
+    )
+  }
+
+  if (mode.type === 'missingParent') {
+    return (
+      <MissingParentPage
+        prefix={prefix || ''}
+        slugPath={mode.slugPath}
+        resolvedSegments={mode.resolvedSegments}
+        missingSegments={mode.missingSegments}
       />
     )
   }

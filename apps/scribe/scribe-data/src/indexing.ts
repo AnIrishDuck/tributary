@@ -53,6 +53,19 @@ export function titleToSlug(title: string): string {
 }
 
 /**
+ * Convert a slug back to a human-readable title.
+ * Splits on hyphens and capitalises the first letter of each word.
+ * @param slug The slug to convert, e.g. "my-recipe"
+ * @returns The title version of the slug, e.g. "My Recipe"
+ */
+export function slugToTitle(slug: string): string {
+  return slug
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+/**
  * Extract tags from a markdown document body
  * Tags are markdown links where both the link and target start with # and are identical
  * e.g. [#mytag](#mytag) 

@@ -19,7 +19,7 @@ import {
 } from '../src/collection.js'
 import { createNote, createNoteVersion } from '../src/note.js'
 import { indexCollectionSlugs, getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
-import { resolveSlugPath } from '../src/slug.js'
+import { resolveSlugPath, resolveSlugPathPartial } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 describe('Collection Operations', () => {
@@ -1164,6 +1164,152 @@ describe('Collection Operations', () => {
 
       const slugPath = await getNoteSlugPath(localDb, pasta.block_uuid)
       expect(slugPath).toEqual(['cooking', 'italian', 'pasta'])
+    })
+  })
+
+  describe('resolveSlugPathPartial', () => {
+    test('returns parentExists=true when only the final segment is missing', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // 'cooking' exists, 'new-recipe' does not
+      const result = await resolveSlugPathPartial(localDb, ['cooking', 'new-recipe'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(true)
+      expect(result.resolvedSegments).toEqual(['cooking'])
+      expect(result.resolvedCollections).toHaveLength(1)
+      expect(result.resolvedCollections[0].collection_uuid).toBe(cooking.collection_uuid)
+      expect(result.missingSegments).toEqual(['new-recipe'])
+      expect(result.parentUuid).toBe(cooking.collection_uuid)
+    })
+
+    test('returns parentExists=true for single segment (parent is library root)', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPathPartial(localDb, ['new-thing'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(true)
+      expect(result.resolvedSegments).toEqual([])
+      expect(result.resolvedCollections).toHaveLength(0)
+      expect(result.missingSegments).toEqual(['new-thing'])
+      expect(result.parentUuid).toBe(library.collection_uuid)
+    })
+
+    test('returns parentExists=false when intermediate collections are missing', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // Neither 'cooking' nor 'italian' nor 'pasta' exist
+      const result = await resolveSlugPathPartial(localDb, ['cooking', 'italian', 'pasta'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(false)
+      expect(result.resolvedSegments).toEqual([])
+      expect(result.resolvedCollections).toHaveLength(0)
+      expect(result.missingSegments).toEqual(['cooking', 'italian', 'pasta'])
+      expect(result.parentUuid).toBe(library.collection_uuid)
+    })
+
+    test('returns parentExists=false when some but not all parents exist', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // 'cooking' exists, but 'italian' and 'pasta' do not
+      const result = await resolveSlugPathPartial(localDb, ['cooking', 'italian', 'pasta'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(false)
+      expect(result.resolvedSegments).toEqual(['cooking'])
+      expect(result.resolvedCollections).toHaveLength(1)
+      expect(result.resolvedCollections[0].collection_uuid).toBe(cooking.collection_uuid)
+      expect(result.missingSegments).toEqual(['italian', 'pasta'])
+      expect(result.parentUuid).toBe(cooking.collection_uuid)
+    })
+
+    test('returns empty missingSegments when all segments resolve', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const italian = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: cooking.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPathPartial(localDb, ['cooking', 'italian'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(true)
+      expect(result.resolvedSegments).toEqual(['cooking', 'italian'])
+      expect(result.resolvedCollections).toHaveLength(2)
+      expect(result.missingSegments).toEqual([])
+      expect(result.parentUuid).toBe(italian.collection_uuid)
+    })
+
+    test('correctly identifies deeply nested missing parents', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const a = await createCollection(syncedDb, {
+        title: 'A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const b = await createCollection(syncedDb, {
+        title: 'B',
+        parent_collection_uuid: a.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // a/b exist, but c/d/e do not
+      const result = await resolveSlugPathPartial(localDb, ['a', 'b', 'c', 'd', 'e'], library.collection_uuid)
+
+      expect(result.parentExists).toBe(false)
+      expect(result.resolvedSegments).toEqual(['a', 'b'])
+      expect(result.resolvedCollections).toHaveLength(2)
+      expect(result.missingSegments).toEqual(['c', 'd', 'e'])
+      expect(result.parentUuid).toBe(b.collection_uuid)
     })
   })
 })
