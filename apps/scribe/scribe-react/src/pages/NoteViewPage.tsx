@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PencilIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { renderMarkdown } from '../utils/markdown'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { MoveModal } from '../components/MoveModal'
 import { useBottomNav } from '../context/bottomNavContext'
 
 interface NoteViewPageProps {
@@ -14,11 +15,13 @@ interface NoteViewPageProps {
   splatPath: string
   ancestors: Collection[]
   libraryName: string
+  blockUuid: string
 }
 
-const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName }) => {
+const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName, blockUuid }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
+  const [showMoveModal, setShowMoveModal] = useState(false)
 
   // Compute parent collection path from slugPath (remove last segment which is the note)
   const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
@@ -37,6 +40,11 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
     } else {
       navigate(`/pk/${prefix}/`)
     }
+  }
+
+  const handleMoved = (newSlugPath: string) => {
+    setShowMoveModal(false)
+    navigate(`/pk/${prefix}/${newSlugPath}`)
   }
 
   return (
@@ -66,10 +74,21 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Breadcrumbs (show path to parent collection, not the note itself) */}
-        {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
-        )}
+        {/* Breadcrumbs + Move button */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1 min-w-0">
+            {ancestors.length > 0 && (
+              <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
+            )}
+          </div>
+          <button
+            onClick={() => setShowMoveModal(true)}
+            className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+          >
+            <ArrowRightIcon className="w-4 h-4" />
+            <span className="hidden md:inline">Move</span>
+          </button>
+        </div>
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
@@ -78,6 +97,16 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
           />
         </div>
       </div>
+
+      <MoveModal
+        isOpen={showMoveModal}
+        onClose={() => setShowMoveModal(false)}
+        entityType="note"
+        entityId={blockUuid}
+        currentSlugPath={slugPath}
+        prefix={prefix}
+        onMoved={handleMoved}
+      />
     </div>
   )
 }

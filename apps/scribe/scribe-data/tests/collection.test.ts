@@ -4,6 +4,7 @@ import { up, down } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
 import {
   createCollection,
+  moveCollection,
   getCollectionByUuid,
   getAllCollections,
   getLinkedLibraries,
@@ -17,7 +18,7 @@ import {
   getSlugPath,
   getNoteSlugPath
 } from '../src/collection.js'
-import { createNote, createNoteVersion } from '../src/note.js'
+import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
 import { indexCollectionSlugs, getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
 import { resolveSlugPath, resolveSlugPathPartial } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
@@ -1310,6 +1311,197 @@ describe('Collection Operations', () => {
       expect(result.resolvedCollections).toHaveLength(2)
       expect(result.missingSegments).toEqual(['c', 'd', 'e'])
       expect(result.parentUuid).toBe(b.collection_uuid)
+    })
+  })
+
+  describe('Move Operations', () => {
+    test('moveNote moves a note from one collection to another', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collectionA = await createCollection(syncedDb, {
+        title: 'Collection A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const collectionB = await createCollection(syncedDb, {
+        title: 'Collection B',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test Note\n\nSome content.',
+        inserter: 'test-user',
+        collection_id: collectionA.collection_uuid
+      })
+
+      // Verify note is initially in collection A
+      const notesInA = await getNotesInCollection(syncedDb, collectionA.collection_uuid)
+      expect(notesInA.length).toBe(1)
+      expect(notesInA[0].block_uuid).toBe(note.block_uuid)
+
+      // Move note to collection B
+      const movedNote = await moveNote(syncedDb, note.block_uuid, collectionB.collection_uuid, 'test-user')
+      expect(movedNote.collection_id).toBe(collectionB.collection_uuid)
+      expect(movedNote.body).toBe('# Test Note\n\nSome content.')
+
+      // Verify note is now in collection B (latest version)
+      const latest = await getLatestNoteVersion(syncedDb, note.block_uuid)
+      expect(latest).not.toBeNull()
+      expect(latest!.collection_id).toBe(collectionB.collection_uuid)
+    })
+
+    test('moveNote moves a note to library root (collection_id = null)', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Collection A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Root Note\n\nContent.',
+        inserter: 'test-user',
+        collection_id: collection.collection_uuid
+      })
+
+      // Move note to library root
+      const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user')
+      expect(movedNote.collection_id).toBeNull()
+
+      // Verify latest version is at root
+      const latest = await getLatestNoteVersion(syncedDb, note.block_uuid)
+      expect(latest!.collection_id).toBeNull()
+    })
+
+    test('moveNote throws when note does not exist', async () => {
+      await expect(
+        moveNote(syncedDb, 'nonexistent-uuid', null, 'test-user')
+      ).rejects.toThrow('Note not found')
+    })
+
+    test('moveCollection moves a collection to a new parent', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const parentA = await createCollection(syncedDb, {
+        title: 'Parent A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const parentB = await createCollection(syncedDb, {
+        title: 'Parent B',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Child Collection',
+        parent_collection_uuid: parentA.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Verify child is initially under parent A
+      const childrenOfA = await getChildCollections(syncedDb, parentA.collection_uuid)
+      expect(childrenOfA.length).toBe(1)
+      expect(childrenOfA[0].collection_uuid).toBe(child.collection_uuid)
+
+      // Move child to parent B
+      await moveCollection(syncedDb, child.collection_uuid, parentB.collection_uuid)
+
+      // Verify child is now under parent B
+      const childrenOfAAfter = await getChildCollections(syncedDb, parentA.collection_uuid)
+      expect(childrenOfAAfter.length).toBe(0)
+
+      const childrenOfB = await getChildCollections(syncedDb, parentB.collection_uuid)
+      expect(childrenOfB.length).toBe(1)
+      expect(childrenOfB[0].collection_uuid).toBe(child.collection_uuid)
+    })
+
+    test('moveCollection moves a collection to library root', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const parent = await createCollection(syncedDb, {
+        title: 'Parent',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Nested Collection',
+        parent_collection_uuid: parent.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Move to library root
+      await moveCollection(syncedDb, child.collection_uuid, library.collection_uuid)
+
+      // Verify child is now directly under library
+      const topLevel = await getChildCollections(syncedDb, library.collection_uuid)
+      const uuids = topLevel.map(c => c.collection_uuid)
+      expect(uuids).toContain(child.collection_uuid)
+      expect(uuids).toContain(parent.collection_uuid)
+    })
+
+    test('move operations update slug paths after re-indexing', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const recipes = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const italian = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: cooking.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // Verify initial slug path: cooking/italian
+      const initialPath = await getSlugPath(syncedDb, italian.collection_uuid)
+      expect(initialPath).toEqual(['cooking', 'italian'])
+
+      // Move italian under recipes
+      await moveCollection(syncedDb, italian.collection_uuid, recipes.collection_uuid)
+      await indexAll(localDb)
+
+      // Verify new slug path: recipes/italian
+      const newPath = await getSlugPath(syncedDb, italian.collection_uuid)
+      expect(newPath).toEqual(['recipes', 'italian'])
+
+      // Verify slug resolution works with new path
+      const resolved = await resolveSlugPath(localDb, ['recipes', 'italian'], library.collection_uuid)
+      expect(resolved).not.toBeNull()
+      expect(resolved!.type).toBe('collection')
+      expect(resolved!.entity.collection_uuid).toBe(italian.collection_uuid)
     })
   })
 })

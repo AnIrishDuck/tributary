@@ -255,8 +255,37 @@ export async function getNoteVersionCount(
 }
 
 /**
+ * Move a note to a different collection.
+ * Creates a new version of the note with the updated collection_id.
+ * The note's content (body) remains unchanged.
+ *
+ * @param db The TributaryStream database instance
+ * @param blockUuid The UUID of the note to move
+ * @param newCollectionId The UUID of the target collection, or null for library root
+ * @param inserter The user/device identifier
+ * @returns The new version of the note
+ */
+export async function moveNote(
+  db: TributaryStream,
+  blockUuid: string,
+  newCollectionId: string | null,
+  inserter: string
+): Promise<Note> {
+  const latest = await getLatestNoteVersion(db, blockUuid)
+  if (!latest) {
+    throw new Error('Note not found')
+  }
+  return createNoteVersion(db, blockUuid, {
+    block_type: latest.block_type,
+    body: latest.body,
+    inserter,
+    collection_id: newCollectionId
+  })
+}
+
+/**
  * Get a note by its version UUID
- * 
+ *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note
  * @param version_uuid The UUID of the version to retrieve
