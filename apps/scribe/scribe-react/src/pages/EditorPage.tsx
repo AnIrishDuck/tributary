@@ -6,6 +6,7 @@ import { saveNote } from '../actions/saveNote'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
+import { EditorView } from '@codemirror/view'
 import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
@@ -301,12 +302,15 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           <div className="flex-1 overflow-hidden">
             <CodeMirror
               value={content}
-              className="border-0 rounded-b-xl !bg-white w-full h-full"
+              className="border-0 rounded-b-xl !bg-white w-full h-full [&_.cm-editor]:!h-full [&_.cm-scroller]:!overflow-auto"
               style={{
                 fontSize: '14px',
                 fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace'
               }}
-              extensions={[markdown({ base: markdownLanguage, codeLanguages: languages })]}
+              extensions={[
+                markdown({ base: markdownLanguage, codeLanguages: languages }),
+                EditorView.lineWrapping,
+              ]}
               onChange={(value) => setContent(value)}
             />
           </div>
