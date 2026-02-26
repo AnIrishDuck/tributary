@@ -1,4 +1,4 @@
-# 03 — Conflict Warning Banner (scribe-react)
+# 02 — Conflict Warning Banner (scribe-react)
 
 ## Goal
 

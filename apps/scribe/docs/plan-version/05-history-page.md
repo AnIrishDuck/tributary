@@ -1,8 +1,8 @@
-# 06 — History Page (scribe-react)
+# 05 — History Page (scribe-react)
 
 ## Goal
 
-Create a history page that renders the version tree for a note. The page is accessed via the `&history` suffix in the URL (e.g. `/pk/{prefix}/cooking/pasta&history`). Each version in the tree links to its read-only view using the `@version_uuid` URL pattern from prompt 05.
+Create a history page that renders the version tree for a note. The page is accessed via the `&history` suffix in the URL (e.g. `/pk/{prefix}/cooking/pasta&history`). Each version in the tree links to its read-only view using the `@version_uuid` URL pattern from prompt 04.
 
 ## Package
 
@@ -11,8 +11,8 @@ Create a history page that renders the version tree for a note. The page is acce
 ## Depends on
 
 - `01-version-data-layer` (for `VersionSummary`)
-- `04-history-data-layer` (for `getVersionTree`, `VersionTreeNode`)
-- `05-version-routing` (for `@version_uuid` navigation)
+- `03-history-data-layer` (for `getVersionTree`, `VersionTreeNode`)
+- `04-version-routing` (for `@version_uuid` navigation)
 
 ## Context
 
@@ -77,7 +77,7 @@ interface VersionTreeProps {
 
 - Add a "History" link/button in the header next to the Edit button, linking to `&history` URL.
 
-### Modifications to version footer (`VersionFooter.tsx` from prompt 02)
+### Modifications to version footer (`VersionFooter.tsx` from prompt 01)
 
 - Make the version text a link to the history page (`slugPath&history`).
 

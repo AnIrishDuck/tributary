@@ -1,4 +1,4 @@
-# 04 — Version Tree Data Layer (scribe-data)
+# 03 — Version Tree Data Layer (scribe-data)
 
 ## Goal
 
@@ -53,7 +53,7 @@ export interface VersionTreeNode {
 2. **`getVersionByUuid(db, version_uuid): Promise<Note | null>`**
    - Fetch a single version row by `version_uuid` alone (no `block_uuid` needed).
    - Simpler than existing `getNoteByVersion` which requires both.
-   - Useful for the `@version_uuid` URL routing (prompt 05) where the user navigates directly by version.
+   - Useful for the `@version_uuid` URL routing (prompt 04) where the user navigates directly by version.
 
 ### Exports (`src/index.ts`)
 
