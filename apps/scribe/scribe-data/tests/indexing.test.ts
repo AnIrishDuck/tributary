@@ -7,6 +7,7 @@ import {
   indexCollectionSlugs,
   extractTitleFromMarkdown,
   titleToSlug,
+  slugToTitle,
   extractTagsFromMarkdown,
   getNoteSlugByUuid,
   getAuthoritativeVersionByNoteUuid,
@@ -74,6 +75,28 @@ describe('scribe-data indexing', () => {
     for (const testCase of testCases) {
       const result = titleToSlug(testCase.input)
       expect(result).toBe(testCase.expected)
+    }
+  })
+
+  test('should convert slug back to title correctly', () => {
+    const testCases = [
+      { input: 'my-document-title', expected: 'My Document Title' },
+      { input: 'single', expected: 'Single' },
+      { input: 'a-b-c', expected: 'A B C' },
+      { input: '123-numbers-and-symbols', expected: '123 Numbers And Symbols' },
+      { input: 'already', expected: 'Already' },
+    ]
+
+    for (const testCase of testCases) {
+      const result = slugToTitle(testCase.input)
+      expect(result).toBe(testCase.expected)
+    }
+  })
+
+  test('slugToTitle is the inverse of titleToSlug for simple titles', () => {
+    const titles = ['My Document', 'Hello World', 'Italian Recipes']
+    for (const title of titles) {
+      expect(slugToTitle(titleToSlug(title))).toBe(title)
     }
   })
 

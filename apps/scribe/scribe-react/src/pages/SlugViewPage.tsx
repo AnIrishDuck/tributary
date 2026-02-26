@@ -41,14 +41,6 @@ type PageMode =
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
 
-/** Convert a slug like "my-recipe" back to a title like "My Recipe". */
-function slugToTitle(slug: string): string {
-  return slug
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
   const navigate = useNavigate()
@@ -88,7 +80,7 @@ const SlugViewPage: React.FC = () => {
         const {
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
-          getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug,
+          getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug, slugToTitle,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
 
