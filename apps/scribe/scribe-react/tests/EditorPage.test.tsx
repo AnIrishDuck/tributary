@@ -10,6 +10,7 @@ import { routes } from '../src/route'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
 import { createNote } from 'scribe-data/src/note'
 import { indexSlugs, getNoteSlugByUuid } from 'scribe-data/src/indexing'
+import { getDraftForNote } from '../src/drafts/draftStorage'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -342,5 +343,64 @@ describe('EditorPage sync gate bug', () => {
     // The sync screen should NOT be visible
     expect(screen.queryByText('Syncing Notes')).not.toBeInTheDocument()
     expect(screen.queryByText('Notes Still Syncing')).not.toBeInTheDocument()
+  })
+})
+
+describe('EditorPage cancel behavior', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('should delete draft when canceling edit of existing note', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    // Create a note in the stream
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Cancel Test\n\nSome content here.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'cancel-test'
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    const { unmount } = render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for the editor to load
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+    })
+
+    // Click cancel
+    const cancelButton = screen.getByRole('button', { name: /Cancel/ })
+    fireEvent.click(cancelButton)
+
+    // Wait for side effects to settle
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // No draft should exist for this note after canceling.
+    // Bug: cancel calls saveNow() which creates a draft, causing the user
+    // to be permanently redirected back to the edit page.
+    const draft = getDraftForNote(base64Part, block.block_uuid)
+    expect(draft).toBeNull()
+
+    unmount()
   })
 })
