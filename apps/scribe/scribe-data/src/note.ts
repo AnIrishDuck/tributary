@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, PGliteResult } from './types'
+import { Note, PGliteResult, VersionSummary } from './types'
 
 interface NoteQueryResult {
   version_uuid: string;
@@ -300,10 +300,62 @@ export async function getNoteByVersion(
     `SELECT * FROM block WHERE block_uuid = $1 AND version_uuid = $2`,
     [block_uuid, version_uuid]
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     return null
   }
-  
+
   return result.rows[0] as Note
+}
+
+/**
+ * Get the full version history of a note with position metadata
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param block_uuid The UUID of the note to retrieve version history for
+ * @returns Array of VersionSummary objects ordered by insert_datetime ASC, or empty array if note doesn't exist
+ */
+export async function getVersionHistory(
+  db: TributaryStream | TributaryLocal,
+  block_uuid: string
+): Promise<VersionSummary[]> {
+  const result = await db.query(
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
+    [block_uuid]
+  )
+
+  const rows = (result.rows || []) as Array<{
+    version_uuid: string
+    prior_version_uuid: string | null
+    insert_datetime: string
+    inserter: string
+  }>
+
+  const total = rows.length
+  return rows.map((row, index) => ({
+    version_uuid: row.version_uuid,
+    prior_version_uuid: row.prior_version_uuid,
+    insert_datetime: row.insert_datetime,
+    inserter: row.inserter,
+    position: index + 1,
+    total,
+    isAuthoritative: index === total - 1,
+  }))
+}
+
+/**
+ * Get the version position for a specific version of a note
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param block_uuid The UUID of the note
+ * @param version_uuid The UUID of the version to find
+ * @returns The VersionSummary for the specified version, or null if not found
+ */
+export async function getVersionPosition(
+  db: TributaryStream | TributaryLocal,
+  block_uuid: string,
+  version_uuid: string
+): Promise<VersionSummary | null> {
+  const history = await getVersionHistory(db, block_uuid)
+  return history.find(v => v.version_uuid === version_uuid) ?? null
 }

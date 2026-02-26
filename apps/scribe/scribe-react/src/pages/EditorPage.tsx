@@ -11,6 +11,7 @@ import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
+import VersionFooter from '../components/VersionFooter'
 
 export interface EditorPageProps {
   prefix: string
@@ -29,6 +30,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
+  const [versionUuid, setVersionUuid] = useState<string | undefined>(undefined)
+  const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
@@ -127,7 +130,19 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
             throw new Error('Note content not found')
           }
 
+          setVersionUuid(authoritativeVersion.version_uuid)
           setContent(note.body)
+
+          // Fetch version position info
+          try {
+            const { getVersionPosition } = await import('scribe-data')
+            const pos = await getVersionPosition(localDb, noteSlugInfo.block_uuid, authoritativeVersion.version_uuid)
+            if (pos) {
+              setVersionPosition({ position: pos.position, total: pos.total })
+            }
+          } catch {
+            // Silently ignore version info errors
+          }
         } catch (err: any) {
           setError('Failed to load note: ' + (err.message || 'Unknown error'))
           console.error('Error loading note:', err)
@@ -323,9 +338,18 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           </div>
 
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
-            <div className="flex items-center text-sm text-gray-500">
-              <DocumentTextIcon className="w-4 h-4 mr-2" />
-              <span>{content.length} characters</span>
+            <div className="flex items-center gap-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <DocumentTextIcon className="w-4 h-4 mr-2" />
+                <span>{content.length} characters</span>
+              </span>
+              {versionUuid && versionPosition && (
+                <VersionFooter
+                  versionUuid={versionUuid}
+                  position={versionPosition.position}
+                  total={versionPosition.total}
+                />
+              )}
             </div>
             <div className="text-xs text-gray-400">
               Markdown supported
