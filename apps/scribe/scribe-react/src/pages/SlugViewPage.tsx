@@ -34,12 +34,20 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
-  | { type: 'newNote'; collectionId?: string; parentSlugPath: string }
-  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string }
+  | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string }
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
+
+/** Convert a slug like "my-recipe" back to a title like "My Recipe". */
+function slugToTitle(slug: string): string {
+  return slug
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -165,7 +173,6 @@ const SlugViewPage: React.FC = () => {
         if (lastSegment.endsWith('+note') && lastSegment !== '+note') {
           const slugName = lastSegment.slice(0, -'+note'.length)
           const parentSegments = segments.slice(0, -1)
-          const parentSlugPath = [...parentSegments, slugName].join('/')
 
           const library = await getLibrary(localDb)
           if (!library) throw new Error('Library not found')
@@ -180,7 +187,7 @@ const SlugViewPage: React.FC = () => {
             collectionId = resolved.entity.collection_uuid
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/') })
+          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName) })
           return
         }
 
@@ -204,7 +211,7 @@ const SlugViewPage: React.FC = () => {
             ancestors = await getCollectionAncestors(localDb, parentUuid)
           }
 
-          setMode({ type: 'newCollection', parentUuid, parentSlugPath: parentSegments.join('/'), ancestors, libraryName })
+          setMode({ type: 'newCollection', parentUuid, parentSlugPath: parentSegments.join('/'), ancestors, libraryName, initialTitle: slugToTitle(slugName) })
           return
         }
 
@@ -401,6 +408,7 @@ const SlugViewPage: React.FC = () => {
         prefix={prefix || ''}
         collectionId={mode.collectionId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        initialTitle={mode.initialTitle}
       />
     )
   }
@@ -424,6 +432,7 @@ const SlugViewPage: React.FC = () => {
         ancestors={mode.ancestors}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
         libraryName={mode.libraryName}
+        initialTitle={mode.initialTitle}
       />
     )
   }

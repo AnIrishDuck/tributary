@@ -12,10 +12,12 @@ export interface NewCollectionPageProps {
   ancestors?: Collection[]
   cancelPath: string
   libraryName?: string
+  /** Optional initial title (used when creating from a missing slug). */
+  initialTitle?: string
 }
 
-const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUuid, ancestors = [], cancelPath, libraryName }) => {
-  const [title, setTitle] = useState('')
+const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUuid, ancestors = [], cancelPath, libraryName, initialTitle }) => {
+  const [title, setTitle] = useState(initialTitle ?? '')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
