@@ -8,8 +8,8 @@ import { TributaryProvider } from '../src/context/tributaryContext'
 import { SyncStatusProvider } from '../src/context/syncStatusContext'
 import { routes } from '../src/route'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
-import { createNote } from 'scribe-data/src/note'
-import { indexSlugs, getNoteSlugByUuid } from 'scribe-data/src/indexing'
+import { createNote, createNoteVersion } from 'scribe-data/src/note'
+import { indexSlugs, indexAll, getNoteSlugByUuid } from 'scribe-data/src/indexing'
 import { getDraftForNote, getDraftSummariesForCollection } from '../src/drafts/draftStorage'
 
 describe('EditorPage', () => {
@@ -476,6 +476,226 @@ describe('EditorPage cancel behavior', () => {
     // causing the draft to appear in the collection listing.
     const drafts = getDraftSummariesForCollection(base64Part, null)
     expect(drafts).toHaveLength(0)
+
+    unmount()
+  })
+})
+
+describe('EditorPage conflict warning', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('should show conflict warning when authoritative version changes mid-edit', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    // Create a note
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Conflict Test\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'conflict-test'
+
+    // Use a fast poll interval so sync detects the change quickly
+    function FastPollProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 100 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    const { unmount } = render(
+      <FastPollProviders>
+        <RouterProvider router={router} />
+      </FastPollProviders>
+    )
+
+    // Wait for editor to load
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Note' })).toBeInTheDocument()
+    })
+
+    // Simulate a concurrent edit from another device
+    await createNoteVersion(stream, block.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Conflict Test\n\nUpdated content from another device.',
+      inserter: 'other-device'
+    })
+    await stream.sync(1000)
+    await indexAll(localDb)
+
+    // The conflict warning should appear after the sync loop detects the change
+    await waitFor(() => {
+      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    unmount()
+  })
+
+  it('should hide conflict warning when Dismiss is clicked', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Dismiss Test\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'dismiss-test'
+
+    function FastPollProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 100 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    const { unmount } = render(
+      <FastPollProviders>
+        <RouterProvider router={router} />
+      </FastPollProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Note' })).toBeInTheDocument()
+    })
+
+    // Simulate concurrent edit
+    await createNoteVersion(stream, block.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Dismiss Test\n\nUpdated content.',
+      inserter: 'other-device'
+    })
+    await stream.sync(1000)
+    await indexAll(localDb)
+
+    // Wait for warning to appear
+    await waitFor(() => {
+      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Click Dismiss
+    fireEvent.click(screen.getByText('Dismiss'))
+
+    // Warning should disappear
+    await waitFor(() => {
+      expect(screen.queryByText(/This note has been updated elsewhere/)).not.toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('should reload editor content when Reload is clicked', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Reload Test\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'reload-test'
+
+    function FastPollProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 100 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    const { unmount } = render(
+      <FastPollProviders>
+        <RouterProvider router={router} />
+      </FastPollProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Note' })).toBeInTheDocument()
+    })
+
+    // Simulate concurrent edit with new content
+    const updatedBody = '# Reload Test\n\nContent from another device.'
+    await createNoteVersion(stream, block.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: updatedBody,
+      inserter: 'other-device'
+    })
+    await stream.sync(1000)
+    await indexAll(localDb)
+
+    // Wait for warning to appear
+    await waitFor(() => {
+      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Click Reload
+    fireEvent.click(screen.getByText('Reload'))
+
+    // Warning should disappear and editor should show new content
+    await waitFor(() => {
+      expect(screen.queryByText(/This note has been updated elsewhere/)).not.toBeInTheDocument()
+    })
+
+    // The CodeMirror editor should now contain the updated content
+    // We check the textbox role since CodeMirror renders as a contenteditable div
+    await waitFor(() => {
+      const editor = screen.getByRole('textbox')
+      expect(editor.textContent).toContain('Content from another device')
+    }, { timeout: 3000 })
 
     unmount()
   })

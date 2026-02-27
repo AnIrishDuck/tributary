@@ -12,6 +12,7 @@ import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
+import ConflictWarning from '../components/ConflictWarning'
 
 export interface EditorPageProps {
   prefix: string
@@ -36,6 +37,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const [blockUuid, setBlockUuid] = useState<string | undefined>(undefined)
   const [versionUuid, setVersionUuid] = useState<string | undefined>(undefined)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
+  const [showConflictWarning, setShowConflictWarning] = useState(false)
+  const loadedVersionUuidRef = useRef<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
@@ -135,6 +138,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           }
 
           setVersionUuid(authoritativeVersion.version_uuid)
+          loadedVersionUuidRef.current = authoritativeVersion.version_uuid
           setContent(note.body)
 
           // Fetch version position info
@@ -156,6 +160,73 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
     loadNoteForEditing()
   }, [isNewNote, editBlockUuid, client, prefix, isSynced, loadDraft])
+
+  // Detect version conflicts: when lastSyncedAt changes, check if the
+  // authoritative version has diverged from the one we loaded.
+  const lastSyncedAt = librarySyncStatus?.lastSyncedAt ?? null
+  useEffect(() => {
+    if (!editBlockUuid || !client || !prefix || !loadedVersionUuidRef.current) return
+    if (!lastSyncedAt) return
+
+    const checkForConflict = async () => {
+      try {
+        const stream = await client.get('scribe', prefix)
+        if (!stream) return
+        const localDb = stream.local()
+        const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
+        if (!authVersion) return
+        if (authVersion.version_uuid !== loadedVersionUuidRef.current) {
+          setShowConflictWarning(true)
+        }
+      } catch {
+        // Silently ignore conflict check errors
+      }
+    }
+
+    checkForConflict()
+  }, [editBlockUuid, client, prefix, lastSyncedAt])
+
+  const onConflictReload = useCallback(async () => {
+    if (!editBlockUuid || !client || !prefix) return
+    try {
+      // Save the current draft before reloading
+      saveNow()
+
+      const stream = await client.get('scribe', prefix)
+      if (!stream) return
+      const localDb = stream.local()
+
+      const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
+      if (!authVersion) return
+
+      const note = await getNoteByVersion(localDb, editBlockUuid, authVersion.version_uuid)
+      if (!note) return
+
+      // Update content and version tracking
+      setContent(note.body)
+      setVersionUuid(authVersion.version_uuid)
+      loadedVersionUuidRef.current = authVersion.version_uuid
+
+      // Update version position
+      try {
+        const { getVersionPosition } = await import('scribe-data')
+        const pos = await getVersionPosition(localDb, editBlockUuid, authVersion.version_uuid)
+        if (pos) {
+          setVersionPosition({ position: pos.position, total: pos.total })
+        }
+      } catch {
+        // Silently ignore version info errors
+      }
+
+      setShowConflictWarning(false)
+    } catch (err: any) {
+      setError('Failed to reload note: ' + (err.message || 'Unknown error'))
+    }
+  }, [editBlockUuid, client, prefix, saveNow])
+
+  const onConflictDismiss = useCallback(() => {
+    setShowConflictWarning(false)
+  }, [])
 
   // If editing an existing note and this library hasn't synced yet, show a waiting
   // screen. New notes don't need to wait — there's no existing content to load.
@@ -254,6 +325,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Conflict Warning Banner */}
+      {showConflictWarning && (
+        <ConflictWarning onReload={onConflictReload} onDismiss={onConflictDismiss} />
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 py-3 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
