@@ -47,4 +47,14 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  /* FAB positioning above mobile bottom nav (h-14 + safe area + margin) */
+  .fab-above-nav {
+    bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* FAB positioning without bottom nav (editor pages) */
+  .fab-bottom {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
 }
