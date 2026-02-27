@@ -95,8 +95,10 @@ describe('NoteListPage', () => {
     expect(screen.getByText('third-document')).toBeInTheDocument()
     expect(screen.getByText('another-document')).toBeInTheDocument()
     
-    // Check that the "Create New Note" button is present
-    expect(screen.getByRole('button', { name: 'Create New Note' })).toBeInTheDocument()
+    // Check that the "New Note" FAB is present (set via useEffect, needs waitFor)
+    await waitFor(() => {
+      expect(screen.getByLabelText('New Note')).toBeInTheDocument()
+    })
   })
 
   it('should handle notes with no titles', async () => {

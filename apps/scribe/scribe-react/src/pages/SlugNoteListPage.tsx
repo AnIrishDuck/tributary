@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { MoveModal } from '../components/MoveModal'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from '../drafts/draftStorage'
+import { useBottomNav } from '../context/bottomNavContext'
 
 interface NoteListViewProps {
   collections: { collection: Collection; slug: string | null }[]
@@ -27,8 +28,18 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   collection, ancestors
 }) => {
   const navigate = useNavigate()
+  const { setFloatingAction } = useBottomNav()
   const isRoot = !collection
   const [showMoveModal, setShowMoveModal] = useState(false)
+
+  // Set the floating action button to "New Note" for this collection
+  useEffect(() => {
+    const newNoteUrl = slugPath
+      ? `/pk/${prefix}/${slugPath}/+note`
+      : `/pk/${prefix}/+note`
+    setFloatingAction({ icon: PlusIcon, label: 'New Note', to: newNoteUrl })
+    return () => setFloatingAction(null)
+  }, [prefix, slugPath, setFloatingAction])
 
   const showSyncProgress = syncProgress && !syncProgress.synced
 
@@ -328,17 +339,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           </>
         )}
 
-        {notes.length > 0 && isRoot && (
-          <div className="mt-8 text-center hidden md:block">
-            <button
-              onClick={handleNewNote}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-            >
-              <PlusIcon className="w-4 h-4 mr-1.5" />
-              Create New Note
-            </button>
-          </div>
-        )}
       </div>
 
       {!isRoot && collection && (

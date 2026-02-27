@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Outlet, useLocation, useNavigate, Link } from 'react-router'
+import { Outlet, useLocation, Link } from 'react-router'
 import { HomeIcon, PlusIcon, MagnifyingGlassIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
@@ -8,7 +8,6 @@ import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
 
 const Layout: React.FC = () => {
   const location = useLocation()
-  const navigate = useNavigate()
   const syncContext = useSyncStatusOptional()
   const globalSyncStatus = syncContext?.globalSyncStatus
   const { logout } = useTributary()
@@ -26,12 +25,12 @@ const Layout: React.FC = () => {
 
   // Determine which bottom nav item is active
   const isHome = location.pathname === '/'
-  const isNew = location.pathname === '/new' || location.pathname.endsWith('/+note')
   const isSearch = location.pathname.endsWith('/search')
 
-  // Don't show bottom nav on the editor page (it has its own toolbar)
-  const lastSegment = location.pathname.split('/').pop() || ''
-  const isEditor = lastSegment.endsWith('&edit')
+  // Detect editor pages: &edit, +note, +draft paths
+  const pathSegments = location.pathname.split('/')
+  const lastSegment = pathSegments[pathSegments.length - 1] || ''
+  const isEditorPage = lastSegment.endsWith('&edit') || lastSegment === '+note' || pathSegments.includes('+draft')
 
   // Show sync indicator dot
   const showSyncDot = globalSyncStatus ? globalSyncStatus.isSyncing && !globalSyncStatus.synced : false
@@ -63,8 +62,21 @@ const Layout: React.FC = () => {
         <Outlet />
       </main>
 
+      {/* Standalone Floating Action Button */}
+      {floatingAction && (
+        <Link
+          to={floatingAction.to}
+          className={`fixed z-50 right-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white ${
+            isEditorPage ? 'fab-bottom' : 'fab-above-nav'
+          }`}
+          aria-label={floatingAction.label}
+        >
+          <floatingAction.icon className="w-6 h-6" />
+        </Link>
+      )}
+
       {/* Mobile bottom navigation - hidden on desktop and in editor */}
-      {!isEditor && (
+      {!isEditorPage && (
         <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 md:hidden z-50 pb-safe">
           <div className="flex items-center justify-around h-14">
             <Link
@@ -83,29 +95,15 @@ const Layout: React.FC = () => {
             </Link>
 
             {prefix ? (
-              <>
-                <Link
-                  to={`/pk/${prefix}/search`}
-                  className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
-                    isSearch ? 'text-blue-600' : 'text-gray-500'
-                  }`}
-                >
-                  <MagnifyingGlassIcon className="w-6 h-6" />
-                  <span className="text-xs mt-0.5">Search</span>
-                </Link>
-
-                <Link
-                  to={floatingAction ? floatingAction.to : `/pk/${prefix}/+note`}
-                  className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
-                    !floatingAction && isNew ? 'text-blue-600' : floatingAction ? 'text-blue-600' : 'text-gray-500'
-                  }`}
-                >
-                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center -mt-3 shadow-lg">
-                    {floatingAction ? <floatingAction.icon className="w-6 h-6 text-white" /> : <PlusIcon className="w-6 h-6 text-white" />}
-                  </div>
-                  <span className="text-xs mt-0.5 text-blue-600">{floatingAction ? floatingAction.label : 'New'}</span>
-                </Link>
-              </>
+              <Link
+                to={`/pk/${prefix}/search`}
+                className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
+                  isSearch ? 'text-blue-600' : 'text-gray-500'
+                }`}
+              >
+                <MagnifyingGlassIcon className="w-6 h-6" />
+                <span className="text-xs mt-0.5">Search</span>
+              </Link>
             ) : (
               <>
                 <Link

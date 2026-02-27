@@ -279,31 +279,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                 <XMarkIcon className="w-4 h-4 mr-1.5" />
                 Cancel
               </button>
-
-              <button
-                onClick={onSaveNote}
-                disabled={isLoading}
-                className={`inline-flex items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white ${
-                  isLoading
-                    ? 'bg-blue-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200`}
-              >
-                {isLoading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <ArrowUpOnSquareIcon className="w-4 h-4 mr-1.5" />
-                    {isNewNote ? 'Add Note' : 'Update Note'}
-                  </>
-                )}
-              </button>
             </div>
           </div>
         </div>
@@ -384,6 +359,23 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           </div>
         </div>
       </div>
+
+      {/* Save FAB */}
+      <button
+        onClick={onSaveNote}
+        disabled={isLoading}
+        className="fixed z-50 right-4 md:right-8 fab-bottom md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
+        aria-label={isNewNote ? 'Add Note' : 'Update Note'}
+      >
+        {isLoading ? (
+          <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        ) : (
+          <ArrowUpOnSquareIcon className="w-6 h-6" />
+        )}
+      </button>
     </div>
   )
 }
