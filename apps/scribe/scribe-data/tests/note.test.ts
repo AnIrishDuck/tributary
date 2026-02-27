@@ -3,13 +3,15 @@ import { v4 as uuidv4 } from 'uuid'
 import { BlockUuid, VersionUuid } from '../src/types.js'
 import { up, down } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
-import { 
-  createNote, 
-  createNoteVersion, 
-  getNoteByUuid, 
-  getNoteVersions, 
+import {
+  createNote,
+  createNoteVersion,
+  getNoteByUuid,
+  getNoteVersions,
   getLatestNoteVersion,
-  getNoteCount
+  getNoteCount,
+  getVersionHistory,
+  getVersionPosition
 } from '../src/note.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -275,5 +277,112 @@ describe('Note Operations', () => {
     
     count = await getNoteCount(syncedDb)
     expect(count).toBe(3) // 2 unique notes + 1 new version = 3 total rows
+  })
+})
+
+describe('version history', () => {
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const result = await createTestDB()
+    syncedDb = result.syncedDb
+    localDb = result.localDb
+    cleanup = async () => {}
+    await up(syncedDb, localDb)
+  })
+
+  afterEach(async () => {
+    if (cleanup) await cleanup()
+  })
+
+  test('single version', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Single Version',
+      inserter: 'test-user'
+    })
+
+    const history = await getVersionHistory(syncedDb, note.block_uuid)
+
+    expect(history).toHaveLength(1)
+    expect(history[0].position).toBe(1)
+    expect(history[0].total).toBe(1)
+    expect(history[0].isAuthoritative).toBe(true)
+    expect(history[0].version_uuid).toBe(note.version_uuid)
+    expect(history[0].inserter).toBe('test-user')
+  })
+
+  test('multiple versions', async () => {
+    const v1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Version 1',
+      inserter: 'test-user'
+    })
+
+    const v2 = await createNoteVersion(syncedDb, v1.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Version 2',
+      inserter: 'test-user'
+    })
+
+    const v3 = await createNoteVersion(syncedDb, v1.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Version 3',
+      inserter: 'test-user'
+    })
+
+    const history = await getVersionHistory(syncedDb, v1.block_uuid)
+
+    expect(history).toHaveLength(3)
+    expect(history[0]).toMatchObject({ position: 1, total: 3, isAuthoritative: false, version_uuid: v1.version_uuid })
+    expect(history[1]).toMatchObject({ position: 2, total: 3, isAuthoritative: false, version_uuid: v2.version_uuid })
+    expect(history[2]).toMatchObject({ position: 3, total: 3, isAuthoritative: true, version_uuid: v3.version_uuid })
+  })
+
+  test('getVersionPosition hit', async () => {
+    const v1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Version 1',
+      inserter: 'test-user'
+    })
+
+    const v2 = await createNoteVersion(syncedDb, v1.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Version 2',
+      inserter: 'test-user'
+    })
+
+    await createNoteVersion(syncedDb, v1.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Version 3',
+      inserter: 'test-user'
+    })
+
+    const pos = await getVersionPosition(syncedDb, v1.block_uuid, v2.version_uuid)
+
+    expect(pos).not.toBeNull()
+    expect(pos!.position).toBe(2)
+    expect(pos!.total).toBe(3)
+    expect(pos!.isAuthoritative).toBe(false)
+  })
+
+  test('getVersionPosition miss', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Some Note',
+      inserter: 'test-user'
+    })
+
+    const pos = await getVersionPosition(syncedDb, note.block_uuid, uuidv4())
+
+    expect(pos).toBeNull()
+  })
+
+  test('empty note', async () => {
+    const history = await getVersionHistory(syncedDb, uuidv4())
+
+    expect(history).toEqual([])
   })
 })

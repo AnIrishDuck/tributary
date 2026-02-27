@@ -130,4 +130,36 @@ describe('NoteViewPage', () => {
     expect(screen.getByText('Unique Note')).toBeInTheDocument()
     expect(screen.getByText(/This note has a unique slug/)).toBeInTheDocument()
   })
+
+  it('should display version footer when version data is available', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note
+    const testContent = '# Version Footer Test\n\nA note to test version footer.'
+    const { block, blockSlug } = await saveNote(stream, testContent)
+    expect(blockSlug).toBeDefined()
+    const slug = blockSlug!.slug
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for the page to load
+    await waitFor(() => {
+      expect(screen.getByText('Edit')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Version footer should show "version:" text with position info
+    await waitFor(() => {
+      expect(screen.getByText(/version:/)).toBeInTheDocument()
+      expect(screen.getByText(/\(1\/1\)/)).toBeInTheDocument()
+    }, { timeout: 3000 })
+  })
 })

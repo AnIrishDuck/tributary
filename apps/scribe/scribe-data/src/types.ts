@@ -183,6 +183,20 @@ export interface NoteWithTags extends Note {
  */
 export interface IndexedNote extends NoteWithVersion, NoteWithSlug, NoteWithTags {}
 
+/** A version summary returned by getVersionHistory. */
+export interface VersionSummary {
+  version_uuid: string
+  prior_version_uuid: string | null
+  insert_datetime: string
+  inserter: string
+  /** 1-based position in chronological order (1 = oldest). */
+  position: number
+  /** Total number of versions for this note. */
+  total: number
+  /** True when this is the authoritative (latest) version. */
+  isAuthoritative: boolean
+}
+
 // Re-export search types from search.ts
 export type {
   SearchOptions,
