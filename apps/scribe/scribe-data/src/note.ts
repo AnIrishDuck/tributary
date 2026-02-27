@@ -309,19 +309,28 @@ export async function getNoteByVersion(
 }
 
 /**
- * Get the full version history of a note with position metadata
+ * Get the version history of a note with position metadata
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note to retrieve version history for
+ * @param limit Maximum number of versions to return (default 100)
  * @returns Array of VersionSummary objects ordered by insert_datetime ASC, or empty array if note doesn't exist
  */
 export async function getVersionHistory(
   db: TributaryStream | TributaryLocal,
-  block_uuid: string
+  block_uuid: string,
+  limit: number = 100
 ): Promise<VersionSummary[]> {
-  const result = await db.query(
-    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
+  const countResult = await db.query(
+    `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
     [block_uuid]
+  )
+  const total = parseInt((countResult.rows?.[0] as any)?.count ?? '0')
+  if (total === 0) return []
+
+  const result = await db.query(
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2`,
+    [block_uuid, limit]
   )
 
   const rows = (result.rows || []) as Array<{
@@ -331,7 +340,6 @@ export async function getVersionHistory(
     inserter: string
   }>
 
-  const total = rows.length
   return rows.map((row, index) => ({
     version_uuid: row.version_uuid,
     prior_version_uuid: row.prior_version_uuid,
@@ -339,12 +347,15 @@ export async function getVersionHistory(
     inserter: row.inserter,
     position: index + 1,
     total,
-    isAuthoritative: index === total - 1,
+    isAuthoritative: index + 1 === total,
   }))
 }
 
 /**
  * Get the version position for a specific version of a note
+ *
+ * Uses a single query to count versions before the target and the total,
+ * avoiding loading all versions into memory.
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note
@@ -356,6 +367,43 @@ export async function getVersionPosition(
   block_uuid: string,
   version_uuid: string
 ): Promise<VersionSummary | null> {
-  const history = await getVersionHistory(db, block_uuid)
-  return history.find(v => v.version_uuid === version_uuid) ?? null
+  // Get the target version's row
+  const targetResult = await db.query(
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 AND version_uuid = $2`,
+    [block_uuid, version_uuid]
+  )
+
+  if (!targetResult.rows || targetResult.rows.length === 0) {
+    return null
+  }
+
+  const target = targetResult.rows[0] as {
+    version_uuid: string
+    prior_version_uuid: string | null
+    insert_datetime: string
+    inserter: string
+  }
+
+  // Count versions with insert_datetime <= this version's (gives 1-based position)
+  // and total count, in a single query
+  const countsResult = await db.query(
+    `SELECT
+       (SELECT COUNT(*) FROM block WHERE block_uuid = $1 AND insert_datetime <= $2) as position,
+       (SELECT COUNT(*) FROM block WHERE block_uuid = $1) as total`,
+    [block_uuid, target.insert_datetime]
+  )
+
+  const counts = countsResult.rows?.[0] as any
+  const position = parseInt(counts.position)
+  const total = parseInt(counts.total)
+
+  return {
+    version_uuid: target.version_uuid,
+    prior_version_uuid: target.prior_version_uuid,
+    insert_datetime: target.insert_datetime,
+    inserter: target.inserter,
+    position,
+    total,
+    isAuthoritative: position === total,
+  }
 }
