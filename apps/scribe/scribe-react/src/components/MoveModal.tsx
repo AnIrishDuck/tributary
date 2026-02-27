@@ -192,7 +192,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         {validation.status === 'valid' && (
           <div className="mb-4 flex items-center gap-2 text-green-700 bg-green-50 px-3 py-2 rounded-lg text-sm">
             <CheckCircleIcon className="w-4 h-4 flex-shrink-0" />
-            <span>Will move to <span className="font-mono">{validation.resolvedPath}</span></span>
+            <span>Will move to <span className="font-mono">{
+              (() => {
+                const entitySlug = currentSlugPath.split('/').pop() || ''
+                return validation.resolvedPath === '/'
+                  ? `/${entitySlug}`
+                  : `${validation.resolvedPath}/${entitySlug}`
+              })()
+            }</span></span>
           </div>
         )}
         {validation.status === 'invalid' && (
