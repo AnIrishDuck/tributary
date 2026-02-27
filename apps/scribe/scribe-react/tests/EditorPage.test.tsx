@@ -57,7 +57,7 @@ describe('EditorPage', () => {
 
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
   })
 
@@ -77,7 +77,7 @@ describe('EditorPage', () => {
 
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
   })
 
@@ -100,7 +100,7 @@ describe('EditorPage', () => {
 
     // Wait for the component to render fully
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
 
     const saveButton = screen.getByRole('button', { name: 'Add Note' })
@@ -153,7 +153,7 @@ describe('EditorPage', () => {
     // so mocking it before render causes the sync to fail and the editor
     // shows the "syncing" screen instead of the editor form.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
 
     // NOW mock client.get to throw an error so the save operation fails
@@ -212,7 +212,7 @@ describe('EditorPage', () => {
 
     // Wait for the editor to load and show it's editing existing note
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
 
     // Test that the save button exists and is properly labeled for editing
@@ -252,7 +252,7 @@ describe('EditorPage Additional Tests', () => {
 
     // Wait for the page to fully load - check for "New Note" heading
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Verify NO errors
@@ -337,7 +337,7 @@ describe('EditorPage sync gate bug', () => {
     // permanently incomplete (never re-synced while focused library is set).
     // EditorPage gates on this and shows the sync screen instead.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'New Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // The sync screen should NOT be visible
@@ -385,7 +385,7 @@ describe('EditorPage cancel behavior', () => {
 
     // Wait for the editor to load
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
 
     // Click cancel
