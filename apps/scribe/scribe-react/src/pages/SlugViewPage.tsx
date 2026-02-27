@@ -34,10 +34,10 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
-  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; collectionLabel: string }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
-  | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string }
-  | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string }
+  | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
+  | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string }
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
 
@@ -100,6 +100,7 @@ const SlugViewPage: React.FC = () => {
         if (lastSegment === '+note') {
           const parentSegments = segments.slice(0, -1)
           let collectionId: string | undefined = undefined
+          let collectionLabel = libraryName
           const parentSlugPath = parentSegments.join('/')
 
           if (parentSegments.length > 0) {
@@ -110,9 +111,10 @@ const SlugViewPage: React.FC = () => {
               throw new Error('Parent path does not resolve to a collection')
             }
             collectionId = resolved.entity.collection_uuid
+            collectionLabel = resolved.entity.title || libraryName
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath })
+          setMode({ type: 'newNote', collectionId, parentSlugPath, collectionLabel })
           return
         }
 
@@ -121,6 +123,7 @@ const SlugViewPage: React.FC = () => {
           const draftId = lastSegment
           const parentSegments = segments.slice(0, -2)
           let collectionId: string | undefined = undefined
+          let collectionLabel = libraryName
           const parentSlugPath = parentSegments.join('/')
 
           if (parentSegments.length > 0) {
@@ -131,9 +134,10 @@ const SlugViewPage: React.FC = () => {
               throw new Error('Parent path does not resolve to a collection')
             }
             collectionId = resolved.entity.collection_uuid
+            collectionLabel = resolved.entity.title || libraryName
           }
 
-          setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath })
+          setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath, collectionLabel })
           return
         }
 
@@ -171,15 +175,17 @@ const SlugViewPage: React.FC = () => {
 
           // Resolve the parent path to get the collection id
           let collectionId: string | undefined = undefined
+          let collectionLabel = libraryName
           if (parentSegments.length > 0) {
             const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
             if (!resolved || resolved.type !== 'collection') {
               throw new Error('Parent path does not resolve to a collection')
             }
             collectionId = resolved.entity.collection_uuid
+            collectionLabel = resolved.entity.title || libraryName
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName) })
+          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName), collectionLabel })
           return
         }
 
@@ -213,16 +219,26 @@ const SlugViewPage: React.FC = () => {
           if (!noteSlug) throw new Error('Invalid edit path')
 
           const resolveSegments = [...segments.slice(0, -1), noteSlug]
+          const parentSegments = segments.slice(0, -1)
 
           const library = await getLibrary(localDb)
           if (!library) throw new Error('Library not found')
+
+          // Resolve parent collection label
+          let collectionLabel = libraryName
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              collectionLabel = parentResolved.entity.title || libraryName
+            }
+          }
 
           // Check if the noteSlug looks like a UUID (for disambiguation links)
           const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
           if (uuidPattern.test(noteSlug)) {
             // Direct UUID access for edit
             const noteSlugPath = resolveSegments.join('/')
-            setMode({ type: 'editNote', editBlockUuid: noteSlug, noteSlugPath })
+            setMode({ type: 'editNote', editBlockUuid: noteSlug, noteSlugPath, collectionLabel })
             return
           }
 
@@ -232,7 +248,7 @@ const SlugViewPage: React.FC = () => {
           }
 
           const noteSlugPath = resolveSegments.join('/')
-          setMode({ type: 'editNote', editBlockUuid: resolved.entity.block_uuid, noteSlugPath })
+          setMode({ type: 'editNote', editBlockUuid: resolved.entity.block_uuid, noteSlugPath, collectionLabel })
           return
         }
 
@@ -253,10 +269,20 @@ const SlugViewPage: React.FC = () => {
             throw new Error('Note not found')
           }
 
+          // Resolve parent collection label for auto-redirect
+          let uuidParentLabel = libraryName
+          const uuidParentSegments = segments.slice(0, -1)
+          if (uuidParentSegments.length > 0) {
+            const uuidParentResolved = await resolveSlugPath(localDb, uuidParentSegments, library.collection_uuid)
+            if (uuidParentResolved && uuidParentResolved.type === 'collection') {
+              uuidParentLabel = uuidParentResolved.entity.title || libraryName
+            }
+          }
+
           // Auto-redirect to edit page if the note has a local draft
           if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
             const noteSlugPath = segments.join('/')
-            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath })
+            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath, collectionLabel: uuidParentLabel })
             return
           }
 
@@ -305,10 +331,20 @@ const SlugViewPage: React.FC = () => {
         if (resolved.type === 'note') {
           const blockSlugInfo = resolved.entity as BlockSlugInfo
 
+          // Resolve parent collection label for auto-redirect
+          let resolvedParentLabel = libraryName
+          const resolvedParentSegments = segments.slice(0, -1)
+          if (resolvedParentSegments.length > 0) {
+            const resolvedParentResolved = await resolveSlugPath(localDb, resolvedParentSegments, library.collection_uuid)
+            if (resolvedParentResolved && resolvedParentResolved.type === 'collection') {
+              resolvedParentLabel = resolvedParentResolved.entity.title || libraryName
+            }
+          }
+
           // Auto-redirect to edit page if the note has a local draft
           if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
             const noteSlugPath = segments.join('/')
-            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath })
+            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath, collectionLabel: resolvedParentLabel })
             return
           }
 
@@ -401,6 +437,7 @@ const SlugViewPage: React.FC = () => {
         collectionId={mode.collectionId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
         initialTitle={mode.initialTitle}
+        collectionLabel={mode.collectionLabel}
       />
     )
   }
@@ -412,6 +449,7 @@ const SlugViewPage: React.FC = () => {
         collectionId={mode.collectionId}
         draftId={mode.draftId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        collectionLabel={mode.collectionLabel}
       />
     )
   }
@@ -455,6 +493,7 @@ const SlugViewPage: React.FC = () => {
         prefix={prefix || ''}
         editBlockUuid={mode.editBlockUuid}
         cancelPath={`/pk/${prefix}/${mode.noteSlugPath}`}
+        collectionLabel={mode.collectionLabel}
       />
     )
   }

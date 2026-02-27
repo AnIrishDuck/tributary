@@ -21,9 +21,11 @@ export interface EditorPageProps {
   cancelPath: string
   /** Optional initial title for new notes (used when creating from a missing slug). */
   initialTitle?: string
+  /** Label of the collection this note belongs to, shown in the header. */
+  collectionLabel?: string
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle }) => {
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel }) => {
   const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -241,7 +243,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-gray-900">
-                {isNewNote ? 'New Note' : 'Edit Note'}
+                {collectionLabel || (isNewNote ? 'New Note' : 'Edit Note')}
               </h1>
             </div>
 
