@@ -84,9 +84,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
         {/* Breadcrumbs + Move button */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
-            {ancestors.length > 0 && (
-              <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
-            )}
+            <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={slugPath.split('/').pop()} />
           </div>
           <button
             onClick={() => setShowMoveModal(true)}

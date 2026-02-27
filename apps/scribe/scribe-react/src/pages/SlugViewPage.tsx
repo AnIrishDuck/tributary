@@ -494,6 +494,7 @@ const SlugViewPage: React.FC = () => {
         editBlockUuid={mode.editBlockUuid}
         cancelPath={`/pk/${prefix}/${mode.noteSlugPath}`}
         collectionLabel={mode.collectionLabel}
+        noteSlugPath={mode.noteSlugPath}
       />
     )
   }

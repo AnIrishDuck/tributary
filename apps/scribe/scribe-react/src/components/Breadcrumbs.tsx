@@ -7,11 +7,11 @@ interface BreadcrumbsProps {
   prefix: string
   /** When true, all items (including the last) are rendered as links. Used for note views where the note title is shown separately. */
   allLinks?: boolean
+  /** An extra slug to display at the end of the breadcrumb trail (e.g. the current note slug). */
+  trailingSlug?: string
 }
 
-export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks }) => {
-  if (ancestors.length === 0) return null
-
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, trailingSlug }) => {
   // Build cumulative slug paths for each non-root ancestor
   const nonRootAncestors = ancestors.filter(a => a.parent_collection_uuid !== null)
 
@@ -46,6 +46,8 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
     observer.observe(navRef.current)
     return () => observer.disconnect()
   }, [resetHiddenCount])
+
+  if (nonRootAncestors.length === 0 && !trailingSlug) return null
 
   const visibleAncestors = nonRootAncestors.slice(hiddenCount)
   const showEllipsis = hiddenCount > 0
@@ -95,6 +97,16 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
           </React.Fragment>
         )
       })}
+      {trailingSlug && (
+        <>
+          {(visibleAncestors.length > 0 || showEllipsis) ? (
+            <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+          ) : (
+            <span className="ml-1 flex-shrink-0" />
+          )}
+          <span className="text-gray-900 font-medium flex-shrink-0">{trailingSlug}</span>
+        </>
+      )}
     </nav>
   )
 }
