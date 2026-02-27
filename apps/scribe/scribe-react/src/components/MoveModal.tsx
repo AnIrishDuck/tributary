@@ -30,7 +30,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   // Current parent path for relative resolution
   const currentParentPath = currentSlugPath.split('/').slice(0, -1).join('/')
 
-  // Validate the target path whenever input changes
+  // Validate the target path whenever input changes (debounced)
   useEffect(() => {
     if (!targetPath.trim()) {
       setValidation({ status: 'empty' })
@@ -39,8 +39,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
     let cancelled = false
 
+    const timer = setTimeout(() => {
     const validate = async () => {
-      setValidation({ status: 'validating' })
       try {
         const { resolveLink, resolveSlugPath, getLibrary } = await import('scribe-data')
 
@@ -102,7 +102,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     }
 
     validate()
-    return () => { cancelled = true }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [targetPath, client, prefix, currentParentPath, entityType])
 
   const onMove = useCallback(async () => {
