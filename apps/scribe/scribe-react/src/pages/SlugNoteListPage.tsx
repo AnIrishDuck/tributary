@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { MoveModal } from '../components/MoveModal'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from '../drafts/draftStorage'
 
@@ -27,6 +28,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 }) => {
   const navigate = useNavigate()
   const isRoot = !collection
+  const [showMoveModal, setShowMoveModal] = useState(false)
 
   const showSyncProgress = syncProgress && !syncProgress.synced
 
@@ -139,9 +141,22 @@ const NoteListView: React.FC<NoteListViewProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Breadcrumbs (collection view only) */}
-        {!isRoot && ancestors && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
+        {/* Breadcrumbs + Move button (collection view only) */}
+        {!isRoot && (
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1 min-w-0">
+              {ancestors && (
+                <Breadcrumbs ancestors={ancestors} prefix={prefix} />
+              )}
+            </div>
+            <button
+              onClick={() => setShowMoveModal(true)}
+              className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <ArrowRightIcon className="w-4 h-4" />
+              <span className="hidden md:inline">Move</span>
+            </button>
+          </div>
         )}
 
         {totalItems === 0 ? (
@@ -326,6 +341,21 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           </div>
         )}
       </div>
+
+      {!isRoot && collection && (
+        <MoveModal
+          isOpen={showMoveModal}
+          onClose={() => setShowMoveModal(false)}
+          entityType="collection"
+          entityId={collection.collection_uuid}
+          currentSlugPath={slugPath}
+          prefix={prefix}
+          onMoved={(newSlugPath) => {
+            setShowMoveModal(false)
+            navigate(`/pk/${prefix}/${newSlugPath}`)
+          }}
+        />
+      )}
     </div>
   )
 }

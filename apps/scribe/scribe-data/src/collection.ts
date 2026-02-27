@@ -163,6 +163,24 @@ export async function getAllCollectionsWithSlugs(
 }
 
 /**
+ * Move a collection to a new parent collection.
+ *
+ * @param db The TributaryStream database instance
+ * @param collectionUuid The UUID of the collection to move
+ * @param newParentUuid The UUID of the new parent collection
+ */
+export async function moveCollection(
+  db: TributaryStream,
+  collectionUuid: string,
+  newParentUuid: string
+): Promise<void> {
+  await db.exec(
+    `UPDATE collection SET parent_collection_uuid = $1 WHERE collection_uuid = $2`,
+    [newParentUuid, collectionUuid]
+  )
+}
+
+/**
  * Get a collection by its slug (returns first match for backwards compatibility)
  *
  * @param db The TributaryLocal database instance

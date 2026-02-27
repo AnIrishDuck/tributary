@@ -30,7 +30,7 @@ interface AuthoritativeVersion {
 type PageMode =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string }
+  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; blockUuid: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
@@ -273,7 +273,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName })
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
           return
         }
 
@@ -324,7 +324,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName })
+          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
           return
         }
 
@@ -469,6 +469,7 @@ const SlugViewPage: React.FC = () => {
       splatPath={splatPath}
       ancestors={mode.ancestors}
       libraryName={mode.libraryName}
+      blockUuid={mode.blockUuid}
     />
   )
 }
