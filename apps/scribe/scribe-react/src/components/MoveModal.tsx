@@ -23,6 +23,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 }) => {
   const [targetPath, setTargetPath] = useState('')
   const [validation, setValidation] = useState<ValidationState>({ status: 'empty' })
+  const [validating, setValidating] = useState(false)
   const [isMoving, setIsMoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { client } = useTributary()
@@ -34,10 +35,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   useEffect(() => {
     if (!targetPath.trim()) {
       setValidation({ status: 'empty' })
+      setValidating(false)
       return
     }
 
     let cancelled = false
+    setValidating(true)
 
     const timer = setTimeout(() => {
     const validate = async () => {
@@ -98,6 +101,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         setValidation({ status: 'valid', targetUuid: result.entity.collection_uuid, resolvedPath: absolutePath })
       } catch (err: any) {
         if (!cancelled) setValidation({ status: 'invalid', message: err.message || 'Validation error' })
+      } finally {
+        if (!cancelled) setValidating(false)
       }
     }
 
@@ -107,7 +112,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   }, [targetPath, client, prefix, currentParentPath, entityType])
 
   const onMove = useCallback(async () => {
-    if (validation.status !== 'valid' || !client) return
+    if (validation.status !== 'valid' || validating || !client) return
 
     setIsMoving(true)
     setError(null)
@@ -143,7 +148,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     } finally {
       setIsMoving(false)
     }
-  }, [validation, client, prefix, entityType, entityId, currentSlugPath, onMoved])
+  }, [validation, validating, client, prefix, entityType, entityId, currentSlugPath, onMoved])
 
   if (!isOpen) return null
 
@@ -179,7 +184,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
             autoFocus
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && validation.status === 'valid' && !isMoving) {
+              if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
                 onMove()
               }
             }}
@@ -226,9 +231,9 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           </button>
           <button
             onClick={onMove}
-            disabled={validation.status !== 'valid' || isMoving}
+            disabled={validation.status !== 'valid' || validating || isMoving}
             className={`inline-flex items-center px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
-              validation.status === 'valid' && !isMoving
+              validation.status === 'valid' && !validating && !isMoving
                 ? 'bg-blue-600 hover:bg-blue-700'
                 : 'bg-blue-400 cursor-not-allowed'
             }`}
