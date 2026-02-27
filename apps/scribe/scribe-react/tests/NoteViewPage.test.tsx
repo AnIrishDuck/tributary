@@ -40,8 +40,8 @@ describe('NoteViewPage', () => {
 
     // Wait for the component to finish loading and show content
     await waitFor(() => {
-      // Look for the edit action in the bottom nav to confirm the page loaded
-      expect(screen.getByText('Edit')).toBeInTheDocument()
+      // Look for the edit FAB to confirm the page loaded
+      expect(screen.getByLabelText('Edit')).toBeInTheDocument()
     }, { timeout: 3000 })
 
     // Check that the title is displayed (the title comes from markdown rendering, so only 1 instance)
@@ -91,9 +91,9 @@ describe('NoteViewPage', () => {
       </WithProviders>
     )
 
-    // Wait for the page to fully load - check for Edit button which means page loaded
+    // Wait for the page to fully load - check for Edit FAB which means page loaded
     await waitFor(() => {
-      expect(screen.getByText('Edit')).toBeInTheDocument()
+      expect(screen.getByLabelText('Edit')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Verify NO errors
@@ -121,9 +121,9 @@ describe('NoteViewPage', () => {
       </WithProviders>
     )
 
-    // Should show the note view with Edit action in bottom nav
+    // Should show the note view with Edit FAB
     await waitFor(() => {
-      expect(screen.getByText('Edit')).toBeInTheDocument()
+      expect(screen.getByLabelText('Edit')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Should show the note content
@@ -153,7 +153,7 @@ describe('NoteViewPage', () => {
 
     // Wait for the page to load
     await waitFor(() => {
-      expect(screen.getByText('Edit')).toBeInTheDocument()
+      expect(screen.getByLabelText('Edit')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Version footer should show "version:" text with position info
