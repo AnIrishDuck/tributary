@@ -66,7 +66,7 @@ describe('SlugNoteListPage', () => {
     expect(screen.getByRole('button', { name: /New Collection/ })).toBeInTheDocument()
   })
 
-  it('should show library name instead of "Library" in breadcrumbs', async () => {
+  it('should show collection title as heading and slugs in breadcrumbs', async () => {
     const libraryName = 'Cooking Notes'
     const { client, stream, prefix } = await createTestClientWithStream(libraryName)
     const base64Part = prefix.split('/')[1]
@@ -88,13 +88,13 @@ describe('SlugNoteListPage', () => {
       </WithProviders>
     )
 
-    // Wait for page to load
+    // Wait for page to load — heading shows collection title
     await waitFor(() => {
       expect(screen.getByText('Desserts')).toBeInTheDocument()
     }, { timeout: 5000 })
 
-    // Breadcrumbs should show the actual library name, not "Library"
-    expect(screen.getByText(libraryName)).toBeInTheDocument()
-    expect(screen.queryByText('Library')).not.toBeInTheDocument()
+    // Breadcrumbs show slugs, and the root / links to library root
+    expect(screen.getByText('desserts')).toBeInTheDocument()
+    expect(screen.getByText('/')).toBeInTheDocument()
   })
 })

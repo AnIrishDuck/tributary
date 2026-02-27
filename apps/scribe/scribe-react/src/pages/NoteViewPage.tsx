@@ -84,9 +84,16 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
                 onClick={handleBack}
                 className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center font-medium"
               >
-                <ArrowLeftIcon className="w-4 h-4 md:mr-1.5" />
-                <span className="hidden md:inline">Back</span>
+                <ArrowLeftIcon className="w-4 h-4" />
               </button>
+              <h1 className="text-xl font-bold text-gray-900 truncate max-w-[200px] sm:max-w-md">
+                {(() => {
+                  const nonRootAncestors = ancestors.filter(a => a.parent_collection_uuid !== null)
+                  return nonRootAncestors.length > 0
+                    ? nonRootAncestors[nonRootAncestors.length - 1].title
+                    : libraryName
+                })()}
+              </h1>
             </div>
             <Link
               to={editUrl}
@@ -103,9 +110,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
         {/* Breadcrumbs + Move button */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
-            {ancestors.length > 0 && (
-              <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks />
-            )}
+            <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={slugPath.split('/').pop()} />
           </div>
           <button
             onClick={() => setShowMoveModal(true)}

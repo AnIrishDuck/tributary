@@ -7,11 +7,11 @@ interface BreadcrumbsProps {
   prefix: string
   /** When true, all items (including the last) are rendered as links. Used for note views where the note title is shown separately. */
   allLinks?: boolean
+  /** An extra slug to display at the end of the breadcrumb trail (e.g. the current note slug). */
+  trailingSlug?: string
 }
 
-export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks }) => {
-  if (ancestors.length === 0) return null
-
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, trailingSlug }) => {
   // Build cumulative slug paths for each non-root ancestor
   const nonRootAncestors = ancestors.filter(a => a.parent_collection_uuid !== null)
 
@@ -47,13 +47,24 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
     return () => observer.disconnect()
   }, [resetHiddenCount])
 
+  if (nonRootAncestors.length === 0 && !trailingSlug) return null
+
   const visibleAncestors = nonRootAncestors.slice(hiddenCount)
   const showEllipsis = hiddenCount > 0
 
   return (
     <nav ref={navRef} className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
+      <Link
+        to={`/pk/${prefix}/`}
+        className="hover:text-blue-600 transition-colors flex-shrink-0"
+      >
+        /
+      </Link>
       {showEllipsis && (
-        <span className="text-gray-400 flex-shrink-0">&hellip;</span>
+        <>
+          <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+          <span className="text-gray-400 flex-shrink-0">&hellip;</span>
+        </>
       )}
       {visibleAncestors.map((ancestor, visIndex) => {
         // Map back to the original index for cumulative path building
@@ -64,24 +75,38 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
           .join('/')
 
         const isLast = originalIndex === nonRootAncestors.length - 1
-        const showSeparator = visIndex > 0 || showEllipsis
+        const slug = titleToSlug(ancestor.title)
 
         return (
           <React.Fragment key={ancestor.collection_uuid}>
-            {showSeparator && <span className="mx-1 text-gray-400 flex-shrink-0">/</span>}
+            {(visIndex > 0 || showEllipsis) ? (
+              <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+            ) : (
+              <span className="ml-1 flex-shrink-0" />
+            )}
             {isLast && !allLinks ? (
-              <span className="text-gray-900 font-bold text-lg flex-shrink-0">{ancestor.title}</span>
+              <span className="text-gray-900 font-medium flex-shrink-0">{slug}</span>
             ) : (
               <Link
                 to={`/pk/${prefix}/${cumulativePath}`}
                 className="hover:text-blue-600 transition-colors flex-shrink-0"
               >
-                {ancestor.title}
+                {slug}
               </Link>
             )}
           </React.Fragment>
         )
       })}
+      {trailingSlug && (
+        <>
+          {(visibleAncestors.length > 0 || showEllipsis) ? (
+            <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+          ) : (
+            <span className="ml-1 flex-shrink-0" />
+          )}
+          <span className="text-gray-900 font-medium flex-shrink-0">{trailingSlug}</span>
+        </>
+      )}
     </nav>
   )
 }

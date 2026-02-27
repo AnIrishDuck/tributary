@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
 import { saveNote } from '../actions/saveNote'
@@ -22,9 +22,13 @@ export interface EditorPageProps {
   cancelPath: string
   /** Optional initial title for new notes (used when creating from a missing slug). */
   initialTitle?: string
+  /** Label of the collection this note belongs to, shown in the header. */
+  collectionLabel?: string
+  /** Full slug path of the note being edited (e.g. "cooking/italian/pasta-recipe"), shown as breadcrumbs. */
+  noteSlugPath?: string
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle }) => {
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel, noteSlugPath }) => {
   const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -256,7 +260,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-gray-900">
-                {isNewNote ? 'New Note' : 'Edit Note'}
+                {collectionLabel || (isNewNote ? 'New Note' : 'Edit Note')}
               </h1>
             </div>
 
@@ -306,6 +310,29 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       </div>
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {noteSlugPath && (
+          <nav className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
+            <Link to={`/pk/${prefix}/`} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
+            {noteSlugPath.split('/').filter(Boolean).map((segment, i, arr) => {
+              const path = arr.slice(0, i + 1).join('/')
+              const isLast = i === arr.length - 1
+              return (
+                <React.Fragment key={i}>
+                  {i > 0 ? (
+                    <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+                  ) : (
+                    <span className="ml-1 flex-shrink-0" />
+                  )}
+                  {isLast ? (
+                    <span className="text-gray-900 font-medium flex-shrink-0">{segment}</span>
+                  ) : (
+                    <Link to={`/pk/${prefix}/${path}`} className="hover:text-blue-600 transition-colors flex-shrink-0">{segment}</Link>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </nav>
+        )}
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 animate-fade-in">
             <div className="flex items-start">

@@ -106,10 +106,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 onClick={handleBack}
                 className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
-                <ArrowLeftIcon className="w-4 h-4 md:mr-1" />
-                <span className="hidden md:inline">{isRoot ? 'Libraries' : 'Back'}</span>
+                <ArrowLeftIcon className="w-4 h-4" />
               </button>
-              <h1 className="text-xl font-bold text-gray-900">{libraryName || 'Notes'}</h1>
+              <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
               {isRoot && (
                 <span className="hidden md:inline text-sm text-gray-500 px-2 py-1 bg-gray-100 rounded-full">
                   {notes.length} note{notes.length !== 1 ? 's' : ''}
