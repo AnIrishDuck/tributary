@@ -30,7 +30,7 @@ interface AuthoritativeVersion {
 type PageMode =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; blockUuid: string }
+  | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; versionUuid: string; blockUuid: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
@@ -286,7 +286,7 @@ const SlugViewPage: React.FC = () => {
             return
           }
 
-          const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
+          const noteResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
           const fullSlugPath = segments.join('/')
 
           // Get parent collection ancestors for breadcrumbs
@@ -299,7 +299,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
+          setMode({ type: 'note', content: noteResult.body, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, versionUuid: noteResult.version_uuid, blockUuid: noteResult.block_uuid })
           return
         }
 
@@ -348,7 +348,7 @@ const SlugViewPage: React.FC = () => {
             return
           }
 
-          const noteContent = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
+          const noteResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
 
           // Get parent collection ancestors for breadcrumbs
           let noteAncestors: Collection[] = []
@@ -360,7 +360,7 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          setMode({ type: 'note', content: noteContent, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
+          setMode({ type: 'note', content: noteResult.body, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, versionUuid: noteResult.version_uuid, blockUuid: noteResult.block_uuid })
           return
         }
 
@@ -509,6 +509,7 @@ const SlugViewPage: React.FC = () => {
       splatPath={splatPath}
       ancestors={mode.ancestors}
       libraryName={mode.libraryName}
+      versionUuid={mode.versionUuid}
       blockUuid={mode.blockUuid}
     />
   )
@@ -520,7 +521,7 @@ async function loadNoteContent(
   blockSlugInfo: BlockSlugInfo,
   getAuthoritativeVersionByNoteUuid: (db: any, uuid: string) => Promise<any>,
   getNoteByVersion: (db: any, blockUuid: string, versionUuid: string) => Promise<any>
-): Promise<string> {
+): Promise<{ body: string; version_uuid: string; block_uuid: string }> {
   const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
 
   if (!authoritativeVersion) {
@@ -533,7 +534,7 @@ async function loadNoteContent(
     throw new Error('Note content not found')
   }
 
-  return note.body
+  return { body: note.body, version_uuid: authoritativeVersion.version_uuid, block_uuid: blockSlugInfo.block_uuid }
 }
 
 // Helper: load collection data for rendering

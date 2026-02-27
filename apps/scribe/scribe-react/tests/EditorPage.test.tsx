@@ -227,6 +227,47 @@ describe('EditorPage', () => {
     const initialVersionCount = await getNoteVersionCount(stream, block.block_uuid)
     expect(initialVersionCount).toBe(1)
   })
+
+  it('should show version info in editor footer when editing an existing note', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Version Info Test\n\nTesting version info in editor.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'version-info-test'
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+    })
+
+    // Version footer should appear in the editor footer bar
+    await waitFor(() => {
+      expect(screen.getByText(/version:/)).toBeInTheDocument()
+      expect(screen.getByText(/\(1\/1\)/)).toBeInTheDocument()
+    }, { timeout: 3000 })
+  })
 })
 
 describe('EditorPage Additional Tests', () => {

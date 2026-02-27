@@ -6,6 +6,8 @@ import { renderMarkdown } from '../utils/markdown'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { MoveModal } from '../components/MoveModal'
 import { useBottomNav } from '../context/bottomNavContext'
+import { useTributary } from '../context/tributaryContext'
+import VersionFooter from '../components/VersionFooter'
 
 interface NoteViewPageProps {
   content: string
@@ -16,12 +18,36 @@ interface NoteViewPageProps {
   ancestors: Collection[]
   libraryName: string
   blockUuid: string
+  versionUuid?: string
 }
 
-const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName, blockUuid }) => {
+const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName, blockUuid, versionUuid }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
+  const { client } = useTributary()
   const [showMoveModal, setShowMoveModal] = useState(false)
+  const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
+
+  // Fetch version position info when props are available
+  useEffect(() => {
+    if (!blockUuid || !versionUuid || !client || !prefix) return
+
+    const loadVersionInfo = async () => {
+      try {
+        const stream = await client.get('scribe', prefix)
+        if (!stream) return
+        const localDb = stream.local()
+        const { getVersionPosition } = await import('scribe-data')
+        const pos = await getVersionPosition(localDb, blockUuid, versionUuid)
+        if (pos) {
+          setVersionPosition({ position: pos.position, total: pos.total })
+        }
+      } catch {
+        // Silently ignore version info errors
+      }
+    }
+    loadVersionInfo()
+  }, [blockUuid, versionUuid, client, prefix])
 
   // Compute parent collection path from slugPath (remove last segment which is the note)
   const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
@@ -101,6 +127,16 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath) }}
           />
         </div>
+
+        {versionUuid && versionPosition && (
+          <div className="mt-3 px-2">
+            <VersionFooter
+              versionUuid={versionUuid}
+              position={versionPosition.position}
+              total={versionPosition.total}
+            />
+          </div>
+        )}
       </div>
 
       <MoveModal
