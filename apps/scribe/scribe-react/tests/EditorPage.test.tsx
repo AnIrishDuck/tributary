@@ -259,7 +259,7 @@ describe('EditorPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Edit Note' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     })
 
     // Version footer should appear in the editor footer bar
