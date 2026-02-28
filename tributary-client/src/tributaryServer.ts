@@ -12,6 +12,7 @@ export class TributaryServer implements Server {
   private baseUrl: string;
   private authKey?: string;
   private writeAuthToken?: string;
+  private authTokenRefresher?: () => Promise<string | undefined>;
 
   constructor(baseUrl: string, authKey?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash if present
@@ -20,6 +21,14 @@ export class TributaryServer implements Server {
 
   setWriteAuthToken(token: string | undefined) {
     this.writeAuthToken = token;
+  }
+
+  /**
+   * Set a callback that refreshes the auth token when a 401 is received.
+   * The callback should force-refresh the session and return a new access token.
+   */
+  setAuthTokenRefresher(refresher: () => Promise<string | undefined>) {
+    this.authTokenRefresher = refresher;
   }
 
   private getAuthHeader(): string | undefined {
@@ -39,10 +48,40 @@ export class TributaryServer implements Server {
     signature: string,
     sequenceNumber: number
   ): Promise<boolean> {
+    const result = await this.storeBlobOnce(pubkey, data, hash, priorHash, signature, sequenceNumber);
+
+    // On 401, try refreshing the auth token and retry once
+    if (result === 'unauthorized' && this.authTokenRefresher) {
+      const newToken = await this.authTokenRefresher();
+      if (newToken) {
+        this.writeAuthToken = newToken;
+        const retryResult = await this.storeBlobOnce(pubkey, data, hash, priorHash, signature, sequenceNumber);
+        if (retryResult === 'unauthorized') {
+          throw new Error('Failed to store blob: 401 Unauthorized after token refresh');
+        }
+        return retryResult;
+      }
+    }
+
+    if (result === 'unauthorized') {
+      throw new Error('Failed to store blob: 401 Unauthorized');
+    }
+
+    return result;
+  }
+
+  private async storeBlobOnce(
+    pubkey: string,
+    data: Uint8Array,
+    hash: string,
+    priorHash: string,
+    signature: string,
+    sequenceNumber: number
+  ): Promise<boolean | 'unauthorized'> {
     // The server now auto-generates IDs based on pubkey and sequence number
     // We don't send the ID in the URL anymore, just the pubkey
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}`;
-    
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
       'X-Tributary-Hash': hash, // Send the concatenated hash
@@ -53,7 +92,7 @@ export class TributaryServer implements Server {
     if (authHeader) {
       headers['Authorization'] = authHeader;
     }
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
@@ -65,6 +104,8 @@ export class TributaryServer implements Server {
     } else if (response.status === 409) {
       // Conflict - blob already exists
       return false;
+    } else if (response.status === 401) {
+      return 'unauthorized';
     } else {
       const errorText = await response.text();
       throw new Error(`Failed to store blob: ${response.status} ${response.statusText} - ${errorText}`);
