@@ -66,6 +66,23 @@ export function slugToTitle(slug: string): string {
 }
 
 /**
+ * Replace the first H1 heading in a markdown document body with a new title.
+ * If no H1 heading exists, prepends one.
+ *
+ * @param body The markdown document body
+ * @param newTitle The new title to set
+ * @returns The updated body with the new title
+ */
+export function replaceMarkdownTitle(body: string, newTitle: string): string {
+  const titleRegex = /^([\s]*)#[\s]+.+$/m
+  if (titleRegex.test(body)) {
+    return body.replace(titleRegex, `$1# ${newTitle}`)
+  }
+  // No existing title — prepend one
+  return `# ${newTitle}\n\n${body}`
+}
+
+/**
  * Extract tags from a markdown document body
  * Tags are markdown links where both the link and target start with # and are identical
  * e.g. [#mytag](#mytag) 

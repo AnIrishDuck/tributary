@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
+import { replaceMarkdownTitle } from './indexing.js'
 
 interface NoteQueryResult {
   version_uuid: string;
@@ -255,29 +256,34 @@ export async function getNoteVersionCount(
 }
 
 /**
- * Move a note to a different collection.
- * Creates a new version of the note with the updated collection_id.
- * The note's content (body) remains unchanged.
+ * Move a note to a different collection, optionally renaming it.
+ * Creates a new version of the note with the updated collection_id
+ * and optionally updated title in the body.
  *
  * @param db The TributaryStream database instance
  * @param blockUuid The UUID of the note to move
  * @param newCollectionId The UUID of the target collection, or null for library root
  * @param inserter The user/device identifier
+ * @param newTitle Optional new title for the note (renames the H1 heading in the body)
  * @returns The new version of the note
  */
 export async function moveNote(
   db: TributaryStream,
   blockUuid: string,
   newCollectionId: string | null,
-  inserter: string
+  inserter: string,
+  newTitle?: string
 ): Promise<Note> {
   const latest = await getLatestNoteVersion(db, blockUuid)
   if (!latest) {
     throw new Error('Note not found')
   }
+  const body = newTitle !== undefined
+    ? replaceMarkdownTitle(latest.body, newTitle)
+    : latest.body
   return createNoteVersion(db, blockUuid, {
     block_type: latest.block_type,
-    body: latest.body,
+    body,
     inserter,
     collection_id: newCollectionId
   })
