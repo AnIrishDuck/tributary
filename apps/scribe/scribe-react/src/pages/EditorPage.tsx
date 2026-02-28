@@ -54,6 +54,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const contentRef = useRef(content)
   contentRef.current = content
   const getBody = useCallback(() => contentRef.current, [])
+  const getBaseVersionUuid = useCallback(() => loadedVersionUuidRef.current, [])
 
   const { loadDraft, clearDraft, saveNow } = useDraftAutoSave({
     prefix,
@@ -61,6 +62,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
     blockUuid: editBlockUuid ?? null,
     collectionId: collectionId ?? null,
     getBody,
+    getBaseVersionUuid,
   })
 
   // Focus sync on this library while the page is mounted
@@ -83,8 +85,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   // For new notes, check for an existing draft on mount.
   useEffect(() => {
     if (isNewNote) {
-      const draftBody = loadDraft()
-      if (draftBody) setContent(draftBody)
+      const draft = loadDraft()
+      if (draft) setContent(draft.body)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -116,13 +118,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           // Store the block UUID for updates
           setBlockUuid(noteSlugInfo.block_uuid)
 
-          // Prefer local draft over server content
-          const draftBody = loadDraft()
-          if (draftBody) {
-            setContent(draftBody)
-            return
-          }
-
           // Get the authoritative version
           const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid) as AuthoritativeVersion | null
 
@@ -138,8 +133,18 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           }
 
           setVersionUuid(authoritativeVersion.version_uuid)
-          loadedVersionUuidRef.current = authoritativeVersion.version_uuid
-          setContent(note.body)
+
+          // Prefer local draft over server content. When a draft exists,
+          // use its baseVersionUuid for conflict detection so we can detect
+          // if the authoritative version changed while the user was away.
+          const draft = loadDraft()
+          if (draft) {
+            loadedVersionUuidRef.current = draft.baseVersionUuid ?? authoritativeVersion.version_uuid
+            setContent(draft.body)
+          } else {
+            loadedVersionUuidRef.current = authoritativeVersion.version_uuid
+            setContent(note.body)
+          }
 
           // Fetch version position info
           try {

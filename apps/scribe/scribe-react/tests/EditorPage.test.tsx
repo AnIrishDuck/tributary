@@ -9,8 +9,8 @@ import { SyncStatusProvider } from '../src/context/syncStatusContext'
 import { routes } from '../src/route'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
 import { createNote, createNoteVersion } from 'scribe-data/src/note'
-import { indexSlugs, indexAll, getNoteSlugByUuid } from 'scribe-data/src/indexing'
-import { getDraftForNote, getDraftSummariesForCollection } from '../src/drafts/draftStorage'
+import { indexSlugs, indexAll, getNoteSlugByUuid, getAuthoritativeVersionByNoteUuid } from 'scribe-data/src/indexing'
+import { getDraftForNote, getDraftSummariesForCollection, saveDraft } from '../src/drafts/draftStorage'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -696,6 +696,87 @@ describe('EditorPage conflict warning', () => {
       const editor = screen.getByRole('textbox')
       expect(editor.textContent).toContain('Content from another device')
     }, { timeout: 3000 })
+
+    unmount()
+  })
+
+  it('should show conflict warning when a draft is loaded and authoritative version has changed', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+
+    // Create a note
+    const block = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Draft Conflict\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+    const localDb = stream.local()
+    await indexSlugs(localDb)
+
+    const parts = prefix.split('/')
+    const base64Part = parts[1]
+
+    const noteSlug = await getNoteSlugByUuid(localDb, block.block_uuid)
+    const slug = noteSlug ? noteSlug.slug : 'draft-conflict'
+
+    // Capture the original version UUID (V1) before the remote edit
+    const originalVersion = await getAuthoritativeVersionByNoteUuid(localDb, block.block_uuid)
+
+    // Simulate: user edited the note and navigated away, creating a draft.
+    // The draft uses blockUuid as its draftId for existing notes and records
+    // the version the user was editing (baseVersionUuid).
+    saveDraft({
+      draftId: block.block_uuid,
+      blockUuid: block.block_uuid,
+      collectionId: null,
+      prefix: base64Part,
+      body: '# Draft Conflict\n\nMy local draft edits.',
+      baseVersionUuid: originalVersion!.version_uuid,
+      updatedAt: new Date().toISOString(),
+    })
+
+    // Simulate: the note was edited in another session
+    await createNoteVersion(stream, block.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Draft Conflict\n\nEdited in another session.',
+      inserter: 'other-device'
+    })
+    await stream.sync(1000)
+    await indexAll(localDb)
+
+    function FastPollProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 100 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&edit`]
+    })
+
+    const { unmount } = render(
+      <FastPollProviders>
+        <RouterProvider router={router} />
+      </FastPollProviders>
+    )
+
+    // Wait for editor to load (it should load the draft content)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Note' })).toBeInTheDocument()
+    })
+
+    // The conflict warning should appear because the authoritative version
+    // changed since the draft was created
+    await waitFor(() => {
+      expect(screen.getByText(/This note has been edited in another session/)).toBeInTheDocument()
+    }, { timeout: 5000 })
 
     unmount()
   })

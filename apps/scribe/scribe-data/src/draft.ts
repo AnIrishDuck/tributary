@@ -17,6 +17,8 @@ export interface Draft {
   prefix: string
   /** The markdown body of the draft. */
   body: string
+  /** The authoritative version UUID the draft was based on (existing notes only). */
+  baseVersionUuid?: string | null
   /** ISO-8601 timestamp of the last auto-save. */
   updatedAt: string
 }
