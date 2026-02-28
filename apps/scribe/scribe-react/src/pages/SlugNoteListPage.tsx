@@ -17,6 +17,10 @@ interface NoteListViewProps {
   libraryName?: string | null
   syncProgress?: { currentIndex: number; finalIndex: number; synced: boolean } | null
 
+  // Null-parent fix props
+  hasNullParentNotes?: boolean
+  onFixNullParents?: () => Promise<void>
+
   // Collection view props
   collection?: CollectionSlug
   ancestors?: Collection[]
@@ -25,12 +29,14 @@ interface NoteListViewProps {
 const NoteListView: React.FC<NoteListViewProps> = ({
   collections, notes, prefix, slugPath,
   libraryName, syncProgress,
+  hasNullParentNotes, onFixNullParents,
   collection, ancestors
 }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
   const isRoot = !collection
   const [showMoveModal, setShowMoveModal] = useState(false)
+  const [isFixing, setIsFixing] = useState(false)
 
   // Set the floating action button to "New Note" for this collection
   useEffect(() => {
@@ -160,6 +166,40 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             >
               <ArrowRightIcon className="w-4 h-4" />
               <span className="hidden md:inline">Move</span>
+            </button>
+          </div>
+        )}
+
+        {/* Fix null-parent notes banner */}
+        {isRoot && hasNullParentNotes && onFixNullParents && (
+          <div className="mb-6 bg-red-50 border-2 border-red-300 rounded-2xl p-6 text-center">
+            <h3 className="text-lg font-bold text-red-800 mb-2">
+              Notes with missing parent detected
+            </h3>
+            <p className="text-red-700 text-sm mb-4">
+              Some notes have a null parent and are not assigned to any collection.
+              Click the button below to assign them to the root collection.
+            </p>
+            <button
+              onClick={async () => {
+                setIsFixing(true)
+                try {
+                  await onFixNullParents()
+                } finally {
+                  setIsFixing(false)
+                }
+              }}
+              disabled={isFixing}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-bold rounded-lg shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isFixing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Fixing...
+                </>
+              ) : (
+                'Fix Note UUIDs'
+              )}
             </button>
           </div>
         )}

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { getNotesInCollectionWithSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, titleToSlug } from 'scribe-data'
+import { getNotesInCollectionWithSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, titleToSlug, fixNullParentNotes } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
 const NoteListPage: React.FC = () => {
@@ -14,6 +14,7 @@ const NoteListPage: React.FC = () => {
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasNullParentNotes, setHasNullParentNotes] = useState(false)
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -55,11 +56,16 @@ const NoteListPage: React.FC = () => {
           // Get root-level notes only (notes not in any collection)
           const noteList = await getNotesInCollectionWithSlugs(localDb, null)
           setNotes(noteList)
+
+          // Flag if there are null-parent notes (only meaningful after sync completes)
+          const isSynced = prefix ? syncStatus[prefix]?.synced : false
+          setHasNullParentNotes(isSynced && noteList.length > 0)
         } else {
           // No library root — all notes are root-level
           const noteList = await getNotesInCollectionWithSlugs(localDb, null)
           setNotes(noteList)
           setCollections([])
+          setHasNullParentNotes(false)
         }
 
         // Get library display name
@@ -108,6 +114,13 @@ const NoteListPage: React.FC = () => {
   // Get sync status for this library
   const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
 
+  const handleFixNullParents = useCallback(async () => {
+    if (!client || !prefix) return
+    const stream = await client.get('scribe', prefix)
+    if (!stream) return
+    await fixNullParentNotes(stream)
+  }, [client, prefix])
+
   return (
     <NoteListView
       collections={collections}
@@ -120,6 +133,8 @@ const NoteListPage: React.FC = () => {
         finalIndex: librarySyncStatus.finalIndex,
         synced: librarySyncStatus.synced
       } : null}
+      hasNullParentNotes={hasNullParentNotes}
+      onFixNullParents={handleFixNullParents}
     />
   )
 }

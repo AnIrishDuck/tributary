@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
 import { titleToSlug } from './indexing.js'
+import { moveNote } from './note.js'
 
 /**
  * Create a new collection in the database
@@ -422,5 +423,57 @@ export async function getNoteSlugPath(
   // Build the collection slug path and append the note slug
   const collectionPath = await getSlugPath(db, collectionId)
   return [...collectionPath, noteSlug]
+}
+
+/**
+ * Find all notes whose latest version has collection_id IS NULL and
+ * move them to the root collection (library).
+ *
+ * Should only be called after sync for this library has completed.
+ *
+ * @param stream The TributaryStream for the library
+ * @returns The number of notes that were fixed
+ */
+export async function fixNullParentNotes(
+  stream: TributaryStream
+): Promise<number> {
+  const library = await getLibrary(stream)
+  if (!library) {
+    console.log('[fixNullParentNotes] No root collection found, skipping')
+    return 0
+  }
+
+  const rootUuid = library.collection_uuid
+
+  // Find latest version of each note where collection_id is null
+  const result = await stream.query(
+    `SELECT b.block_uuid, b.collection_id FROM block b
+     INNER JOIN (
+       SELECT block_uuid, MAX(insert_datetime) as max_datetime
+       FROM block
+       GROUP BY block_uuid
+     ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
+     WHERE b.collection_id IS NULL`,
+    []
+  )
+
+  const orphanedNotes = (result.rows || []) as Array<{ block_uuid: string; collection_id: string | null }>
+
+  if (orphanedNotes.length === 0) {
+    return 0
+  }
+
+  console.log(`[fixNullParentNotes] Found ${orphanedNotes.length} notes with null parent:`)
+  for (const note of orphanedNotes) {
+    console.log(`  - note ${note.block_uuid} parent=${note.collection_id}`)
+  }
+
+  console.log(`[fixNullParentNotes] Moving ${orphanedNotes.length} notes to root collection ${rootUuid}`)
+  for (const note of orphanedNotes) {
+    await moveNote(stream, note.block_uuid, rootUuid, 'auto-fix')
+  }
+
+  console.log(`[fixNullParentNotes] Done, fixed ${orphanedNotes.length} notes`)
+  return orphanedNotes.length
 }
 
