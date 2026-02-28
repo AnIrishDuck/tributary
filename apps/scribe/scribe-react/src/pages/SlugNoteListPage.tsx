@@ -199,26 +199,39 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             {collections.length > 0 && (
               <div className="mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {collections.map(({ collection: col, slug: collectionSlug }) => (
+                  {collections.map(({ collection: col, slug: collectionSlug }) => {
+                    const nullParent = col.parent_collection_uuid === null
+                    return (
                     <Link
                       key={col.collection_uuid}
                       to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : `/pk/${prefix}/`}
                       className="group block"
                     >
-                      <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-amber-200 transform hover:-translate-y-1">
+                      <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border transform hover:-translate-y-1 ${
+                        nullParent
+                          ? 'border-red-200 hover:border-red-300'
+                          : 'border-gray-100 hover:border-amber-200'
+                      }`}>
                         <div className="px-6 py-6">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
-                              <FolderIcon className="w-6 h-6 text-amber-600" />
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${
+                              nullParent
+                                ? 'bg-red-50 group-hover:bg-red-100'
+                                : 'bg-amber-50 group-hover:bg-amber-100'
+                            }`}>
+                              <FolderIcon className={`w-6 h-6 ${nullParent ? 'text-red-600' : 'text-amber-600'}`} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                            <h3 className={`text-lg font-bold text-gray-900 truncate transition-colors ${
+                              nullParent ? 'group-hover:text-red-600' : 'group-hover:text-amber-600'
+                            }`}>
                               {col.title}
                             </h3>
                           </div>
                         </div>
                       </div>
                     </Link>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -269,36 +282,32 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               {/* Persisted notes */}
               {sortedNotes.map((note) => {
                 const hasDraft = draftBlockUuids.has(note.block_uuid)
+                const nullParent = note.collection_id === null
+                const colorScheme = nullParent
+                  ? { border: 'border-red-200 hover:border-red-300', hoverText: 'group-hover:text-red-600', iconBg: 'bg-red-50 group-hover:bg-red-100', iconText: 'text-red-600', badgeBg: 'bg-red-50 text-red-700' }
+                  : hasDraft
+                    ? { border: 'border-amber-200 hover:border-amber-300', hoverText: 'group-hover:text-amber-600', iconBg: 'bg-amber-50 group-hover:bg-amber-100', iconText: 'text-amber-600', badgeBg: 'bg-amber-50 text-amber-700' }
+                    : { border: 'border-gray-100 hover:border-blue-200', hoverText: 'group-hover:text-blue-600', iconBg: 'bg-blue-50 group-hover:bg-blue-100', iconText: 'text-blue-600', badgeBg: 'bg-blue-50 text-blue-700' }
                 return (
                   <Link
                     key={note.block_uuid}
                     to={`${linkPrefix}/${note.slug}${hasDraft ? '&edit' : ''}`}
                     className="group block"
                   >
-                    <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
-                      hasDraft
-                        ? 'border border-amber-200 hover:border-amber-300'
-                        : 'border border-gray-100 hover:border-blue-200'
-                    }`}>
+                    <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 border ${colorScheme.border}`}>
                       <div className="px-6 py-8">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1 min-w-0">
-                            <h3 className={`text-xl font-bold text-gray-900 truncate transition-colors mb-2 ${
-                              hasDraft ? 'group-hover:text-amber-600' : 'group-hover:text-blue-600'
-                            }`}>
+                            <h3 className={`text-xl font-bold text-gray-900 truncate transition-colors mb-2 ${colorScheme.hoverText}`}>
                               {note.title || 'Untitled'}
                             </h3>
                           </div>
                           <div className="flex-shrink-0">
-                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${
-                              hasDraft
-                                ? 'bg-amber-50 group-hover:bg-amber-100'
-                                : 'bg-blue-50 group-hover:bg-blue-100'
-                            }`}>
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${colorScheme.iconBg}`}>
                               {hasDraft ? (
-                                <PencilSquareIcon className="w-6 h-6 text-amber-600" />
+                                <PencilSquareIcon className={`w-6 h-6 ${colorScheme.iconText}`} />
                               ) : (
-                                <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                                <DocumentTextIcon className={`w-6 h-6 ${colorScheme.iconText}`} />
                               )}
                             </div>
                           </div>
@@ -314,13 +323,11 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                           </span>
                           <div className="flex items-center gap-2">
                             {hasDraft && (
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${colorScheme.badgeBg}`}>
                                 Draft
                               </span>
                             )}
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                              hasDraft ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
-                            }`}>
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${colorScheme.badgeBg}`}>
                               {note.slug}
                             </span>
                           </div>

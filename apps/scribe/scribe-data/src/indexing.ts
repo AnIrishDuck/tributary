@@ -8,6 +8,7 @@ interface UnindexedNote {
   version_uuid: string;
   body: string;
   insert_datetime: string;
+  collection_id: string | null;
 }
 
 interface LastEditedResult {
@@ -148,13 +149,15 @@ export async function indexSlugs(
       latest_blocks.block_uuid,
       latest_blocks.version_uuid,
       latest_blocks.body,
-      latest_blocks.insert_datetime
+      latest_blocks.insert_datetime,
+      latest_blocks.collection_id
     FROM (
       SELECT
         block_uuid,
         version_uuid,
         body,
         insert_datetime,
+        collection_id,
         ROW_NUMBER() OVER (PARTITION BY block_uuid ORDER BY insert_datetime DESC) as rn
       FROM block
     ) latest_blocks
@@ -177,6 +180,10 @@ export async function indexSlugs(
   }
 
   console.log(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
+
+  for (const note of unindexedNotes) {
+    console.log(`indexSlugs: note ${note.block_uuid} parent=${note.collection_id}`)
+  }
 
   // Phase 1: CPU-only work — extract titles, slugs, and tags from markdown.
   const cpuStart = performance.now()
@@ -525,6 +532,10 @@ export async function indexCollectionSlugs(localDb: TributaryLocal): Promise<voi
 
   const collections = (result.rows || []) as Collection[]
   const now = new Date().toISOString()
+
+  for (const col of collections) {
+    console.log(`indexCollectionSlugs: collection ${col.collection_uuid} parent=${col.parent_collection_uuid}`)
+  }
 
   const withSlugs = collections
     .map(col => ({ ...col, slug: titleToSlug(col.title) }))
