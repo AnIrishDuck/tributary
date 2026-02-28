@@ -159,23 +159,22 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     setError(null)
 
     try {
-      const { moveNote, moveCollection, indexAll, slugToTitle, titleToSlug } = await import('scribe-data')
+      const { moveNote, moveCollection, indexAll } = await import('scribe-data')
 
       const stream = await client.get('scribe', prefix)
       if (!stream) throw new Error('Library not found')
 
       const localDb = stream.local()
 
-      // Determine if rename is needed
+      // Pass new slug only if it changed
       const newSlug = validation.newSlug
-      const needsRename = titleToSlug(slugToTitle(newSlug)) !== titleToSlug(slugToTitle(currentSlug))
-      const newTitle = needsRename ? slugToTitle(newSlug) : undefined
+      const slugChanged = newSlug !== currentSlug ? newSlug : undefined
 
       if (entityType === 'note') {
-        await moveNote(stream, entityId, validation.targetUuid, 'web-ui', newTitle)
+        await moveNote(stream, entityId, validation.targetUuid, 'web-ui', slugChanged)
       } else {
         if (!validation.targetUuid) throw new Error('Invalid target for collection move')
-        await moveCollection(stream, entityId, validation.targetUuid, newTitle)
+        await moveCollection(stream, entityId, validation.targetUuid, slugChanged)
       }
 
       // Sync and re-index

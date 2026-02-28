@@ -1505,7 +1505,7 @@ describe('Collection Operations', () => {
       expect(resolved!.entity.collection_uuid).toBe(italian.collection_uuid)
     })
 
-    test('moveNote renames a note when newTitle is provided', async () => {
+    test('moveNote renames a note when newSlug is provided', async () => {
       const library = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
@@ -1518,15 +1518,15 @@ describe('Collection Operations', () => {
         collection_id: null
       })
 
-      // Move with rename (same collection, new title)
-      const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user', 'New Title')
-      expect(movedNote.body).toBe('# New Title\n\nSome content.')
+      // Move with rename (same collection, new slug)
+      const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user', 'new-slug')
+      expect(movedNote.body).toBe('# new-slug\n\nSome content.')
       expect(movedNote.collection_id).toBeNull()
 
       // Verify slug changes after reindexing
       await indexAll(localDb)
       const slugPath = await getNoteSlugPath(localDb, note.block_uuid)
-      expect(slugPath).toEqual(['new-title'])
+      expect(slugPath).toEqual(['new-slug'])
     })
 
     test('moveNote moves and renames simultaneously', async () => {
@@ -1550,9 +1550,9 @@ describe('Collection Operations', () => {
 
       // Move to collection and rename
       const movedNote = await moveNote(
-        syncedDb, note.block_uuid, collection.collection_uuid, 'test-user', 'New Name'
+        syncedDb, note.block_uuid, collection.collection_uuid, 'test-user', 'new-name'
       )
-      expect(movedNote.body).toBe('# New Name\n\nContent here.')
+      expect(movedNote.body).toBe('# new-name\n\nContent here.')
       expect(movedNote.collection_id).toBe(collection.collection_uuid)
 
       // Verify slug path after reindexing
@@ -1561,7 +1561,7 @@ describe('Collection Operations', () => {
       expect(slugPath).toEqual(['recipes', 'new-name'])
     })
 
-    test('moveNote without newTitle preserves original body', async () => {
+    test('moveNote without newSlug preserves original body', async () => {
       const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Keep This Title\n\nDo not change.',
@@ -1572,7 +1572,7 @@ describe('Collection Operations', () => {
       expect(movedNote.body).toBe('# Keep This Title\n\nDo not change.')
     })
 
-    test('moveCollection renames a collection when newTitle is provided', async () => {
+    test('moveCollection renames a collection when newSlug is provided', async () => {
       const library = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
@@ -1584,11 +1584,11 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      // Move (same parent) with rename
-      await moveCollection(syncedDb, collection.collection_uuid, library.collection_uuid, 'New Name')
+      // Move (same parent) with rename via slug
+      await moveCollection(syncedDb, collection.collection_uuid, library.collection_uuid, 'new-name')
 
       const updated = await getCollectionByUuid(syncedDb, collection.collection_uuid)
-      expect(updated!.title).toBe('New Name')
+      expect(updated!.title).toBe('new-name')
 
       // Verify slug changes after reindexing
       await indexAll(localDb)
@@ -1620,19 +1620,19 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      // Move to parentB and rename
-      await moveCollection(syncedDb, child.collection_uuid, parentB.collection_uuid, 'Renamed')
+      // Move to parentB and rename via slug
+      await moveCollection(syncedDb, child.collection_uuid, parentB.collection_uuid, 'renamed')
       await indexAll(localDb)
 
       const updated = await getCollectionByUuid(syncedDb, child.collection_uuid)
-      expect(updated!.title).toBe('Renamed')
+      expect(updated!.title).toBe('renamed')
       expect(updated!.parent_collection_uuid).toBe(parentB.collection_uuid)
 
       const slugPath = await getSlugPath(syncedDb, child.collection_uuid)
       expect(slugPath).toEqual(['parent-b', 'renamed'])
     })
 
-    test('moveCollection without newTitle preserves original title', async () => {
+    test('moveCollection without newSlug preserves original title', async () => {
       const library = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'

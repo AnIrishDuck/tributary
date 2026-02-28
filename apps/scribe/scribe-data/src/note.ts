@@ -264,7 +264,7 @@ export async function getNoteVersionCount(
  * @param blockUuid The UUID of the note to move
  * @param newCollectionId The UUID of the target collection, or null for library root
  * @param inserter The user/device identifier
- * @param newTitle Optional new title for the note (renames the H1 heading in the body)
+ * @param newSlug Optional new slug for the note (replaces the H1 heading in the body)
  * @returns The new version of the note
  */
 export async function moveNote(
@@ -272,14 +272,14 @@ export async function moveNote(
   blockUuid: string,
   newCollectionId: string | null,
   inserter: string,
-  newTitle?: string
+  newSlug?: string
 ): Promise<Note> {
   const latest = await getLatestNoteVersion(db, blockUuid)
   if (!latest) {
     throw new Error('Note not found')
   }
-  const body = newTitle !== undefined
-    ? replaceMarkdownTitle(latest.body, newTitle)
+  const body = newSlug !== undefined
+    ? replaceMarkdownTitle(latest.body, newSlug)
     : latest.body
   return createNoteVersion(db, blockUuid, {
     block_type: latest.block_type,

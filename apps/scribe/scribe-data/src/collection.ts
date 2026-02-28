@@ -168,18 +168,18 @@ export async function getAllCollectionsWithSlugs(
  * @param db The TributaryStream database instance
  * @param collectionUuid The UUID of the collection to move
  * @param newParentUuid The UUID of the new parent collection
- * @param newTitle Optional new title for the collection
+ * @param newSlug Optional new slug for the collection (sets the title to the slug value)
  */
 export async function moveCollection(
   db: TributaryStream,
   collectionUuid: string,
   newParentUuid: string,
-  newTitle?: string
+  newSlug?: string
 ): Promise<void> {
-  if (newTitle !== undefined) {
+  if (newSlug !== undefined) {
     await db.exec(
       `UPDATE collection SET parent_collection_uuid = $1, title = $2 WHERE collection_uuid = $3`,
-      [newParentUuid, newTitle, collectionUuid]
+      [newParentUuid, newSlug, collectionUuid]
     )
   } else {
     await db.exec(
