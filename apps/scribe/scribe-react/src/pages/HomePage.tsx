@@ -66,6 +66,14 @@ const HomePage: React.FC = () => {
   const itemCount = libraries?.length ?? 0
   const itemLabel = itemCount === 1 ? 'library' : 'libraries'
 
+  // Partition libraries into synced (have been through at least one sync cycle)
+  // and unsynced (waiting for the round-robin sync to reach them)
+  const syncedLibraries = libraries?.filter(lib => {
+    const status = syncStatus[lib.libraryId]
+    return status?.lastSyncedAt != null
+  }) ?? []
+  const unsyncedCount = (libraries?.length ?? 0) - syncedLibraries.length
+
   return (
     <div className="min-h-screen bg-gray-50 py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -165,6 +173,14 @@ const HomePage: React.FC = () => {
                     )
                   })}
               </div>
+              {unsyncedCount > 0 && (
+                <div className="mt-4 flex items-center justify-center gap-3 py-3 text-sm text-gray-500">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span>
+                    Syncing {unsyncedCount} more {unsyncedCount === 1 ? 'library' : 'libraries'}...
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ) : globalSyncStatus.isSyncing ? (

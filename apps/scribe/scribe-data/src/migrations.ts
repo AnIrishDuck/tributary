@@ -119,6 +119,20 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     )
   `)
 
+  // Create the linked_libraries table for caching linked library metadata (non-synchronized).
+  // Only used on the home stream to avoid N+1 queries on page load.
+  await local.exec(`
+    CREATE TABLE IF NOT EXISTS linked_libraries (
+      stream_id TEXT NOT NULL PRIMARY KEY,
+      title TEXT NOT NULL,
+      last_edited TEXT,
+      sync_current_index INTEGER NOT NULL DEFAULT 0,
+      sync_final_index INTEGER NOT NULL DEFAULT 0,
+      last_synced_at TEXT,
+      cached_at TEXT NOT NULL
+    )
+  `)
+
 }
 
 /**
@@ -133,6 +147,7 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  * Migration to drop the block table
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
+  await localDb.exec('DROP TABLE IF EXISTS linked_libraries')
   await localDb.exec('DROP TABLE IF EXISTS collection_slug')
   await localDb.exec('DROP TABLE IF EXISTS block_search_index')
   await localDb.exec('DROP TABLE IF EXISTS block_tag')

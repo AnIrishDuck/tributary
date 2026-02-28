@@ -1,15 +1,18 @@
 import { TributaryClient } from 'tributary-client'
-import { getLinkedLibraries, localMigrations } from 'scribe-data'
+import { getCachedLinkedLibraries, getLinkedLibraries, localMigrations, seedLinkedLibrariesCache } from 'scribe-data'
 import { LibraryInfo } from './getLibraries'
 
 /**
  * Load the home collections from the configured home library.
  * Returns null if no home library is configured (signals fallback to getLibraries).
  *
- * This function only reads the linked-library list from the home stream's
- * collection table.  Per-library metadata (lastEdited, libraryTitle) is
- * populated by the sync loop and stored in SyncStatus, so the home page
- * never fires independent DB queries that could block the PGliteWorker.
+ * Uses the linked_libraries cache on the home stream's local DB so the home
+ * page can render immediately without initializing every linked stream.
+ * On first load (empty cache), falls back to reading the home stream's
+ * collection table and seeds the cache for subsequent loads.
+ *
+ * Linked streams are NOT initialized here. The sync loop handles stream
+ * registration and initialization progressively via round-robin.
  */
 export async function getHomeCollections(client: TributaryClient): Promise<LibraryInfo[] | null> {
   const homeStreamId = await client.getHomeStream()
@@ -22,32 +25,46 @@ export async function getHomeCollections(client: TributaryClient): Promise<Libra
     return null
   }
 
+  const homeLocal = homeStream.local()
+
+  // Ensure local tables (including linked_libraries) exist on the home stream
+  await localMigrations(homeLocal)
+
+  // Try the cache first — fast path, no per-library DB queries
+  const cached = await getCachedLinkedLibraries(homeLocal)
+  if (cached.length > 0) {
+    return cached.map(lib => ({
+      libraryId: lib.stream_id,
+      lastEdited: lib.last_edited,
+      libraryTitle: lib.title,
+    }))
+  }
+
+  // Cache miss — read the collection table and seed the cache.
+  // This only happens on first load before the sync loop has run.
   const linkedLibraries = await getLinkedLibraries(homeStream)
+  if (linkedLibraries.length === 0) {
+    return []
+  }
 
-  const libraryInfos: LibraryInfo[] = await Promise.all(
-    linkedLibraries.map(async (collection) => {
-      const linkedStreamId = collection.linked_stream_id!
-      const linkedStreamKey = collection.linked_stream_key
+  // Seed the cache so the next load is instant
+  await seedLinkedLibrariesCache(homeStream, homeLocal)
 
-      // Register the linked library and ensure local tables exist
-      if (linkedStreamKey) {
-        try {
-          const stream = await client.addWriteKey('scribe', linkedStreamKey)
-          await localMigrations(stream.local())
-        } catch (err) {
-          console.error(`Failed to register linked library ${linkedStreamId}:`, err)
-        }
+  // Register linked streams so the sync loop can find them,
+  // but do NOT run localMigrations on each — the sync loop handles that.
+  for (const collection of linkedLibraries) {
+    if (collection.linked_stream_key) {
+      try {
+        await client.addWriteKey('scribe', collection.linked_stream_key)
+      } catch (err) {
+        console.error(`Failed to register linked library ${collection.linked_stream_id}:`, err)
       }
+    }
+  }
 
-      // lastEdited is populated by the sync loop (stored in SyncStatus).
-      // libraryTitle comes from the linked collection metadata — no per-library query needed.
-      return {
-        libraryId: linkedStreamId,
-        lastEdited: null,
-        libraryTitle: collection.title
-      }
-    })
-  )
-
-  return libraryInfos
+  return linkedLibraries.map(collection => ({
+    libraryId: collection.linked_stream_id!,
+    lastEdited: null,
+    libraryTitle: collection.title,
+  }))
 }

@@ -200,6 +200,47 @@ export interface NoteSearchIndexTable {
 }
 
 /**
+ * Database representation of a cached linked library (non-synchronized).
+ * Stored on the home stream's local DB to avoid N+1 queries on page load.
+ */
+export interface LinkedLibraryTable {
+  /**
+   * Base64url-encoded public key of the linked stream (primary key)
+   */
+  stream_id: string
+
+  /**
+   * Display title for the library
+   */
+  title: string
+
+  /**
+   * ISO string of the most recent note edit time, or null if no notes
+   */
+  last_edited: string | null
+
+  /**
+   * Current sync index (how many blobs have been synced)
+   */
+  sync_current_index: number
+
+  /**
+   * Final sync index (total blobs on the server)
+   */
+  sync_final_index: number
+
+  /**
+   * ISO string of last successful sync, or null if never synced
+   */
+  last_synced_at: string | null
+
+  /**
+   * ISO string of when this cache row was last updated
+   */
+  cached_at: string
+}
+
+/**
  * The main database schema for the scribe app
  */
 export interface ScribeSchema {
@@ -237,6 +278,11 @@ export interface ScribeSchema {
    * Table containing collections (synchronized via Tributary)
    */
   collection: CollectionTable
+
+  /**
+   * Table caching linked library metadata on the home stream (non-synchronized)
+   */
+  linked_libraries: LinkedLibraryTable
 
 }
 
