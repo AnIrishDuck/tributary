@@ -11,6 +11,7 @@ import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
 import { createNote, createNoteVersion } from 'scribe-data/src/note'
 import { indexSlugs, indexAll, getNoteSlugByUuid, getAuthoritativeVersionByNoteUuid } from 'scribe-data/src/indexing'
 import { getDraftForNote, getDraftSummariesForCollection, saveDraft } from '../src/drafts/draftStorage'
+import * as scribeData from 'scribe-data'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -779,5 +780,112 @@ describe('EditorPage conflict warning', () => {
     }, { timeout: 5000 })
 
     unmount()
+  })
+})
+
+describe('EditorPage dynamic breadcrumbs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('should show parent collection slug in breadcrumbs when creating note under a collection', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a parent collection
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    await scribeData.createCollection(stream, {
+      title: 'My Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(localDb)
+
+    // Navigate to +note under the parent collection
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/my-recipes/+note`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for editor to load — header shows the collection label
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'My Recipes' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Breadcrumbs should show the parent collection slug
+    expect(screen.getByText('my-recipes')).toBeInTheDocument()
+  })
+
+  it('should show dynamic slug from initial title in breadcrumbs via slug+note route', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a parent collection
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    await scribeData.createCollection(stream, {
+      title: 'Cooking',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(localDb)
+
+    // Navigate using the slug+note pattern — this sets initialTitle from the slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/cooking/pasta-recipe+note`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for editor to load — header shows the collection label
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Cooking' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Breadcrumbs should show both the parent slug and the dynamic note slug
+    // The slug+note URL pre-fills initialTitle = "Pasta Recipe" → slug = "pasta-recipe"
+    expect(screen.getByText('cooking')).toBeInTheDocument()
+    expect(screen.getByText('pasta-recipe')).toBeInTheDocument()
+  })
+
+  it('should show default slug in breadcrumbs when creating root note', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/+note`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for editor to load — header shows the library name at root
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // The default content includes "# New Note" which generates slug "new-note".
+    // Breadcrumbs should show this default slug even at root level.
+    expect(screen.getByText('new-note')).toBeInTheDocument()
   })
 })

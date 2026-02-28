@@ -137,9 +137,12 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
       </div>
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-        {ancestors.length > 0 && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} />
-        )}
+        <Breadcrumbs
+          ancestors={ancestors}
+          prefix={prefix}
+          allLinks
+          trailingSlug={title.trim() ? titleToSlug(title.trim()) : undefined}
+        />
 
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
