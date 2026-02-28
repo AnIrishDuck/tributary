@@ -409,25 +409,33 @@ export async function getVersionPosition(
 }
 
 /**
- * Build a version tree for a note.
+ * Fetch version tree nodes for a note.
  *
- * Fetches all versions for the block and assembles them into a tree
- * based on `prior_version_uuid` links. The root is the version with
- * `prior_version_uuid === null`. The version with the latest
- * `insert_datetime` is marked as authoritative.
+ * Returns a flat array of VersionTreeNode objects ordered by
+ * `insert_datetime ASC`. Callers can reconstruct the tree structure
+ * from the `prior_version_uuid` links if needed. The authoritative
+ * version (latest `insert_datetime` across *all* versions, not just
+ * the current page) is marked with `isAuthoritative: true`.
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note
  * @param limit Maximum number of versions to fetch (default 100)
  * @param offset Number of versions to skip (default 0)
- * @returns The root VersionTreeNode, or null if no versions exist
+ * @returns Array of VersionTreeNode objects, or empty array if no versions exist
  */
 export async function getVersionTree(
   db: TributaryStream | TributaryLocal,
   block_uuid: string,
   limit: number = 100,
   offset: number = 0
-): Promise<VersionTreeNode | null> {
+): Promise<VersionTreeNode[]> {
+  // Find the true authoritative version across all versions for this block
+  const authResult = await db.query(
+    `SELECT version_uuid FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    [block_uuid]
+  )
+  const authoritativeUuid = (authResult.rows?.[0] as any)?.version_uuid ?? null
+
   const result = await db.query(
     `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2 OFFSET $3`,
     [block_uuid, limit, offset]
@@ -440,38 +448,13 @@ export async function getVersionTree(
     inserter: string
   }>
 
-  if (rows.length === 0) return null
-
-  // The authoritative version is the one with the latest insert_datetime
-  const authoritativeUuid = rows[rows.length - 1].version_uuid
-
-  // Create a node for each version
-  const nodeMap = new Map<string, VersionTreeNode>()
-  for (const row of rows) {
-    nodeMap.set(row.version_uuid, {
-      version_uuid: row.version_uuid,
-      prior_version_uuid: row.prior_version_uuid,
-      insert_datetime: row.insert_datetime,
-      inserter: row.inserter,
-      isAuthoritative: row.version_uuid === authoritativeUuid,
-      children: []
-    })
-  }
-
-  // Wire up parent → children relationships
-  let root: VersionTreeNode | null = null
-  for (const node of nodeMap.values()) {
-    if (node.prior_version_uuid === null) {
-      root = node
-    } else {
-      const parent = nodeMap.get(node.prior_version_uuid)
-      if (parent) {
-        parent.children.push(node)
-      }
-    }
-  }
-
-  return root
+  return rows.map(row => ({
+    version_uuid: row.version_uuid,
+    prior_version_uuid: row.prior_version_uuid,
+    insert_datetime: row.insert_datetime,
+    inserter: row.inserter,
+    isAuthoritative: row.version_uuid === authoritativeUuid,
+  }))
 }
 
 /**

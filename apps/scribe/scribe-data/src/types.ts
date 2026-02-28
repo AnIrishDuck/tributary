@@ -205,8 +205,6 @@ export interface VersionTreeNode {
   inserter: string
   /** Whether this is the authoritative (latest) version. */
   isAuthoritative: boolean
-  /** Child versions (versions whose prior_version_uuid points to this one). */
-  children: VersionTreeNode[]
 }
 
 // Re-export search types from search.ts
