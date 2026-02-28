@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
 import { titleToSlug } from './indexing.js'
-import { moveNote } from './note.js'
 
 /**
  * Create a new collection in the database
@@ -427,7 +426,7 @@ export async function getNoteSlugPath(
 
 /**
  * Find all notes whose latest version has collection_id IS NULL and
- * move them to the root collection (library).
+ * move them to the root collection (library) in a single batch INSERT.
  *
  * Should only be called after sync for this library has completed.
  *
@@ -445,9 +444,11 @@ export async function fixNullParentNotes(
 
   const rootUuid = library.collection_uuid
 
-  // Find latest version of each note where collection_id is null
+  // Find latest version of each orphaned note with all fields needed
+  // to create a new version in one shot
   const result = await stream.query(
-    `SELECT b.block_uuid, b.collection_id FROM block b
+    `SELECT b.block_uuid, b.version_uuid, b.block_type, b.body, b.collection_id
+     FROM block b
      INNER JOIN (
        SELECT block_uuid, MAX(insert_datetime) as max_datetime
        FROM block
@@ -457,7 +458,13 @@ export async function fixNullParentNotes(
     []
   )
 
-  const orphanedNotes = (result.rows || []) as Array<{ block_uuid: string; collection_id: string | null }>
+  const orphanedNotes = (result.rows || []) as Array<{
+    block_uuid: string
+    version_uuid: string
+    block_type: string
+    body: string
+    collection_id: string | null
+  }>
 
   if (orphanedNotes.length === 0) {
     return 0
@@ -468,10 +475,30 @@ export async function fixNullParentNotes(
     console.log(`  - note ${note.block_uuid} parent=${note.collection_id}`)
   }
 
+  // Build new versions for all orphaned notes and insert in one query
+  const now = new Date().toISOString()
+  const COLS = 8 // block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id
+  const vals = orphanedNotes.map((_, i) => {
+    const b = i * COLS
+    return `($${b+1}, $${b+2}, $${b+3}, $${b+4}, $${b+5}, $${b+6}, $${b+7}, $${b+8})`
+  }).join(', ')
+  const params = orphanedNotes.flatMap(note => [
+    note.block_uuid,
+    note.block_type,
+    uuidv4(),                // new version_uuid
+    note.version_uuid,       // prior_version_uuid = current latest
+    now,
+    'auto-fix',
+    note.body,
+    rootUuid                 // new collection_id
+  ])
+
   console.log(`[fixNullParentNotes] Moving ${orphanedNotes.length} notes to root collection ${rootUuid}`)
-  for (const note of orphanedNotes) {
-    await moveNote(stream, note.block_uuid, rootUuid, 'auto-fix')
-  }
+  await stream.exec(
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
+     VALUES ${vals}`,
+    params
+  )
 
   console.log(`[fixNullParentNotes] Done, fixed ${orphanedNotes.length} notes`)
   return orphanedNotes.length

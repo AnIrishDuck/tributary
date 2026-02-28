@@ -16,7 +16,8 @@ import {
   getCollectionsBySlug,
   getCollectionBySlugUnderParent,
   getSlugPath,
-  getNoteSlugPath
+  getNoteSlugPath,
+  fixNullParentNotes
 } from '../src/collection.js'
 import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
 import { indexCollectionSlugs, getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
@@ -1502,6 +1503,116 @@ describe('Collection Operations', () => {
       expect(resolved).not.toBeNull()
       expect(resolved!.type).toBe('collection')
       expect(resolved!.entity.collection_uuid).toBe(italian.collection_uuid)
+    })
+  })
+
+  describe('fixNullParentNotes', () => {
+    test('should move all notes with null collection_id to the root collection', async () => {
+      // Create root collection
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create a named collection
+      const recipes = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create notes with null collection_id (orphaned)
+      const orphan1 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Orphan One\nContent',
+        inserter: 'test-user',
+        collection_id: null
+      })
+      const orphan2 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Orphan Two\nContent',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      // Create a note already in a collection (should not be touched)
+      const assigned = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Assigned Note\nContent',
+        inserter: 'test-user',
+        collection_id: recipes.collection_uuid
+      })
+
+      // Verify orphaned notes exist at root
+      const rootNotesBefore = await getNotesInCollection(syncedDb, null)
+      expect(rootNotesBefore.length).toBe(2)
+
+      // Run the fix
+      const fixedCount = await fixNullParentNotes(syncedDb)
+      expect(fixedCount).toBe(2)
+
+      // Orphaned notes should no longer appear at root (collection_id IS NULL)
+      const rootNotesAfter = await getNotesInCollection(syncedDb, null)
+      expect(rootNotesAfter.length).toBe(0)
+
+      // They should now appear under the library root collection
+      const libraryNotes = await getNotesInCollection(syncedDb, library.collection_uuid)
+      expect(libraryNotes.length).toBe(2)
+      const libraryBlockUuids = libraryNotes.map(n => n.block_uuid).sort()
+      expect(libraryBlockUuids).toEqual([orphan1.block_uuid, orphan2.block_uuid].sort())
+
+      // The assigned note should still be in its collection
+      const recipeNotes = await getNotesInCollection(syncedDb, recipes.collection_uuid)
+      expect(recipeNotes.length).toBe(1)
+      expect(recipeNotes[0].block_uuid).toBe(assigned.block_uuid)
+    })
+
+    test('should return 0 when no orphaned notes exist', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create a note already in the root collection
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Note\nContent',
+        inserter: 'test-user',
+        collection_id: library.collection_uuid
+      })
+
+      const fixedCount = await fixNullParentNotes(syncedDb)
+      expect(fixedCount).toBe(0)
+    })
+
+    test('should return 0 when no root collection exists', async () => {
+      // No library created — fixNullParentNotes should bail out
+      const fixedCount = await fixNullParentNotes(syncedDb)
+      expect(fixedCount).toBe(0)
+    })
+
+    test('new versions should have correct prior_version_uuid chain', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const orphan = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test\nContent',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      await fixNullParentNotes(syncedDb)
+
+      // Get the latest version — should point back to the original
+      const latest = await getLatestNoteVersion(syncedDb, orphan.block_uuid)
+      expect(latest).not.toBeNull()
+      expect(latest!.collection_id).toBe(library.collection_uuid)
+      expect(latest!.prior_version_uuid).toBe(orphan.version_uuid)
+      expect(latest!.body).toBe(orphan.body)
+      expect(latest!.inserter).toBe('auto-fix')
     })
   })
 })
