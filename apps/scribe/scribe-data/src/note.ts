@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, PGliteResult, VersionSummary } from './types'
+import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
 
 interface NoteQueryResult {
   version_uuid: string;
@@ -406,4 +406,89 @@ export async function getVersionPosition(
     total,
     isAuthoritative: position === total,
   }
+}
+
+/**
+ * Build a version tree for a note.
+ *
+ * Fetches all versions for the block and assembles them into a tree
+ * based on `prior_version_uuid` links. The root is the version with
+ * `prior_version_uuid === null`. The version with the latest
+ * `insert_datetime` is marked as authoritative.
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param block_uuid The UUID of the note
+ * @returns The root VersionTreeNode, or null if no versions exist
+ */
+export async function getVersionTree(
+  db: TributaryStream | TributaryLocal,
+  block_uuid: string
+): Promise<VersionTreeNode | null> {
+  const result = await db.query(
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
+    [block_uuid]
+  )
+
+  const rows = (result.rows || []) as Array<{
+    version_uuid: string
+    prior_version_uuid: string | null
+    insert_datetime: string
+    inserter: string
+  }>
+
+  if (rows.length === 0) return null
+
+  // The authoritative version is the one with the latest insert_datetime
+  const authoritativeUuid = rows[rows.length - 1].version_uuid
+
+  // Create a node for each version
+  const nodeMap = new Map<string, VersionTreeNode>()
+  for (const row of rows) {
+    nodeMap.set(row.version_uuid, {
+      version_uuid: row.version_uuid,
+      prior_version_uuid: row.prior_version_uuid,
+      insert_datetime: row.insert_datetime,
+      inserter: row.inserter,
+      isAuthoritative: row.version_uuid === authoritativeUuid,
+      children: []
+    })
+  }
+
+  // Wire up parent → children relationships
+  let root: VersionTreeNode | null = null
+  for (const node of nodeMap.values()) {
+    if (node.prior_version_uuid === null) {
+      root = node
+    } else {
+      const parent = nodeMap.get(node.prior_version_uuid)
+      if (parent) {
+        parent.children.push(node)
+      }
+    }
+  }
+
+  return root
+}
+
+/**
+ * Fetch a single version by its version_uuid alone (no block_uuid needed).
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param version_uuid The UUID of the version to retrieve
+ * @returns The Note record or null if not found
+ */
+export async function getVersionByUuid(
+  db: TributaryStream | TributaryLocal,
+  version_uuid: string
+): Promise<Note | null> {
+  const result = await db.query(
+    `SELECT * FROM block WHERE version_uuid = $1`,
+    [version_uuid]
+  )
+
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+
+  return result.rows[0] as Note
 }

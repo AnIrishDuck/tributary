@@ -11,7 +11,9 @@ import {
   getLatestNoteVersion,
   getNoteCount,
   getVersionHistory,
-  getVersionPosition
+  getVersionPosition,
+  getVersionTree,
+  getVersionByUuid
 } from '../src/note.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -384,5 +386,173 @@ describe('version history', () => {
     const history = await getVersionHistory(syncedDb, uuidv4())
 
     expect(history).toEqual([])
+  })
+})
+
+describe('version tree', () => {
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const result = await createTestDB()
+    syncedDb = result.syncedDb
+    localDb = result.localDb
+    cleanup = async () => {}
+    await up(syncedDb, localDb)
+  })
+
+  afterEach(async () => {
+    if (cleanup) await cleanup()
+  })
+
+  test('linear history', async () => {
+    const v1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# V1',
+      inserter: 'test-user',
+      insert_datetime: '2024-01-01T00:00:00.000Z'
+    })
+
+    const v2 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V2',
+      inserter: 'test-user',
+      prior_version_uuid: v1.version_uuid,
+      insert_datetime: '2024-01-02T00:00:00.000Z'
+    })
+
+    const v3 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V3',
+      inserter: 'test-user',
+      prior_version_uuid: v2.version_uuid,
+      insert_datetime: '2024-01-03T00:00:00.000Z'
+    })
+
+    const tree = await getVersionTree(syncedDb, v1.block_uuid)
+
+    expect(tree).not.toBeNull()
+    expect(tree!.version_uuid).toBe(v1.version_uuid)
+    expect(tree!.isAuthoritative).toBe(false)
+    expect(tree!.children).toHaveLength(1)
+
+    const child1 = tree!.children[0]
+    expect(child1.version_uuid).toBe(v2.version_uuid)
+    expect(child1.isAuthoritative).toBe(false)
+    expect(child1.children).toHaveLength(1)
+
+    const child2 = child1.children[0]
+    expect(child2.version_uuid).toBe(v3.version_uuid)
+    expect(child2.isAuthoritative).toBe(true)
+    expect(child2.children).toHaveLength(0)
+  })
+
+  test('branching history', async () => {
+    const v1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# V1',
+      inserter: 'test-user',
+      insert_datetime: '2024-01-01T00:00:00.000Z'
+    })
+
+    const v2 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V2 (branch A)',
+      inserter: 'device-a',
+      prior_version_uuid: v1.version_uuid,
+      insert_datetime: '2024-01-02T00:00:00.000Z'
+    })
+
+    const v3 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V3 (branch B)',
+      inserter: 'device-b',
+      prior_version_uuid: v1.version_uuid,
+      insert_datetime: '2024-01-03T00:00:00.000Z'
+    })
+
+    const tree = await getVersionTree(syncedDb, v1.block_uuid)
+
+    expect(tree).not.toBeNull()
+    expect(tree!.version_uuid).toBe(v1.version_uuid)
+    expect(tree!.children).toHaveLength(2)
+
+    const childUuids = tree!.children.map(c => c.version_uuid).sort()
+    expect(childUuids).toEqual([v2.version_uuid, v3.version_uuid].sort())
+  })
+
+  test('authoritative marking', async () => {
+    const v1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# V1',
+      inserter: 'test-user',
+      insert_datetime: '2024-01-01T00:00:00.000Z'
+    })
+
+    const v2 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V2 (early branch)',
+      inserter: 'device-a',
+      prior_version_uuid: v1.version_uuid,
+      insert_datetime: '2024-01-02T00:00:00.000Z'
+    })
+
+    const v3 = await createNote(syncedDb, {
+      block_uuid: v1.block_uuid,
+      block_type: 'scribe/markdown',
+      body: '# V3 (late branch)',
+      inserter: 'device-b',
+      prior_version_uuid: v1.version_uuid,
+      insert_datetime: '2024-01-03T00:00:00.000Z'
+    })
+
+    const tree = await getVersionTree(syncedDb, v1.block_uuid)
+
+    // Collect all nodes
+    const allNodes: Array<{ version_uuid: string; isAuthoritative: boolean }> = []
+    function walk(node: typeof tree) {
+      if (!node) return
+      allNodes.push({ version_uuid: node.version_uuid, isAuthoritative: node.isAuthoritative })
+      node.children.forEach(walk)
+    }
+    walk(tree)
+
+    // Only the version with the latest insert_datetime should be authoritative
+    const authNodes = allNodes.filter(n => n.isAuthoritative)
+    expect(authNodes).toHaveLength(1)
+    expect(authNodes[0].version_uuid).toBe(v3.version_uuid)
+  })
+
+  test('getVersionByUuid hit', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Target Version',
+      inserter: 'test-user'
+    })
+
+    const result = await getVersionByUuid(syncedDb, note.version_uuid)
+
+    expect(result).not.toBeNull()
+    expect(result!.version_uuid).toBe(note.version_uuid)
+    expect(result!.block_uuid).toBe(note.block_uuid)
+    expect(result!.body).toBe('# Target Version')
+  })
+
+  test('getVersionByUuid miss', async () => {
+    const result = await getVersionByUuid(syncedDb, uuidv4())
+
+    expect(result).toBeNull()
+  })
+
+  test('empty note returns null', async () => {
+    const tree = await getVersionTree(syncedDb, uuidv4())
+
+    expect(tree).toBeNull()
   })
 })
