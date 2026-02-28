@@ -10,7 +10,7 @@ import { routes } from '../src/route'
 import { getNoteCount, getNoteVersionCount } from 'scribe-data/src/note'
 import { createNote } from 'scribe-data/src/note'
 import { indexSlugs, getNoteSlugByUuid } from 'scribe-data/src/indexing'
-import { getDraftForNote } from '../src/drafts/draftStorage'
+import { getDraftForNote, getDraftSummariesForCollection } from '../src/drafts/draftStorage'
 
 describe('EditorPage', () => {
   beforeEach(() => {
@@ -441,6 +441,41 @@ describe('EditorPage cancel behavior', () => {
     // to be permanently redirected back to the edit page.
     const draft = getDraftForNote(base64Part, block.block_uuid)
     expect(draft).toBeNull()
+
+    unmount()
+  })
+
+  it('should delete draft when canceling a new note', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/+note`]
+    })
+
+    const { unmount } = render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for the editor to load
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
+    })
+
+    // Click cancel
+    const cancelButton = screen.getByRole('button', { name: /Cancel/ })
+    fireEvent.click(cancelButton)
+
+    // Wait for side effects to settle
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // No new-note drafts should exist in the root collection after canceling.
+    // Bug: cancel on new notes called saveNow() which created a draft,
+    // causing the draft to appear in the collection listing.
+    const drafts = getDraftSummariesForCollection(base64Part, null)
+    expect(drafts).toHaveLength(0)
 
     unmount()
   })
