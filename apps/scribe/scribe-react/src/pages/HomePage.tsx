@@ -106,19 +106,21 @@ const HomePage: React.FC = () => {
                     const libStatus = syncStatus[library.libraryId]
                     const displayName = libStatus?.libraryTitle || library.libraryTitle || 'Notes'
                     const displayId = `pk/${library.libraryId.substring(0, 16)}...`
+                    const isSyncing = libStatus != null && !libStatus.synced
                     const hasSynced = libStatus?.lastSyncedAt != null
-                    const showProgress = libStatus && !libStatus.synced
 
                     const lastEdited = libStatus?.lastEdited ?? library.lastEdited
-                    const lastEditedText = !hasSynced
-                      ? 'Awaiting sync'
-                      : lastEdited
-                        ? new Date(lastEdited).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })
-                        : 'No edits yet'
+                    const lastEditedText = isSyncing
+                      ? null // progress indicator replaces this
+                      : !hasSynced
+                        ? 'Awaiting sync'
+                        : lastEdited
+                          ? new Date(lastEdited).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })
+                          : 'No edits yet'
 
                     return (
                       <Link
@@ -136,11 +138,12 @@ const HomePage: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-400 font-mono">{displayId}</span>
                             <span className="text-gray-300">·</span>
-                            <p className="text-sm text-gray-500">{lastEditedText}</p>
-                            {showProgress && (
+                            {isSyncing ? (
                               <span className="text-xs text-blue-600 font-medium">
                                 Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
                               </span>
+                            ) : (
+                              <p className="text-sm text-gray-500">{lastEditedText}</p>
                             )}
                           </div>
                         </div>

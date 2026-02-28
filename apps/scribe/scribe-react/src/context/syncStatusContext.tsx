@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -232,6 +232,13 @@ export const SyncStatusProvider: React.FC<{
         // Skip when nothing changed to avoid unnecessary DB writes
         // (indexCollectionSlugs rewrites its entire table on every call).
         if (hadChanges) {
+          // Resolve the home stream's local DB once for caching linked library metadata
+          let homeLocal: Awaited<ReturnType<TributaryStream['local']>> | null = null
+          if (homeStreamId) {
+            const homeEntry = streams.find(s => s.id === homeStreamId)
+            if (homeEntry) homeLocal = homeEntry.stream.local()
+          }
+
           for (const { id, stream } of streamsToSync) {
             if (!isMounted) { isRunning = false; return }
             try {
@@ -249,6 +256,34 @@ export const SyncStatusProvider: React.FC<{
                 ...latestPerStream[id],
                 lastEdited,
                 libraryTitle,
+              }
+
+              // When the home stream finishes syncing, seed the linked_libraries
+              // cache from its collection table so the home page can render
+              // immediately on next load without initializing every stream.
+              if (id === homeStreamId && homeLocal) {
+                try {
+                  await seedLinkedLibrariesCache(stream, homeLocal)
+                } catch (err) {
+                  console.error('[sync] Error seeding linked libraries cache:', err)
+                }
+              }
+
+              // Cache metadata for non-home libraries on the home stream's local DB
+              if (id !== homeStreamId && homeLocal && libraryTitle != null) {
+                const status = latestPerStream[id]
+                try {
+                  await upsertLinkedLibrary(homeLocal, {
+                    stream_id: id,
+                    title: libraryTitle,
+                    last_edited: lastEdited,
+                    sync_current_index: status?.currentIndex ?? 0,
+                    sync_final_index: status?.finalIndex ?? 0,
+                    last_synced_at: status?.lastSyncedAt?.toISOString() ?? null,
+                  })
+                } catch (err) {
+                  console.error('[sync] Error caching linked library metadata:', err)
+                }
               }
             } catch (error) {
               console.error('Error reindexing library:', error)

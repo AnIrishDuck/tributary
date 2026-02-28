@@ -423,3 +423,4 @@ export async function getNoteSlugPath(
   const collectionPath = await getSlugPath(db, collectionId)
   return [...collectionPath, noteSlug]
 }
+

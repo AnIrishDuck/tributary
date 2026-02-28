@@ -197,6 +197,19 @@ export interface VersionSummary {
   isAuthoritative: boolean
 }
 
+/**
+ * Cached linked library row stored on the home stream's local DB
+ */
+export interface LinkedLibrary {
+  stream_id: string
+  title: string
+  last_edited: string | null
+  sync_current_index: number
+  sync_final_index: number
+  last_synced_at: string | null
+  cached_at: string
+}
+
 /** A node in a version tree. */
 export interface VersionTreeNode {
   version_uuid: string
