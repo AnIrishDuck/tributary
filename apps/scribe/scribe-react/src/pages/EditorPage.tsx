@@ -173,7 +173,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
         const stream = await client.get('scribe', prefix)
         if (!stream) return
         const localDb = stream.local()
-        const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
+        const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid) as AuthoritativeVersion | null
         if (!authVersion) return
         if (authVersion.version_uuid !== loadedVersionUuidRef.current) {
           setShowConflictWarning(true)
@@ -196,7 +196,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       if (!stream) return
       const localDb = stream.local()
 
-      const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
+      const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid) as AuthoritativeVersion | null
       if (!authVersion) return
 
       const note = await getNoteByVersion(localDb, editBlockUuid, authVersion.version_uuid)
