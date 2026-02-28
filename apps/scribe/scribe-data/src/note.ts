@@ -418,15 +418,19 @@ export async function getVersionPosition(
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note
+ * @param limit Maximum number of versions to fetch (default 100)
+ * @param offset Number of versions to skip (default 0)
  * @returns The root VersionTreeNode, or null if no versions exist
  */
 export async function getVersionTree(
   db: TributaryStream | TributaryLocal,
-  block_uuid: string
+  block_uuid: string,
+  limit: number = 100,
+  offset: number = 0
 ): Promise<VersionTreeNode | null> {
   const result = await db.query(
-    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC`,
-    [block_uuid]
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2 OFFSET $3`,
+    [block_uuid, limit, offset]
   )
 
   const rows = (result.rows || []) as Array<{
