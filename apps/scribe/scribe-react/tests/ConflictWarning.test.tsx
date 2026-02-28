@@ -8,7 +8,7 @@ describe('ConflictWarning', () => {
     render(<ConflictWarning onReload={vi.fn()} onDismiss={vi.fn()} />)
 
     expect(
-      screen.getByText('This note has been updated elsewhere. You may want to save your work and reload.')
+      screen.getByText('This note has been updated elsewhere.')
     ).toBeInTheDocument()
     expect(screen.getByText('Reload')).toBeInTheDocument()
     expect(screen.getByText('Dismiss')).toBeInTheDocument()

@@ -13,7 +13,7 @@ const ConflictWarning: React.FC<ConflictWarningProps> = ({ onReload, onDismiss }
         <div className="flex items-center gap-2">
           <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 flex-shrink-0" />
           <span className="text-amber-800 font-medium">
-            This note has been updated elsewhere. You may want to save your work and reload.
+            This note has been updated elsewhere.
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
