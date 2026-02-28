@@ -18,6 +18,8 @@ interface UseDraftAutoSaveOptions {
   collectionId: string | null
   /** A function that returns the current editor body. */
   getBody: () => string
+  /** A function that returns the version UUID the editor was loaded with (existing notes only). */
+  getBaseVersionUuid?: () => string | null
 }
 
 /**
@@ -31,6 +33,7 @@ export function useDraftAutoSave({
   blockUuid,
   collectionId,
   getBody,
+  getBaseVersionUuid,
 }: UseDraftAutoSaveOptions) {
   // Track the "last persisted body" so we only write when content changes.
   const lastSavedBodyRef = useRef<string | null>(null)
@@ -49,9 +52,10 @@ export function useDraftAutoSave({
       collectionId: collectionId ?? null,
       prefix,
       body,
+      baseVersionUuid: getBaseVersionUuid?.() ?? null,
       updatedAt: new Date().toISOString(),
     })
-  }, [prefix, draftId, blockUuid, collectionId, getBody])
+  }, [prefix, draftId, blockUuid, collectionId, getBody, getBaseVersionUuid])
 
   // Set up the 30-second interval.
   useEffect(() => {
@@ -70,12 +74,12 @@ export function useDraftAutoSave({
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [save])
 
-  /** Load an existing draft body (if any). */
-  const loadDraft = useCallback((): string | null => {
+  /** Load an existing draft (if any). Returns body and baseVersionUuid. */
+  const loadDraft = useCallback((): { body: string; baseVersionUuid?: string | null } | null => {
     const d = getDraft(prefix, draftId)
     if (d) {
       lastSavedBodyRef.current = d.body
-      return d.body
+      return { body: d.body, baseVersionUuid: d.baseVersionUuid }
     }
     return null
   }, [prefix, draftId])
