@@ -546,7 +546,7 @@ describe('EditorPage conflict warning', () => {
 
     // The conflict warning should appear after the sync loop detects the change
     await waitFor(() => {
-      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+      expect(screen.getByText(/This note has been edited in another session/)).toBeInTheDocument()
     }, { timeout: 5000 })
 
     unmount()
@@ -608,7 +608,7 @@ describe('EditorPage conflict warning', () => {
 
     // Wait for warning to appear
     await waitFor(() => {
-      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+      expect(screen.getByText(/This note has been edited in another session/)).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Click Dismiss
@@ -616,7 +616,7 @@ describe('EditorPage conflict warning', () => {
 
     // Warning should disappear
     await waitFor(() => {
-      expect(screen.queryByText(/This note has been updated elsewhere/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/This note has been edited in another session/)).not.toBeInTheDocument()
     })
 
     unmount()
@@ -679,7 +679,7 @@ describe('EditorPage conflict warning', () => {
 
     // Wait for warning to appear
     await waitFor(() => {
-      expect(screen.getByText(/This note has been updated elsewhere/)).toBeInTheDocument()
+      expect(screen.getByText(/This note has been edited in another session/)).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Click Reload
@@ -687,7 +687,7 @@ describe('EditorPage conflict warning', () => {
 
     // Warning should disappear and editor should show new content
     await waitFor(() => {
-      expect(screen.queryByText(/This note has been updated elsewhere/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/This note has been edited in another session/)).not.toBeInTheDocument()
     })
 
     // The CodeMirror editor should now contain the updated content
