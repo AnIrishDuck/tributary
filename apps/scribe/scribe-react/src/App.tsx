@@ -234,9 +234,19 @@ function App() {
 
         // Keep write token fresh on session changes
         if (supabaseAuth) {
+          // Proactively update token when Supabase auto-refreshes it
           const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
             server.setWriteAuthToken(session?.access_token ?? undefined)
           })
+
+          // Force-refresh the token when a 401 is received (e.g. after
+          // the browser tab was suspended and auto-refresh didn't fire)
+          server.setAuthTokenRefresher(async () => {
+            const { data, error } = await supabaseAuth!.auth.refreshSession()
+            if (error || !data.session) return undefined
+            return data.session.access_token
+          })
+
           return () => subscription.unsubscribe()
         }
       } catch (err) {

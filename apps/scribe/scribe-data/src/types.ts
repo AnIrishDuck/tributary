@@ -210,6 +210,16 @@ export interface LinkedLibrary {
   cached_at: string
 }
 
+/** A node in a version tree. */
+export interface VersionTreeNode {
+  version_uuid: string
+  prior_version_uuid: string | null
+  insert_datetime: string
+  inserter: string
+  /** Whether this is the authoritative (latest) version. */
+  isAuthoritative: boolean
+}
+
 // Re-export search types from search.ts
 export type {
   SearchOptions,
