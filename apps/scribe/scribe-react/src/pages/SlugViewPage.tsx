@@ -34,10 +34,10 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
-  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; collectionLabel: string }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
-  | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string }
+  | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
 
@@ -102,6 +102,7 @@ const SlugViewPage: React.FC = () => {
           let collectionId: string | undefined = undefined
           let collectionLabel = libraryName
           const parentSlugPath = parentSegments.join('/')
+          let noteAncestors: Collection[] = []
 
           if (parentSegments.length > 0) {
             const library = await getLibrary(localDb)
@@ -112,9 +113,10 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
+            noteAncestors = await getCollectionAncestors(localDb, collectionId)
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath, collectionLabel })
+          setMode({ type: 'newNote', collectionId, parentSlugPath, collectionLabel, ancestors: noteAncestors })
           return
         }
 
@@ -125,6 +127,7 @@ const SlugViewPage: React.FC = () => {
           let collectionId: string | undefined = undefined
           let collectionLabel = libraryName
           const parentSlugPath = parentSegments.join('/')
+          let draftAncestors: Collection[] = []
 
           if (parentSegments.length > 0) {
             const library = await getLibrary(localDb)
@@ -135,9 +138,10 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
+            draftAncestors = await getCollectionAncestors(localDb, collectionId)
           }
 
-          setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath, collectionLabel })
+          setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath, collectionLabel, ancestors: draftAncestors })
           return
         }
 
@@ -176,6 +180,7 @@ const SlugViewPage: React.FC = () => {
           // Resolve the parent path to get the collection id
           let collectionId: string | undefined = undefined
           let collectionLabel = libraryName
+          let slugNoteAncestors: Collection[] = []
           if (parentSegments.length > 0) {
             const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
             if (!resolved || resolved.type !== 'collection') {
@@ -183,9 +188,10 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
+            slugNoteAncestors = await getCollectionAncestors(localDb, collectionId)
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName), collectionLabel })
+          setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName), collectionLabel, ancestors: slugNoteAncestors })
           return
         }
 
@@ -438,6 +444,7 @@ const SlugViewPage: React.FC = () => {
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
         initialTitle={mode.initialTitle}
         collectionLabel={mode.collectionLabel}
+        ancestors={mode.ancestors}
       />
     )
   }
@@ -450,6 +457,7 @@ const SlugViewPage: React.FC = () => {
         draftId={mode.draftId}
         cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
         collectionLabel={mode.collectionLabel}
+        ancestors={mode.ancestors}
       />
     )
   }

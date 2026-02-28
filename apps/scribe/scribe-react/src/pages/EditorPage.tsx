@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
@@ -7,12 +7,13 @@ import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
-import { NoteSlug, AuthoritativeVersion, Note } from 'scribe-data'
+import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
+import { Breadcrumbs } from '../components/Breadcrumbs'
 
 export interface EditorPageProps {
   prefix: string
@@ -27,9 +28,11 @@ export interface EditorPageProps {
   collectionLabel?: string
   /** Full slug path of the note being edited (e.g. "cooking/italian/pasta-recipe"), shown as breadcrumbs. */
   noteSlugPath?: string
+  /** Ancestor collections for breadcrumb display during new note creation. */
+  ancestors?: Collection[]
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel, noteSlugPath }) => {
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel, noteSlugPath, ancestors }) => {
   const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -75,6 +78,12 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
   // Determine if this is a new note or editing an existing one
   const isNewNote = !editBlockUuid
+
+  // Dynamically compute the slug from the note's H1 title for breadcrumb display
+  const dynamicSlug = useMemo(() => {
+    const title = extractTitleFromMarkdown(content)
+    return title ? titleToSlug(title) : undefined
+  }, [content])
 
   // Check if THIS library is synced (not the global status, which can be blocked
   // by other libraries that aren't being synced due to the focused-library optimization)
@@ -362,6 +371,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       </div>
 
       <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {isNewNote && ancestors && (
+          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={dynamicSlug} />
+        )}
         {noteSlugPath && (
           <nav className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
             <Link to={`/pk/${prefix}/`} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
