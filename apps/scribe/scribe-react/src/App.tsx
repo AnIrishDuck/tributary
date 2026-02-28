@@ -414,7 +414,14 @@ function App() {
   }
 
   return (
-    <SyncStatusProvider client={client}>
+    <SyncStatusProvider
+      client={client}
+      useWorkerSync={true}
+      apiUrl={CONFIG.API_URL}
+      apiKey={CONFIG.API_KEY}
+      authToken={session?.access_token}
+      appId={CONFIG.APP_ID}
+    >
       <TributaryProvider client={client} logout={logout}>
         <RouterProvider router={router} />
       </TributaryProvider>

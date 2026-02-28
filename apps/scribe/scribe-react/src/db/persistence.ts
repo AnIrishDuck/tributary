@@ -1,28 +1,32 @@
-import { PGlite, PGliteInterface } from '@electric-sql/pglite'
+import { PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
+import {
+  SYNC_CONTROL_CHANNEL,
+  SYNC_STATUS_CHANNEL,
+} from './sync-worker-messages'
+import type { SyncControlMessage, SyncStatusOutMessage } from './sync-worker-messages'
 
 /**
- * Whether to run PGlite in a background Web Worker or in the foreground
- * (main thread). Foreground avoids worker overhead but blocks the UI during
- * heavy queries; background keeps the main thread free.
- */
-const USE_BACKGROUND_WORKER = false
-
-/**
- * PGlite database instance with IndexedDB persistence
+ * PGlite database instance backed by a Web Worker.
+ *
+ * The worker runs PGlite in the leader tab and also hosts the sync engine,
+ * which has direct (zero-copy) access to the PGlite instance. The main thread
+ * communicates with the sync engine via BroadcastChannels rather than
+ * serializing blobs through postMessage.
  */
 let dbInstance: PGliteInterface | null = null
 let currentDbName: string | null = null
 
+// BroadcastChannels for sync communication (lazy-created)
+let controlChannel: BroadcastChannel | null = null
+let statusChannel: BroadcastChannel | null = null
+
 /**
  * Get or create the PGlite instance.
  *
- * When USE_BACKGROUND_WORKER is true the instance is a PGliteWorker backed by
- * a dedicated Web Worker thread. When false the instance runs directly on the
- * main thread.
- *
- * @param dbName - Name of the IndexedDB database (optional, defaults to 'scribe-db')
- * @returns PGlite-compatible instance
+ * Always uses PGliteWorker so PGlite runs in a background Web Worker. The
+ * worker also hosts the sync engine with direct PGlite access (zero
+ * serialization overhead for sync operations).
  */
 export function getPGlite(dbName?: string): PGliteInterface {
   if (dbInstance) {
@@ -32,29 +36,57 @@ export function getPGlite(dbName?: string): PGliteInterface {
   const databaseName = dbName || 'scribe-db'
   currentDbName = databaseName
 
-  if (USE_BACKGROUND_WORKER) {
-    dbInstance = new PGliteWorker(
-      new Worker(new URL('./pglite-worker.ts', import.meta.url), {
-        type: 'module',
-      }),
-      {
-        dataDir: `idb://${databaseName}`,
-      },
-    )
-  } else {
-    dbInstance = new PGlite({
+  dbInstance = new PGliteWorker(
+    new Worker(new URL('./pglite-worker.ts', import.meta.url), {
+      type: 'module',
+    }),
+    {
       dataDir: `idb://${databaseName}`,
-    })
-  }
+    },
+  )
 
   return dbInstance
 }
 
 /**
+ * Get the BroadcastChannel for sending control messages to the sync worker.
+ */
+export function getSyncControlChannel(): BroadcastChannel {
+  if (!controlChannel) {
+    controlChannel = new BroadcastChannel(SYNC_CONTROL_CHANNEL)
+  }
+  return controlChannel
+}
+
+/**
+ * Get the BroadcastChannel for receiving status messages from the sync worker.
+ */
+export function getSyncStatusChannel(): BroadcastChannel {
+  if (!statusChannel) {
+    statusChannel = new BroadcastChannel(SYNC_STATUS_CHANNEL)
+  }
+  return statusChannel
+}
+
+/**
+ * Send a control message to the sync worker.
+ */
+export function sendSyncControl(msg: SyncControlMessage): void {
+  getSyncControlChannel().postMessage(msg)
+}
+
+/**
  * Close the PGlite instance
- * Should be called on application shutdown
  */
 export async function closePGlite(): Promise<void> {
+  if (controlChannel) {
+    controlChannel.close()
+    controlChannel = null
+  }
+  if (statusChannel) {
+    statusChannel.close()
+    statusChannel = null
+  }
   if (dbInstance) {
     await dbInstance.close()
     dbInstance = null

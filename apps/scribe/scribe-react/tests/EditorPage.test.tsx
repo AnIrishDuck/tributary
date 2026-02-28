@@ -343,7 +343,7 @@ describe('EditorPage sync gate bug', () => {
     function FastPollProviders({ children }: { children: React.ReactNode }) {
       return React.createElement(
         SyncStatusProvider,
-        { client, pollInterval: 100 },
+        { client, pollInterval: 100, useWorkerSync: false },
         React.createElement(
           TributaryProvider,
           { client },
@@ -511,7 +511,7 @@ describe('EditorPage conflict warning', () => {
     function FastPollProviders({ children }: { children: React.ReactNode }) {
       return React.createElement(
         SyncStatusProvider,
-        { client, pollInterval: 100 },
+        { client, pollInterval: 100, useWorkerSync: false },
         React.createElement(
           TributaryProvider,
           { client },
@@ -574,7 +574,7 @@ describe('EditorPage conflict warning', () => {
     function FastPollProviders({ children }: { children: React.ReactNode }) {
       return React.createElement(
         SyncStatusProvider,
-        { client, pollInterval: 100 },
+        { client, pollInterval: 100, useWorkerSync: false },
         React.createElement(
           TributaryProvider,
           { client },
@@ -644,7 +644,7 @@ describe('EditorPage conflict warning', () => {
     function FastPollProviders({ children }: { children: React.ReactNode }) {
       return React.createElement(
         SyncStatusProvider,
-        { client, pollInterval: 100 },
+        { client, pollInterval: 100, useWorkerSync: false },
         React.createElement(
           TributaryProvider,
           { client },
@@ -748,7 +748,7 @@ describe('EditorPage conflict warning', () => {
     function FastPollProviders({ children }: { children: React.ReactNode }) {
       return React.createElement(
         SyncStatusProvider,
-        { client, pollInterval: 100 },
+        { client, pollInterval: 100, useWorkerSync: false },
         React.createElement(
           TributaryProvider,
           { client },

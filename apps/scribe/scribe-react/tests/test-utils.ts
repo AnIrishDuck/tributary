@@ -45,12 +45,12 @@ export function getTestServer(client: TributaryClient): TestFakeServer | null {
 
 /**
  * Wrap children with both TributaryProvider and SyncStatusProvider for tests.
- * Uses a fast poll interval so the background sync loop completes quickly.
+ * Uses useWorkerSync=false so the sync loop runs on the main thread (no Web Worker).
  */
 export function WithProviders({ client, children }: { client: TributaryClient, children: React.ReactNode }) {
   return React.createElement(
     SyncStatusProvider,
-    { client, pollInterval: 60000 },
+    { client, pollInterval: 60000, useWorkerSync: false },
     React.createElement(
       TributaryProvider,
       { client },
