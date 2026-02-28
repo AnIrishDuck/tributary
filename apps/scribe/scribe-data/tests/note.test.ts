@@ -434,16 +434,17 @@ describe('version tree', () => {
 
     const nodes = await getVersionTree(syncedDb, v1.block_uuid)
 
+    // Newest first
     expect(nodes).toHaveLength(3)
-    expect(nodes[0].version_uuid).toBe(v1.version_uuid)
-    expect(nodes[0].prior_version_uuid).toBeNull()
-    expect(nodes[0].isAuthoritative).toBe(false)
+    expect(nodes[0].version_uuid).toBe(v3.version_uuid)
+    expect(nodes[0].prior_version_uuid).toBe(v2.version_uuid)
+    expect(nodes[0].isAuthoritative).toBe(true)
     expect(nodes[1].version_uuid).toBe(v2.version_uuid)
     expect(nodes[1].prior_version_uuid).toBe(v1.version_uuid)
     expect(nodes[1].isAuthoritative).toBe(false)
-    expect(nodes[2].version_uuid).toBe(v3.version_uuid)
-    expect(nodes[2].prior_version_uuid).toBe(v2.version_uuid)
-    expect(nodes[2].isAuthoritative).toBe(true)
+    expect(nodes[2].version_uuid).toBe(v1.version_uuid)
+    expect(nodes[2].prior_version_uuid).toBeNull()
+    expect(nodes[2].isAuthoritative).toBe(false)
   })
 
   test('branching history', async () => {
@@ -475,12 +476,12 @@ describe('version tree', () => {
     const nodes = await getVersionTree(syncedDb, v1.block_uuid)
 
     expect(nodes).toHaveLength(3)
-    expect(nodes[0].version_uuid).toBe(v1.version_uuid)
+    // Newest first: v3, v2, v1
+    expect(nodes[0].version_uuid).toBe(v3.version_uuid)
     // Both v2 and v3 share the same prior_version_uuid (branch point)
+    expect(nodes[0].prior_version_uuid).toBe(v1.version_uuid)
     expect(nodes[1].prior_version_uuid).toBe(v1.version_uuid)
-    expect(nodes[2].prior_version_uuid).toBe(v1.version_uuid)
-    const branchUuids = [nodes[1].version_uuid, nodes[2].version_uuid].sort()
-    expect(branchUuids).toEqual([v2.version_uuid, v3.version_uuid].sort())
+    expect(nodes[2].version_uuid).toBe(v1.version_uuid)
   })
 
   test('authoritative marking', async () => {
@@ -511,7 +512,7 @@ describe('version tree', () => {
 
     const nodes = await getVersionTree(syncedDb, v1.block_uuid)
 
-    // Only the version with the latest insert_datetime should be authoritative
+    // Only the first entry (newest) should be authoritative
     const authNodes = nodes.filter(n => n.isAuthoritative)
     expect(authNodes).toHaveLength(1)
     expect(authNodes[0].version_uuid).toBe(v3.version_uuid)
@@ -543,19 +544,22 @@ describe('version tree', () => {
       insert_datetime: '2024-01-03T00:00:00.000Z'
     })
 
-    // Fetch only the first 2 versions
+    // First page: newest 2 versions (v3, v2)
     const page1 = await getVersionTree(syncedDb, v1.block_uuid, 2, 0)
     expect(page1).toHaveLength(2)
-    expect(page1[0].version_uuid).toBe(v1.version_uuid)
+    expect(page1[0].version_uuid).toBe(v3.version_uuid)
+    expect(page1[0].isAuthoritative).toBe(true)
     expect(page1[1].version_uuid).toBe(v2.version_uuid)
+    expect(page1[1].isAuthoritative).toBe(false)
 
-    // Fetch the remaining version
+    // Second page: oldest version (v1)
     const page2 = await getVersionTree(syncedDb, v1.block_uuid, 2, 2)
     expect(page2).toHaveLength(1)
-    expect(page2[0].version_uuid).toBe(v3.version_uuid)
+    expect(page2[0].version_uuid).toBe(v1.version_uuid)
+    expect(page2[0].isAuthoritative).toBe(false)
   })
 
-  test('authoritative marking is correct when authoritative version is not in page', async () => {
+  test('no authoritative marking on non-first page', async () => {
     const v1 = await createNote(syncedDb, {
       block_type: 'scribe/markdown',
       body: '# V1',
@@ -581,10 +585,9 @@ describe('version tree', () => {
       insert_datetime: '2024-01-03T00:00:00.000Z'
     })
 
-    // Fetch only the first 2 (v1, v2) — authoritative v3 is not in this page
-    const page = await getVersionTree(syncedDb, v1.block_uuid, 2, 0)
-    expect(page).toHaveLength(2)
-    // No node in this page should be marked authoritative
+    // Second page — no node should be authoritative
+    const page = await getVersionTree(syncedDb, v1.block_uuid, 2, 2)
+    expect(page).toHaveLength(1)
     expect(page.every(n => !n.isAuthoritative)).toBe(true)
   })
 

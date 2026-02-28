@@ -412,10 +412,9 @@ export async function getVersionPosition(
  * Fetch version tree nodes for a note.
  *
  * Returns a flat array of VersionTreeNode objects ordered by
- * `insert_datetime ASC`. Callers can reconstruct the tree structure
- * from the `prior_version_uuid` links if needed. The authoritative
- * version (latest `insert_datetime` across *all* versions, not just
- * the current page) is marked with `isAuthoritative: true`.
+ * `insert_datetime DESC` (newest first). Callers can reconstruct
+ * the tree structure from `prior_version_uuid` links if needed.
+ * The first entry at offset 0 is always the authoritative version.
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param block_uuid The UUID of the note
@@ -429,15 +428,8 @@ export async function getVersionTree(
   limit: number = 100,
   offset: number = 0
 ): Promise<VersionTreeNode[]> {
-  // Find the true authoritative version across all versions for this block
-  const authResult = await db.query(
-    `SELECT version_uuid FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
-    [block_uuid]
-  )
-  const authoritativeUuid = (authResult.rows?.[0] as any)?.version_uuid ?? null
-
   const result = await db.query(
-    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2 OFFSET $3`,
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT $2 OFFSET $3`,
     [block_uuid, limit, offset]
   )
 
@@ -448,12 +440,12 @@ export async function getVersionTree(
     inserter: string
   }>
 
-  return rows.map(row => ({
+  return rows.map((row, index) => ({
     version_uuid: row.version_uuid,
     prior_version_uuid: row.prior_version_uuid,
     insert_datetime: row.insert_datetime,
     inserter: row.inserter,
-    isAuthoritative: row.version_uuid === authoritativeUuid,
+    isAuthoritative: offset === 0 && index === 0,
   }))
 }
 
