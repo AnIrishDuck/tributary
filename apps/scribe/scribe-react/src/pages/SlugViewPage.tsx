@@ -113,7 +113,7 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
-            noteAncestors = await getCollectionAncestors(localDb, collectionId)
+            noteAncestors = await getCollectionAncestors(localDb, resolved.entity.collection_uuid)
           }
 
           setMode({ type: 'newNote', collectionId, parentSlugPath, collectionLabel, ancestors: noteAncestors })
@@ -138,7 +138,7 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
-            draftAncestors = await getCollectionAncestors(localDb, collectionId)
+            draftAncestors = await getCollectionAncestors(localDb, resolved.entity.collection_uuid)
           }
 
           setMode({ type: 'resumeDraft', draftId, collectionId, parentSlugPath, collectionLabel, ancestors: draftAncestors })
@@ -188,7 +188,7 @@ const SlugViewPage: React.FC = () => {
             }
             collectionId = resolved.entity.collection_uuid
             collectionLabel = resolved.entity.title || libraryName
-            slugNoteAncestors = await getCollectionAncestors(localDb, collectionId)
+            slugNoteAncestors = await getCollectionAncestors(localDb, resolved.entity.collection_uuid)
           }
 
           setMode({ type: 'newNote', collectionId, parentSlugPath: parentSegments.join('/'), initialTitle: slugToTitle(slugName), collectionLabel, ancestors: slugNoteAncestors })
