@@ -84,6 +84,13 @@ const NoteListPage: React.FC = () => {
     loadNotes()
   }, [client, prefix, librarySyncStatusDep])
 
+  const handleFixNullParents = useCallback(async () => {
+    if (!client || !prefix) return
+    const stream = await client.get('scribe', prefix)
+    if (!stream) return
+    await fixNullParentNotes(stream)
+  }, [client, prefix])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
@@ -113,13 +120,6 @@ const NoteListPage: React.FC = () => {
 
   // Get sync status for this library
   const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
-
-  const handleFixNullParents = useCallback(async () => {
-    if (!client || !prefix) return
-    const stream = await client.get('scribe', prefix)
-    if (!stream) return
-    await fixNullParentNotes(stream)
-  }, [client, prefix])
 
   return (
     <NoteListView
