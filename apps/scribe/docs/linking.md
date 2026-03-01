@@ -59,7 +59,8 @@ When resolving internal links, Scribe follows these steps:
 During note processing and sync operations, the system scans note content for markdown links that match the internal link criteria.
 
 ### 2. Slug Lookup
-The link target is looked up in the `block_slug` table to find matching notes:
+The link target is looked up via the synced `block.slug` column (joined through
+the `authoritative_version` table) to find matching notes:
 - The system searches for exact slug matches
 - Both base slugs and prefixed slugs are supported
 
@@ -87,7 +88,7 @@ Multiple notes may share the same slug. When a link target matches more than
 one note, the client presents a duplicate slug listing page:
 
 ### Resolution Process
-1. The `block_slug` table is queried for all notes matching the slug
+1. The synced `block.slug` column is queried (via `authoritative_version`) for all notes matching the slug
 2. All matching notes are presented with their UUID and title
 3. The user selects the intended target
 
@@ -118,13 +119,15 @@ Scribe provides link validation to help maintain note integrity:
 The linking system works closely with the slug system:
 
 ### Slug Dependencies
-- Every internal link depends on accurate slug generation
-- When slugs change (e.g. title update), links targeting the old slug may break
-- The `block_slug` table serves as the authoritative lookup for link resolution
+- Every internal link depends on accurate slugs
+- Slugs are synced properties on the `block` and `collection` tables, so they
+  are available on every client without local indexing
+- Because slugs are fixed at creation and only change via explicit user action,
+  links are stable across title edits
 
 ### Duplicate Slug Impact
-- Links to a slug shared by multiple notes resolve to a duplicate slug listing page
-- Links to a unique slug resolve directly to that note
+- Links to a slug shared by multiple entities resolve to a collision page
+- Links to a unique slug resolve directly to that entity
 - Users can link to a specific note unambiguously via `slug/[uuid]`
 
 ## Future Enhancements

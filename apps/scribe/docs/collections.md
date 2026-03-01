@@ -10,7 +10,12 @@ libraries, but are named and may have their own slugs (though, if they have
 no library they have no slug and must be referenced via their
 unique public key route).
 
-The slug generation for collections uses the same algorithm as for notes.
+Each collection has a **synced `slug` property** stored directly on the
+`collection` table. The slug is generated from the title at creation time using
+the same `titleToSlug()` algorithm as notes, or can be set explicitly. Because
+the slug is a synced column, all clients see it immediately — no local index
+table is required. (The former `collection_slug` index table has been removed.)
+
 Duplicate slugs are allowed across collections and notes — see
 [Slug System](slugs.md) for details on how duplicates are handled.
 
@@ -92,8 +97,10 @@ A Tributary-synced table storing collections:
 | `title` | Display title for the collection |
 | `parent_collection_uuid` | Parent collection UUID (null = library) |
 | `linked_stream_id` | Public key of linked library (null = normal collection) |
+| `linked_stream_key` | Private write key of linked library (null = normal collection) |
 | `insert_datetime` | When this collection version was created |
 | `inserter` | Who created this version |
+| `slug` | URL-friendly slug, derived from title at creation (synced) |
 
 A collection with a non-null `linked_stream_id` is a **linked library**.
 Its notes live in the linked library, not in the collection's own library. The
