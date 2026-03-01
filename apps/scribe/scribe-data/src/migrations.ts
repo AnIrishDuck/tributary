@@ -76,16 +76,6 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     )
   `)
 
-  // Create the block_slug table for storing block slugs (non-synchronized)
-  await local.exec(`
-    CREATE TABLE IF NOT EXISTS block_slug (
-      block_uuid TEXT NOT NULL PRIMARY KEY,
-      slug TEXT NOT NULL,
-      title TEXT NOT NULL,
-      indexed_at TEXT NOT NULL
-    )
-  `)
-
   // Create the authoritative_version table for mapping block UUIDs to their authoritative versions (non-synchronized)
   await local.exec(`
     CREATE TABLE IF NOT EXISTS authoritative_version (
@@ -122,14 +112,13 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     USING GIN (search_vector)
   `)
 
-  // Create the collection_slug table for storing collection slugs (non-synchronized)
+  // Create the slug_collision table for caching which (slug, parent) pairs have
+  // multiple items (notes and/or collections). Small, fully rebuilt on each index.
   await local.exec(`
-    CREATE TABLE IF NOT EXISTS collection_slug (
-      collection_uuid TEXT NOT NULL PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS slug_collision (
       slug TEXT NOT NULL,
-      title TEXT NOT NULL,
-      indexed_at TEXT NOT NULL,
-      parent_collection_uuid TEXT
+      parent_id TEXT NOT NULL,
+      PRIMARY KEY (slug, parent_id)
     )
   `)
 
@@ -162,11 +151,10 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
   await localDb.exec('DROP TABLE IF EXISTS linked_libraries')
-  await localDb.exec('DROP TABLE IF EXISTS collection_slug')
+  await localDb.exec('DROP TABLE IF EXISTS slug_collision')
   await localDb.exec('DROP TABLE IF EXISTS block_search_index')
   await localDb.exec('DROP TABLE IF EXISTS block_tag')
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
-  await localDb.exec('DROP TABLE IF EXISTS block_slug')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
   await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')

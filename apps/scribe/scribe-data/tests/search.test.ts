@@ -268,7 +268,7 @@ describe('Full-text search', () => {
       
       expect(results).toHaveLength(1)
       expect(results[0].block_uuid).toBe(note1.block_uuid)
-      expect(results[0].title).toBe('JavaScript Tutorial')
+      expect(results[0].title).toBe('javascript-tutorial')
     })
 
     test('should find notes matching multi-word query', async () => {
@@ -393,7 +393,7 @@ describe('Full-text search', () => {
       const results = await searchNotes(localDb, 'tutorial')
       
       expect(results).toHaveLength(1)
-      expect(results[0].title).toBe('My Tutorial')
+      expect(results[0].title).toBe('my-tutorial')
       expect(results[0].slug).toBe('my-tutorial')
     })
 
@@ -428,8 +428,8 @@ describe('Full-text search', () => {
       
       expect(results).toHaveLength(1)
       expect(results[0].block_uuid).toBe(note.block_uuid)
-      expect(results[0].title).toBeNull()
-      expect(results[0].slug).toBeNull()
+      // Notes without titles still have a slug (falls back to block_uuid)
+      expect(results[0].slug).toBe(note.block_uuid)
     })
   })
 
@@ -556,14 +556,13 @@ describe('Full-text search', () => {
       expect(result.indexedCount).toBe(2)
       expect(result.hasMore).toBe(false)
       
-      // Verify slugs were created
-      const slugResult1 = await localDb.query(
-        'SELECT * FROM block_slug WHERE block_uuid = $1',
+      // Verify authoritative versions were created
+      const avResult = await localDb.query(
+        'SELECT * FROM authoritative_version WHERE block_uuid = $1',
         [note1.block_uuid]
       )
-      expect(slugResult1.rows).toHaveLength(1)
-      expect(slugResult1.rows![0].slug).toBe('javascript-tutorial')
-      
+      expect(avResult.rows).toHaveLength(1)
+
       // Verify search vectors were created
       const searchResults = await searchNotes(localDb, 'JavaScript')
       expect(searchResults).toHaveLength(1)

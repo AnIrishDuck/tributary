@@ -314,21 +314,21 @@ export async function searchNotes(
          UNION ALL
 
          -- Recursive: child collections build path from parent
-         SELECT cs.collection_uuid,
-           CASE WHEN cp.path = '' THEN cs.slug
-                ELSE cp.path || '/' || cs.slug
+         SELECT c2.collection_uuid,
+           CASE WHEN cp.path = '' THEN c2.slug
+                ELSE cp.path || '/' || c2.slug
            END AS path
-         FROM collection_slug cs
-         INNER JOIN coll_path cp ON cs.parent_collection_uuid = cp.collection_uuid
+         FROM collection c2
+         INNER JOIN coll_path cp ON c2.parent_collection_uuid = cp.collection_uuid
        )
        SELECT
          b.block_uuid,
          CASE
-           WHEN bs.slug IS NOT NULL AND cp.path IS NOT NULL AND cp.path != ''
-           THEN cp.path || '/' || bs.slug
-           ELSE bs.slug
+           WHEN cp.path IS NOT NULL AND cp.path != ''
+           THEN cp.path || '/' || b.slug
+           ELSE b.slug
          END AS slug,
-         bs.title,
+         b.slug AS title,
          ts_rank(bsi.search_vector, query) AS rank,
          ts_headline('english', b.body, query,
            'MaxWords=30, MinWords=15, MaxFragments=1, FragmentDelimiter=" ... "'
@@ -337,13 +337,11 @@ export async function searchNotes(
        INNER JOIN block b
          ON bsi.block_uuid = b.block_uuid
          AND bsi.version_uuid = b.version_uuid
-       LEFT JOIN block_slug bs
-         ON b.block_uuid = bs.block_uuid
        LEFT JOIN coll_path cp
          ON b.collection_id = cp.collection_uuid
        CROSS JOIN to_tsquery('english', $1) query
        WHERE bsi.search_vector @@ query
-       ORDER BY rank DESC, bs.title ASC NULLS LAST
+       ORDER BY rank DESC, b.slug ASC NULLS LAST
        LIMIT $2 OFFSET $3`,
       [queryTerms, limit, offset]
     )

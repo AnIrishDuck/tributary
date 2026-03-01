@@ -19,7 +19,7 @@ import {
   getNoteSlugPath
 } from '../src/collection.js'
 import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
-import { indexCollectionSlugs, getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
+import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
 import { resolveSlugPath, resolveSlugPathPartial } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -1000,8 +1000,8 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      // Index collection slugs
-      await indexCollectionSlugs(localDb)
+      // Index metadata (getCollectionBySlugUnderParent reads synced table directly)
+      await indexAll(localDb)
 
       // Looking up "ideas" under library should return ideasRoot
       const resultUnderLibrary = await getCollectionBySlugUnderParent(localDb, 'ideas', library.collection_uuid)
