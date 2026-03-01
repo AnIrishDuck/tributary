@@ -317,7 +317,10 @@ export async function getAllNoteSlugs(db: TributaryLocal) {
 }
 
 /**
- * Get note slug by note UUID
+ * Get note slug by note UUID.
+ * Queries the authoritative version of the block for its slug and extracts
+ * the title from the body.
+ *
  * @param db The TributaryLocal database instance
  * @param noteUuid The note UUID
  * @returns The note slug or null if not found
@@ -325,21 +328,32 @@ export async function getAllNoteSlugs(db: TributaryLocal) {
 export async function getNoteSlugByUuid(
   db: TributaryLocal,
   noteUuid: string
-) {
+): Promise<NoteSlug | null> {
   const result = await db.query(
-    `SELECT * FROM block_slug WHERE block_uuid = $1`,
+    `SELECT b.block_uuid, b.slug, b.body
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.block_uuid = $1`,
     [noteUuid]
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     return null
   }
-  
-  return result.rows[0]
+
+  const row = result.rows[0] as any
+  const title = extractTitleFromMarkdown(row.body)
+  return {
+    block_uuid: row.block_uuid,
+    slug: row.slug,
+    title: title || ''
+  }
 }
 
 /**
- * Get all notes matching a slug
+ * Get all notes matching a slug.
+ * Queries the synced block table via authoritative version.
+ *
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
  * @returns Array of matching note slugs, or empty array if none found
@@ -349,11 +363,18 @@ export async function getNotesBySlug(
   slug: string
 ): Promise<NoteSlug[]> {
   const result = await db.query(
-    `SELECT * FROM block_slug WHERE slug = $1`,
+    `SELECT b.block_uuid, b.slug, b.body
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.slug = $1`,
     [slug]
   )
 
-  return (result.rows || []) as NoteSlug[]
+  return (result.rows || []).map((row: any) => ({
+    block_uuid: row.block_uuid,
+    slug: row.slug,
+    title: extractTitleFromMarkdown(row.body) || ''
+  }))
 }
 
 /**
@@ -456,26 +477,34 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
 }
 
 /**
- * Get all notes with their titles and slugs
+ * Get all notes with their titles and slugs.
+ * Uses the synced block.slug column and extracts titles from the body.
+ *
  * @param db The TributaryLocal database instance
  * @returns Array of notes with titles and slugs, sorted by most recently edited first
  */
 export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
   const result = await db.query(
-    `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
+    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-     LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
      ORDER BY b.insert_datetime DESC`,
     []
   )
 
-  return (result.rows || []) as NoteSlugRow[]
+  return (result.rows || []).map((row: any) => ({
+    block_uuid: row.block_uuid,
+    slug: row.slug,
+    title: extractTitleFromMarkdown(row.body) || '',
+    insert_datetime: row.insert_datetime,
+    collection_id: row.collection_id
+  }))
 }
 
 /**
  * Get notes in a specific collection with their slugs.
  * Pass null for collectionId to get notes not in any collection (library-root notes).
+ * Uses the synced block.slug column and extracts titles from the body.
  *
  * @param db The TributaryLocal database instance
  * @param collectionId The collection UUID, or null for library-root notes
@@ -496,27 +525,31 @@ export async function getNotesInCollectionWithSlugs(
   let result
   if (resolvedId === null) {
     result = await db.query(
-      `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
        WHERE b.collection_id IS NULL
        ORDER BY b.insert_datetime DESC`,
       []
     )
   } else {
     result = await db.query(
-      `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
        WHERE b.collection_id = $1
        ORDER BY b.insert_datetime DESC`,
       [resolvedId]
     )
   }
 
-  return (result.rows || []) as NoteSlugRow[]
+  return (result.rows || []).map((row: any) => ({
+    block_uuid: row.block_uuid,
+    slug: row.slug,
+    title: extractTitleFromMarkdown(row.body) || '',
+    insert_datetime: row.insert_datetime,
+    collection_id: row.collection_id
+  }))
 }
 
 /**
@@ -561,6 +594,7 @@ export async function indexCollectionSlugs(localDb: TributaryLocal): Promise<voi
 /**
  * Get notes matching a slug scoped to a specific collection.
  * Pass null for collectionId to get notes at the library root (collection_id IS NULL).
+ * Queries the synced block table directly via authoritative version.
  *
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
@@ -583,23 +617,27 @@ export async function getNotesBySlugInCollection(
   let result
   if (resolvedId === null) {
     result = await db.query(
-      `SELECT bs.* FROM block_slug bs
-       INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
-       INNER JOIN block b ON av.block_uuid = b.block_uuid AND av.version_uuid = b.version_uuid
-       WHERE bs.slug = $1 AND b.collection_id IS NULL`,
+      `SELECT b.block_uuid, b.slug, b.body
+       FROM block b
+       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+       WHERE b.slug = $1 AND b.collection_id IS NULL`,
       [slug]
     )
   } else {
     result = await db.query(
-      `SELECT bs.* FROM block_slug bs
-       INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
-       INNER JOIN block b ON av.block_uuid = b.block_uuid AND av.version_uuid = b.version_uuid
-       WHERE bs.slug = $1 AND b.collection_id = $2`,
+      `SELECT b.block_uuid, b.slug, b.body
+       FROM block b
+       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+       WHERE b.slug = $1 AND b.collection_id = $2`,
       [slug, resolvedId]
     )
   }
 
-  return (result.rows || []) as NoteSlug[]
+  return (result.rows || []).map((row: any) => ({
+    block_uuid: row.block_uuid,
+    slug: row.slug,
+    title: extractTitleFromMarkdown(row.body) || ''
+  }))
 }
 
 /**

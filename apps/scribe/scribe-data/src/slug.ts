@@ -4,9 +4,11 @@ import { getCollectionBySlugUnderParent } from './collection.js'
 import { getNotesBySlugInCollection } from './indexing.js'
 
 export interface ResolveResult {
-  type: 'note' | 'collection'
+  type: 'note' | 'collection' | 'collision'
   entity: any
   ancestors: CollectionSlug[]
+  /** Present when type is 'collision': the matching notes and collections. */
+  collisions?: { notes: NoteSlug[]; collections: CollectionSlug[] }
 }
 
 /**
@@ -51,12 +53,14 @@ export interface PartialResolveResult {
  * Walk a slug path left-to-right to resolve the final entity.
  *
  * For each segment except the last, resolves as a collection under the current parent.
- * For the last segment, tries note first, then collection.
+ * For the last segment, looks up both notes and collections. If there is exactly one
+ * match it is returned as 'note' or 'collection'. If multiple entities share the slug
+ * (two notes, or a note and a collection), returns type 'collision' with all matches.
  *
  * @param db The TributaryLocal database instance
  * @param segments Array of slug segments, e.g. ['cooking', 'italian', 'pasta']
  * @param libraryUuid The UUID of the library (root collection)
- * @returns The resolved entity or null if not found
+ * @returns The resolved entity, a collision descriptor, or null if not found
  */
 export async function resolveSlugPath(
   db: TributaryLocal,
@@ -85,12 +89,31 @@ export async function resolveSlugPath(
     currentCollectionId = collection.collection_uuid
   }
 
-  // Resolve the last segment: try note first, then collection
+  // Resolve the last segment: look up both notes and collections
   const lastSlug = segments[segments.length - 1]
 
-  // Try note
   const matchingNotes = await getNotesBySlugInCollection(db, lastSlug, currentCollectionId)
-  if (matchingNotes.length > 0) {
+  const matchingCollection = await getCollectionBySlugUnderParent(db, lastSlug, currentParentUuid)
+
+  const matchingCollections: CollectionSlug[] = matchingCollection ? [matchingCollection] : []
+  const totalMatches = matchingNotes.length + matchingCollections.length
+
+  if (totalMatches === 0) {
+    return null
+  }
+
+  // Collision: multiple notes, or a note and a collection share the slug
+  if (totalMatches > 1) {
+    return {
+      type: 'collision',
+      entity: null,
+      ancestors,
+      collisions: { notes: matchingNotes, collections: matchingCollections }
+    }
+  }
+
+  // Exactly one match
+  if (matchingNotes.length === 1) {
     return {
       type: 'note',
       entity: matchingNotes[0],
@@ -98,17 +121,11 @@ export async function resolveSlugPath(
     }
   }
 
-  // Try collection
-  const matchingCollection = await getCollectionBySlugUnderParent(db, lastSlug, currentParentUuid)
-  if (matchingCollection) {
-    return {
-      type: 'collection',
-      entity: matchingCollection,
-      ancestors
-    }
+  return {
+    type: 'collection',
+    entity: matchingCollection,
+    ancestors
   }
-
-  return null
 }
 
 /**

@@ -1156,6 +1156,153 @@ describe('Collection Operations', () => {
       expect(nestedResult!.entity.block_uuid).toBe(nestedChild.block_uuid)
     })
 
+    test('resolveSlugPath returns collision when two notes share a slug', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create two notes with the same slug in the same collection
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nFirst pasta recipe.',
+        inserter: 'test-user'
+      })
+
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nSecond pasta recipe.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPath(localDb, ['pasta'], library.collection_uuid)
+      expect(result).not.toBeNull()
+      expect(result!.type).toBe('collision')
+      expect(result!.collisions).toBeDefined()
+      expect(result!.collisions!.notes).toHaveLength(2)
+      expect(result!.collisions!.collections).toHaveLength(0)
+    })
+
+    test('resolveSlugPath returns collision when note and collection share a slug', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create a note with slug 'recipes'
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Recipes\n\nA note about recipes.',
+        inserter: 'test-user',
+        slug: 'recipes'
+      })
+
+      // Create a collection with slug 'recipes'
+      await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPath(localDb, ['recipes'], library.collection_uuid)
+      expect(result).not.toBeNull()
+      expect(result!.type).toBe('collision')
+      expect(result!.collisions).toBeDefined()
+      expect(result!.collisions!.notes).toHaveLength(1)
+      expect(result!.collisions!.collections).toHaveLength(1)
+    })
+
+    test('resolveSlugPath returns single note for unique slug', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Unique Note\n\nThis is unique.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPath(localDb, ['unique-note'], library.collection_uuid)
+      expect(result).not.toBeNull()
+      expect(result!.type).toBe('note')
+      expect(result!.entity.block_uuid).toBe(note.block_uuid)
+      expect(result!.collisions).toBeUndefined()
+    })
+
+    test('resolveSlugPath returns single collection for unique slug', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const result = await resolveSlugPath(localDb, ['cooking'], library.collection_uuid)
+      expect(result).not.toBeNull()
+      expect(result!.type).toBe('collection')
+      expect(result!.entity.collection_uuid).toBe(cooking.collection_uuid)
+      expect(result!.collisions).toBeUndefined()
+    })
+
+    test('getSlugPath uses collection.slug directly', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      // Create a collection with an explicit slug different from titleToSlug(title)
+      const collection = await createCollection(syncedDb, {
+        title: 'My Custom Collection',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user',
+        slug: 'custom-slug'
+      })
+
+      const slugPath = await getSlugPath(localDb, collection.collection_uuid)
+      expect(slugPath).toEqual(['custom-slug'])
+    })
+
+    test('getNoteSlugPath uses block.slug directly', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const cooking = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user',
+        slug: 'cook'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Recipe\n\nA recipe.',
+        inserter: 'test-user',
+        collection_id: cooking.collection_uuid,
+        slug: 'recipe-slug'
+      })
+
+      await indexAll(localDb)
+
+      const slugPath = await getNoteSlugPath(localDb, note.block_uuid)
+      expect(slugPath).toEqual(['cook', 'recipe-slug'])
+    })
+
     test('getSlugPath builds full path for a collection', async () => {
       const library = await createCollection(syncedDb, {
         title: 'My Library',
