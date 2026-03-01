@@ -7,7 +7,6 @@ interface BlockSlugInfo {
   block_uuid: string;
   slug: string;
   title: string;
-  indexed_at: string;
 }
 
 interface SlugCollisionProps {
