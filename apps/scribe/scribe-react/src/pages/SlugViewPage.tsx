@@ -31,7 +31,7 @@ type PageMode =
   | { type: 'error'; message: string }
   | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; versionUuid: string; blockUuid: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
-  | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; slugPath: string; libraryName: string }
+  | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; collidingSlugs: Set<string>; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
   | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
@@ -79,7 +79,7 @@ const SlugViewPage: React.FC = () => {
         const {
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
-          getCollectionAncestors, getNotesInCollectionWithSlugs, slugToTitle,
+          getCollectionAncestors, getNotesInCollectionWithSlugs, getCollidingSlugs, slugToTitle,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
 
@@ -384,7 +384,7 @@ const SlugViewPage: React.FC = () => {
 
           const collectionData = await loadCollectionData(
             localDb, col, getCollectionByUuid, getChildCollections,
-            getCollectionAncestors, getNotesInCollectionWithSlugs,
+            getCollectionAncestors, getNotesInCollectionWithSlugs, getCollidingSlugs,
             fullSlugPath
           )
           setMode({ type: 'collection', ...collectionData, slugPath: fullSlugPath, libraryName })
@@ -438,6 +438,7 @@ const SlugViewPage: React.FC = () => {
         ancestors={mode.ancestors}
         collections={mode.childCollections}
         notes={mode.notes}
+        collidingSlugs={mode.collidingSlugs}
         slugPath={mode.slugPath}
         prefix={prefix || ''}
         libraryName={mode.libraryName}
@@ -562,11 +563,15 @@ async function loadCollectionData(
   getChildCollections: (db: any, parentUuid: string) => Promise<Collection[]>,
   getCollectionAncestors: (db: any, uuid: string) => Promise<Collection[]>,
   getNotesInCollectionWithSlugs: (db: any, collectionId: string | null) => Promise<NoteSlugRow[]>,
+  getCollidingSlugs: (db: any, parentId: string) => Promise<Set<string>>,
   slugPath: string
 ) {
-  const ancestors = await getCollectionAncestors(localDb, col.collection_uuid)
-  const children = await getChildCollections(localDb, col.collection_uuid)
-  const notes = await getNotesInCollectionWithSlugs(localDb, col.collection_uuid)
+  const [ancestors, children, notes, collidingSlugs] = await Promise.all([
+    getCollectionAncestors(localDb, col.collection_uuid),
+    getChildCollections(localDb, col.collection_uuid),
+    getNotesInCollectionWithSlugs(localDb, col.collection_uuid),
+    getCollidingSlugs(localDb, col.collection_uuid)
+  ])
 
   // Get slugs for child collections (use synced slug property directly)
   const childCollections = children.map(child => ({
@@ -574,7 +579,7 @@ async function loadCollectionData(
     slug: child.slug || null
   }))
 
-  return { collection: col, ancestors, childCollections, notes }
+  return { collection: col, ancestors, childCollections, notes, collidingSlugs }
 }
 
 export default SlugViewPage

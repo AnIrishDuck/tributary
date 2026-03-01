@@ -1,6 +1,6 @@
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
-import { Collection, titleToSlug } from 'scribe-data'
+import { Collection } from 'scribe-data'
 
 interface BreadcrumbsProps {
   ancestors: Collection[]
@@ -71,11 +71,11 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
         const originalIndex = hiddenCount + visIndex
         const cumulativePath = nonRootAncestors
           .slice(0, originalIndex + 1)
-          .map(a => titleToSlug(a.title))
+          .map(a => a.slug)
           .join('/')
 
         const isLast = originalIndex === nonRootAncestors.length - 1
-        const slug = titleToSlug(ancestor.title)
+        const slug = ancestor.slug
 
         return (
           <React.Fragment key={ancestor.collection_uuid}>

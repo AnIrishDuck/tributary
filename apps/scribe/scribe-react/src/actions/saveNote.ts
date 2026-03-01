@@ -1,5 +1,6 @@
 import { TributaryStream } from 'tributary-client'
 import * as scribeData from 'scribe-data'
+import type { Note } from 'scribe-data'
 
 export async function saveNote(
   stream: TributaryStream,
@@ -8,7 +9,7 @@ export async function saveNote(
   blockUuid?: string,
   collectionId?: string | null
 ) {
-  let block: any
+  let block: Note
 
   if (blockUuid) {
     // Update existing note by creating a new version
@@ -27,20 +28,16 @@ export async function saveNote(
       ...(collectionId !== undefined ? { collection_id: collectionId } : {})
     })
   }
-  
+
   // Sync to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
   const syncStatus = await stream.sync(1000)
   console.log(`Note saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
-  
-  // After sync, create a local database and then run indexing on it
+
+  // After sync, run indexing on the local database
   const localDb = stream.local()
-  
-  // Run indexing on the local database
   await scribeData.indexAll(localDb)
 
-  // Get the slug for this note from the local database
-  const blockSlug = await scribeData.getNoteSlugByUuid(localDb, block.block_uuid)
-  
-  return { block, blockSlug }
+  // The slug is already on the returned note entity
+  return { block, blockSlug: { block_uuid: block.block_uuid, slug: block.slug, title: scribeData.extractTitleFromMarkdown(block.body) || '' } }
 }

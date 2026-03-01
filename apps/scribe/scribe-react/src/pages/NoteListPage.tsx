@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { getNotesInCollectionWithSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, titleToSlug } from 'scribe-data'
+import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
 const NoteListPage: React.FC = () => {
@@ -11,6 +11,7 @@ const NoteListPage: React.FC = () => {
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
   const [notes, setNotes] = useState<NoteSlugRow[]>([])
   const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>([])
+  const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,17 +50,22 @@ const NoteListPage: React.FC = () => {
           const childCollections = await getChildCollections(localDb, library.collection_uuid)
           setCollections(childCollections.map(c => ({
             collection: c,
-            slug: titleToSlug(c.title)
+            slug: c.slug || null
           })))
 
-          // Get root-level notes only (notes not in any collection)
-          const noteList = await getNotesInCollectionWithSlugs(localDb, null)
+          // Get root-level notes and colliding slugs
+          const [noteList, collisions] = await Promise.all([
+            getNotesInCollectionWithSlugs(localDb, null),
+            getCollidingSlugs(localDb, library.collection_uuid)
+          ])
           setNotes(noteList)
+          setCollidingSlugsSet(collisions)
         } else {
           // No library root — all notes are root-level
           const noteList = await getNotesInCollectionWithSlugs(localDb, null)
           setNotes(noteList)
           setCollections([])
+          setCollidingSlugsSet(new Set())
         }
 
         // Get library display name
@@ -112,6 +118,7 @@ const NoteListPage: React.FC = () => {
     <NoteListView
       collections={collections}
       notes={notes}
+      collidingSlugs={collidingSlugsSet}
       prefix={prefix || ''}
       slugPath=""
       libraryName={libraryName}

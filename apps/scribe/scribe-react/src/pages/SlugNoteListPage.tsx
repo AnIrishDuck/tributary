@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { MoveModal } from '../components/MoveModal'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
@@ -20,12 +20,15 @@ interface NoteListViewProps {
   // Collection view props
   collection?: CollectionSlug
   ancestors?: Collection[]
+
+  /** Slugs that collide within this parent collection (notes + collections sharing a slug). */
+  collidingSlugs?: Set<string>
 }
 
 const NoteListView: React.FC<NoteListViewProps> = ({
   collections, notes, prefix, slugPath,
   libraryName, syncProgress,
-  collection, ancestors
+  collection, ancestors, collidingSlugs
 }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
@@ -199,26 +202,36 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             {collections.length > 0 && (
               <div className="mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {collections.map(({ collection: col, slug: collectionSlug }) => (
-                    <Link
-                      key={col.collection_uuid}
-                      to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : `/pk/${prefix}/`}
-                      className="group block"
-                    >
-                      <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-amber-200 transform hover:-translate-y-1">
-                        <div className="px-6 py-6">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
-                              <FolderIcon className="w-6 h-6 text-amber-600" />
+                  {collections.map(({ collection: col, slug: collectionSlug }) => {
+                    const hasCollision = collectionSlug ? collidingSlugs?.has(collectionSlug) : false
+                    return (
+                      <Link
+                        key={col.collection_uuid}
+                        to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : `/pk/${prefix}/`}
+                        className="group block"
+                      >
+                        <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
+                          hasCollision
+                            ? 'border border-orange-200 hover:border-orange-300'
+                            : 'border border-gray-100 hover:border-amber-200'
+                        }`}>
+                          <div className="px-6 py-6">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                                <FolderIcon className="w-6 h-6 text-amber-600" />
+                              </div>
+                              <h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                                {col.title}
+                              </h3>
+                              {hasCollision && (
+                                <ExclamationTriangleIcon className="w-4 h-4 text-orange-500 flex-shrink-0" title="Slug collision" />
+                              )}
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors">
-                              {col.title}
-                            </h3>
                           </div>
                         </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -269,6 +282,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               {/* Persisted notes */}
               {sortedNotes.map((note) => {
                 const hasDraft = draftBlockUuids.has(note.block_uuid)
+                const hasCollision = collidingSlugs?.has(note.slug)
                 return (
                   <Link
                     key={note.block_uuid}
@@ -278,7 +292,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                     <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
                       hasDraft
                         ? 'border border-amber-200 hover:border-amber-300'
-                        : 'border border-gray-100 hover:border-blue-200'
+                        : hasCollision
+                          ? 'border border-orange-200 hover:border-orange-300'
+                          : 'border border-gray-100 hover:border-blue-200'
                     }`}>
                       <div className="px-6 py-8">
                         <div className="flex items-start justify-between mb-4">
@@ -313,6 +329,12 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                             })}
                           </span>
                           <div className="flex items-center gap-2">
+                            {hasCollision && (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                                <ExclamationTriangleIcon className="w-3 h-3" />
+                                Collision
+                              </span>
+                            )}
                             {hasDraft && (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
                                 Draft
