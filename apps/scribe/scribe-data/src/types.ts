@@ -236,10 +236,14 @@ export interface SyncItem {
 /**
  * A sync operation describing a change that needs to be applied.
  *
- * - Update: an item has a new authoritative version. `target` is the
- *   authoritative version; `from` is the stale version being replaced.
- *   When `from` and `target` share the same source, the item is new
- *   (no counterpart on the other side yet).
+ * - Create: a new item that needs to be created. `target.source`
+ *   indicates where to create it: 'local' means write a new file
+ *   to disk, 'remote' means insert a new record in the database.
+ *
+ * - Update: an existing item has a new authoritative version.
+ *   `target` is the authoritative version; `from` is the stale
+ *   version being replaced. `from` and `target` always have
+ *   different sources (one local, one remote).
  *
  * - Move: an item has moved from one slug to another.
  *
@@ -247,6 +251,7 @@ export interface SyncItem {
  * both operations apply.
  */
 export type SyncOperation =
+  | { kind: 'create'; target: SyncItem }
   | { kind: 'update'; from: SyncItem; target: SyncItem }
   | { kind: 'move'; from: SyncItem; to: SyncItem }
 

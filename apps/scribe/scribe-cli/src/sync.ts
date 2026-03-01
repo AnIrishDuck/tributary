@@ -113,18 +113,20 @@ export async function computeSyncOperations(
     matchedBlockUuids, matchedCollectionUuids, operations
   );
 
-  // Find remote blocks not matched to any local file
+  // Find remote blocks not matched to any local file → create locally
   const allNotes = await getAllNotesWithTitles(localDb);
   for (const note of allNotes) {
     if (!matchedBlockUuids.has(note.block_uuid)) {
-      const remoteItem: SyncItem = {
-        type: 'block',
-        source: 'remote',
-        uuid: note.block_uuid,
-        slug: note.slug,
-        datetime: note.insert_datetime,
-      };
-      operations.push({ kind: 'update', from: remoteItem, target: remoteItem });
+      operations.push({
+        kind: 'create',
+        target: {
+          type: 'block',
+          source: 'local',
+          uuid: note.block_uuid,
+          slug: note.slug,
+          datetime: note.insert_datetime,
+        },
+      });
     }
   }
 
@@ -135,12 +137,9 @@ export async function computeSyncOperations(
     );
   }
 
-  // Sort: updates before moves
-  operations.sort((a, b) => {
-    if (a.kind === 'update' && b.kind === 'move') return -1;
-    if (a.kind === 'move' && b.kind === 'update') return 1;
-    return 0;
-  });
+  // Sort: creates → updates → moves
+  const kindOrder = { create: 0, update: 1, move: 2 };
+  operations.sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind]);
 
   return operations;
 }
@@ -171,10 +170,11 @@ export async function executeSyncOperations(
   const { dryRun = false, limit = 100 } = options;
 
   // Log operations summary
+  const creates = operations.filter(op => op.kind === 'create');
   const updates = operations.filter(op => op.kind === 'update');
   const moves = operations.filter(op => op.kind === 'move');
-  if (updates.length > 0 || moves.length > 0) {
-    console.log(`Sync operations: ${updates.length} update(s), ${moves.length} move(s)`);
+  if (creates.length > 0 || updates.length > 0 || moves.length > 0) {
+    console.log(`Sync operations: ${creates.length} create(s), ${updates.length} update(s), ${moves.length} move(s)`);
   }
 
   // Push local changes to database
@@ -290,16 +290,18 @@ async function compareDirectoryLevel(
             );
           }
         } else if (parentCollectionUuid) {
-          // New local directory → new collection
+          // New local directory → create collection remotely
           const newUuid = uuidv4();
-          const localItem: SyncItem = {
-            type: 'collection',
-            source: 'local',
-            uuid: newUuid,
-            slug: dirName,
-            datetime: new Date().toISOString(),
-          };
-          operations.push({ kind: 'update', from: localItem, target: localItem });
+          operations.push({
+            kind: 'create',
+            target: {
+              type: 'collection',
+              source: 'remote',
+              uuid: newUuid,
+              slug: dirName,
+              datetime: new Date().toISOString(),
+            },
+          });
 
           // Recurse into the new directory
           await compareDirectoryLevel(
@@ -381,15 +383,17 @@ async function compareFileToDatabase(
       }
     }
   } else {
-    // New local file — no database counterpart
-    const localItem: SyncItem = {
-      type: 'block',
-      source: 'local',
-      uuid: uuidv4(),
-      slug,
-      datetime: fileMtime,
-    };
-    operations.push({ kind: 'update', from: localItem, target: localItem });
+    // New local file → create in remote database
+    operations.push({
+      kind: 'create',
+      target: {
+        type: 'block',
+        source: 'remote',
+        uuid: uuidv4(),
+        slug,
+        datetime: fileMtime,
+      },
+    });
   }
 }
 
@@ -405,14 +409,17 @@ async function findUnmatchedCollections(
   const children = await getChildCollections(localDb, parentUuid);
   for (const child of children) {
     if (!matchedCollectionUuids.has(child.collection_uuid)) {
-      const remoteItem: SyncItem = {
-        type: 'collection',
-        source: 'remote',
-        uuid: child.collection_uuid,
-        slug: child.slug,
-        datetime: child.insert_datetime,
-      };
-      operations.push({ kind: 'update', from: remoteItem, target: remoteItem });
+      // Remote collection with no local directory → create locally
+      operations.push({
+        kind: 'create',
+        target: {
+          type: 'collection',
+          source: 'local',
+          uuid: child.collection_uuid,
+          slug: child.slug,
+          datetime: child.insert_datetime,
+        },
+      });
     }
     // Recurse into child collections
     await findUnmatchedCollections(
