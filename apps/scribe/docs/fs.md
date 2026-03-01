@@ -36,7 +36,8 @@ Dotfile slugs cannot be generated from titles.
 
 ## Slug Layout
 
-On sync, notes are laid out according to their slug:
+Slugs are read from the synced `block.slug` column — no local index lookup is
+required. On sync, notes are laid out according to their slug:
 
 - **Unique slug**: The note is a flat file at the sync root, named
   `[slug].md` (e.g. `beef-stew.md`).

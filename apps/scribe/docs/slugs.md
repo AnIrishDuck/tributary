@@ -1,5 +1,5 @@
-Every block in scribe has a slug. Slugs are used for linking, routing, and
-local filesystem layout.
+Every block and collection in scribe has a slug. Slugs are used for linking,
+routing, and local filesystem layout.
 
 Slugs are lowercase and URL-encoded:
 
@@ -9,27 +9,53 @@ Slugs are lowercase and URL-encoded:
 
 ## Slug Generation
 
-Slugs are generated on the client during initial document creation. As the
-user edits the title before the first save, the slug is automatically
-derived from the current title (title → lowercase, strip special chars,
-spaces to dashes). Once the document is saved, the slug is fixed — subsequent
-title changes do not update the slug automatically. After the first save,
-the slug can only be changed via an explicit user action.
+Slugs are **synced properties** stored directly on the `block` and `collection`
+tables. They are generated at creation time and synchronized to all clients via
+Tributary — no local indexing is required to determine a slug.
+
+### Notes
+
+When a note is created, its slug is derived as follows:
+
+1. If an explicit `slug` is provided, use it as-is.
+2. Otherwise, extract the title from the markdown body (`# Title`).
+   - If a title is found, convert it with `titleToSlug(title)`.
+   - If no title is found, fall back to the note's `block_uuid`.
+3. The slug is written to the `block.slug` column on the first save.
+
+When a new version of an existing note is created, the slug is **carried
+forward** from the previous version by default. Subsequent title changes do
+not update the slug automatically. The slug can only be changed via an
+explicit user action (passing a new `slug` value when creating a version).
+
+### Collections
+
+When a collection is created, its slug is derived from `titleToSlug(title)`
+unless an explicit `slug` is provided. See [Collections](collections.md).
 
 ## Duplicate Slugs
 
-Duplicate slugs are allowed. Multiple notes may share the same slug if they
-share the same title (or titles that produce the same slug).
+Duplicate slugs are allowed. Multiple notes (or a note and a collection) may
+share the same slug within the same parent collection.
 
-When a slug resolves to multiple notes, the behavior depends on the client:
+### Collision Detection
 
-### scribe-react
+Collisions are detected by the `slug_collision` table — a local
+(non-synchronized) cache that records which `(slug, parent_id)` pairs have
+more than one entity. This table is rebuilt by `rebuildSlugCollisions()` during
+indexing and is cheap to maintain (typically very few rows).
 
-A duplicate slug routes to a **duplicate slug listing page** that displays
-each matching document's UUID and title. From there, the user can navigate
-to the specific document via its unique route: `slug/[slug]/[uuid]`.
+### Collision Resolution
 
-### scribe-cli
+When a slug resolves to multiple entities, the behavior depends on the client:
+
+#### scribe-react
+
+A duplicate slug routes to a **collision page** that displays each matching
+document's UUID and title. From there, the user can navigate to the specific
+document via its unique route: `slug/[slug]/[uuid]`.
+
+#### scribe-cli
 
 A duplicate slug results in a **folder** named after the slug. Inside the
 folder, each note is stored as a file named by its note UUID
@@ -40,10 +66,10 @@ sync directory (e.g. `beef-stew.md`).
 
 ## Shared Namespace with Collections
 
-Collections and notes share a single slug namespace. When a collection is
-created, its title is slugified using the same algorithm as notes. A
-collection and a note may share the same slug — in this case, the duplicate
-slug resolution behavior applies across both types.
+Collections and notes share a single slug namespace within each parent. When a
+collection is created, its title is slugified using the same algorithm as notes.
+A collection and a note may share the same slug — in this case, the collision
+resolution behavior applies across both types.
 
 See [Collections](collections.md) for more on how collections use slugs.
 

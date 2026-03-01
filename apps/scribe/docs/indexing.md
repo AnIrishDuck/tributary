@@ -1,10 +1,12 @@
 # Scribe Indexing System
 
-The Scribe app uses an indexing system to extract metadata from notes and make them searchable and linkable. This document explains how the indexing process works.
+The Scribe app uses an indexing system to extract metadata from notes and make them searchable. This document explains how the indexing process works.
 
 ## Overview
 
-The indexing system processes notes to extract structured information like titles and tags, which are stored in local (non-synchronized) database tables. This approach ensures that indexing operations don't affect the core Tributary synchronization process.
+The indexing system processes notes to determine authoritative versions, extract tags, build search vectors, and maintain the slug collision cache. These are stored in local (non-synchronized) database tables. This approach ensures that indexing operations don't affect the core Tributary synchronization process.
+
+Note: slug generation is **not** part of indexing. Slugs are synced properties stored directly on the `block` and `collection` tables — see [Slug System](slugs.md).
 
 ## Index Tables
 
@@ -16,13 +18,6 @@ Tracks which notes have been processed by the indexing system.
 - `version_uuid`: Version of the note that was indexed
 - `indexed`: Boolean flag indicating if this version has been indexed
 - `last_indexed_at`: Timestamp of last indexing operation
-
-### `block_slug`
-Stores extracted note titles and their URL-friendly slugs for linking and navigation.
-- `block_uuid`: Unique identifier for the note
-- `slug`: URL-friendly version of the note title
-- `title`: Original extracted title from the note
-- `indexed_at`: Timestamp when slug was indexed
 
 ### `authoritative_version`
 Maps note UUIDs to their authoritative (latest) version UUIDs.
@@ -36,6 +31,19 @@ Stores extracted tags for categorization and filtering.
 - `tag`: Extracted tag from the note
 - `indexed_at`: Timestamp when tag was indexed
 
+### `slug_collision`
+Caches which `(slug, parent)` pairs have more than one entity (note or
+collection). Rebuilt by `rebuildSlugCollisions()` after each indexing run.
+- `slug`: The colliding slug
+- `parent_id`: The parent collection UUID where the collision occurs
+
+### `block_search_index`
+Stores full-text search vectors for notes.
+- `block_uuid`: Unique identifier for the note
+- `version_uuid`: Version UUID of the indexed version
+- `search_vector`: PostgreSQL tsvector for full-text search
+- `indexed_at`: Timestamp when the search vector was indexed
+
 ## Indexing Process
 
 ### 1. Finding Unindexed Notes
@@ -46,15 +54,7 @@ The indexing process begins by identifying notes that need to be indexed:
 2. **Unprocessed Notes**: Notes that have never been indexed or have a new version that hasn't been indexed
 3. **Efficient Query**: Uses SQL window functions to identify latest versions directly in the database
 
-### 2. Slug Generation
-
-For each unindexed authoritative note:
-1. Extract the first H1 heading (`# Title`) from the note body
-2. Convert the title to a URL-friendly slug
-3. Store the slug in the `block_slug` table (duplicate slugs are allowed)
-4. If no title is found, remove any existing slug entry for that note
-
-### 4. Tag Extraction
+### 2. Tag Extraction
 
 For each unindexed authoritative note:
 1. Extract all tags in the format `[#tagname](#tagname)` from the note body
@@ -62,13 +62,25 @@ For each unindexed authoritative note:
 3. Store each unique tag in the `block_tag` table
 4. If tags are removed in a new version, they are automatically removed from the index
 
+### 3. Slug Collision Rebuild
+
+After processing notes, `rebuildSlugCollisions()` is called to refresh the
+`slug_collision` cache. This scans both the synced `block.slug` and
+`collection.slug` columns, grouped by parent, and records any `(slug, parent)`
+pairs with more than one entity.
+
+### 4. Search Vector Indexing
+
+For each note that was just processed, a full-text search vector is built
+and stored in the `block_search_index` table.
+
 ## Progressive Indexing
 
 To prevent overwhelming the system, indexing operations can be limited:
 
 ```typescript
-const result = await indexSlugs(db, { limit: 100 })
-console.log(`Indexed ${result.indexedCount} slugs`)
+const result = await indexAll(db, { limit: 100 })
+console.log(`Indexed ${result.indexedCount} notes`)
 console.log(`More to index: ${result.hasMore}`)
 ```
 
@@ -99,7 +111,7 @@ The core indexing query uses window functions for efficiency:
 
 ```sql
 SELECT * FROM (
-  SELECT 
+  SELECT
     block_uuid,
     version_uuid,
     body,
@@ -117,23 +129,16 @@ AND (ib.block_uuid IS NULL OR latest_blocks.version_uuid != ib.version_uuid)
 All indexing operations are wrapped in database transactions to ensure consistency:
 
 1. Mark note as indexed
-2. Update slug index
-3. Both operations succeed or fail together
-
-### Slug Storage
-
-When indexing a note, its slug is stored directly in `block_slug`. Duplicate
-slugs are permitted — no conflict resolution or UUID suffixing is performed
-during indexing. Slug uniqueness is not enforced; instead, clients handle
-duplicate slugs at the routing/display layer (see [Slug System](slugs.md)).
+2. Update authoritative version
+3. Extract and store tags
+4. All operations succeed or fail together
 
 ## Link Resolution Support
 
 The indexing system supports the link resolution process by:
 
-1. **Maintaining Accurate Slugs**: Ensuring all notes have up-to-date slugs
-2. **Tracking Authoritative Versions**: Making sure links always point to the latest version of a note
-3. **Providing Lookup Mechanism**: The `block_slug` table serves as the lookup table for resolving slug references in links (a slug may map to multiple notes)
+1. **Tracking Authoritative Versions**: Making sure links always point to the latest version of a note
+2. **Collision Detection**: The `slug_collision` cache enables clients to quickly detect ambiguous slugs during routing
 
 For detailed information about the linking system, see [Linking System](linking.md).
 
@@ -141,7 +146,6 @@ For detailed information about the linking system, see [Linking System](linking.
 
 Planned improvements to the indexing system:
 
-1. **Full-text Search**: Index note content for search
-2. **Backlink Tracking**: Track references between notes
-3. **Metadata Indexing**: Index custom note metadata
-4. **Incremental Updates**: Only re-index notes that have changed
+1. **Backlink Tracking**: Track references between notes
+2. **Metadata Indexing**: Index custom note metadata
+3. **Incremental Updates**: Only re-index notes that have changed
