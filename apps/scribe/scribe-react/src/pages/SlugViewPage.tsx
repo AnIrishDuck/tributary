@@ -18,7 +18,6 @@ interface BlockSlugInfo {
   block_uuid: string;
   slug: string;
   title: string;
-  indexed_at: string;
 }
 
 interface AuthoritativeVersion {
@@ -80,7 +79,7 @@ const SlugViewPage: React.FC = () => {
         const {
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
-          getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug, slugToTitle,
+          getCollectionAncestors, getNotesInCollectionWithSlugs, slugToTitle,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
 
@@ -334,6 +333,16 @@ const SlugViewPage: React.FC = () => {
 
         const fullSlugPath = segments.join('/')
 
+        if (resolved.type === 'collision') {
+          setMode({
+            type: 'disambiguation',
+            notes: resolved.collisions?.notes || [],
+            collections: resolved.collisions?.collections || [],
+            slugPath: fullSlugPath
+          })
+          return
+        }
+
         if (resolved.type === 'note') {
           const blockSlugInfo = resolved.entity as BlockSlugInfo
 
@@ -375,7 +384,7 @@ const SlugViewPage: React.FC = () => {
 
           const collectionData = await loadCollectionData(
             localDb, col, getCollectionByUuid, getChildCollections,
-            getCollectionAncestors, getNotesInCollectionWithSlugs, titleToSlug,
+            getCollectionAncestors, getNotesInCollectionWithSlugs,
             fullSlugPath
           )
           setMode({ type: 'collection', ...collectionData, slugPath: fullSlugPath, libraryName })
@@ -553,17 +562,16 @@ async function loadCollectionData(
   getChildCollections: (db: any, parentUuid: string) => Promise<Collection[]>,
   getCollectionAncestors: (db: any, uuid: string) => Promise<Collection[]>,
   getNotesInCollectionWithSlugs: (db: any, collectionId: string | null) => Promise<NoteSlugRow[]>,
-  titleToSlug: (title: string) => string,
   slugPath: string
 ) {
   const ancestors = await getCollectionAncestors(localDb, col.collection_uuid)
   const children = await getChildCollections(localDb, col.collection_uuid)
   const notes = await getNotesInCollectionWithSlugs(localDb, col.collection_uuid)
 
-  // Get slugs for child collections
+  // Get slugs for child collections (use synced slug property directly)
   const childCollections = children.map(child => ({
     collection: child,
-    slug: titleToSlug(child.title) || null
+    slug: child.slug || null
   }))
 
   return { collection: col, ancestors, childCollections, notes }

@@ -169,10 +169,13 @@ describe('scribe-data indexing', () => {
     expect(authoritativeVersion).toBeDefined()
     expect(authoritativeVersion?.version_uuid).toBe(versionUuid)
     
-    // Check that no slug was created
+    // getNoteSlugByUuid now reads from the synced block table, which always has a slug.
+    // For notes without a title, the slug is the block_uuid fallback.
     const slug = await getNoteSlugByUuid(localDb, blockUuid)
-    
-    expect(slug).toBeNull()
+
+    expect(slug).toBeDefined()
+    expect(slug?.slug).toBe(blockUuid) // Falls back to block_uuid when no title
+    expect(slug?.title).toBe('') // No title extractable from body
   })
 
   test('should update slug when note version changes', async () => {
@@ -211,12 +214,14 @@ describe('scribe-data indexing', () => {
     expect(result.indexedCount).toBe(1)
     expect(result.hasMore).toBe(false)
     
-    // Check updated slug
+    // Check slug after version change.
+    // Slug is a first-class property carried forward from the prior version,
+    // so it stays 'original-title'. Title is extracted from the body.
     const updatedSlug = await getNoteSlugByUuid(localDb, blockUuid)
-    
+
     expect(updatedSlug).toBeDefined()
-    expect(updatedSlug?.slug).toBe('updated-title')
-    expect(updatedSlug?.title).toBe('Updated Title')
+    expect(updatedSlug?.slug).toBe('original-title') // slug carried forward
+    expect(updatedSlug?.title).toBe('Updated Title') // title extracted from new body
     
     // Check that the authoritative version was updated
     const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockUuid)
@@ -525,25 +530,22 @@ describe('scribe-data indexing', () => {
       expect(insertDate.getTime()).toBeGreaterThan(oneMinuteAgo.getTime())
     })
 
-    test('should return indexed_at for each note', async () => {
+    test('should extract title from body for each note', async () => {
       const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Test Document\n\nThis is a test.',
         inserter: 'test-user'
       })
 
-      // Index the note
+      // Index the note (populates authoritative_version)
       await indexSlugs(localDb)
 
       // Get all notes with titles
       const notes = await getAllNotesWithTitles(localDb)
 
       expect(notes).toHaveLength(1)
-
-      // Verify indexed_at is present and is a valid ISO date string
-      expect(notes[0].indexed_at).toBeDefined()
-      const indexedDate = new Date(notes[0].indexed_at)
-      expect(indexedDate.getTime()).not.toBeNaN()
+      expect(notes[0].title).toBe('Test Document')
+      expect(notes[0].slug).toBe('test-document')
     })
 
     test('should sort notes by most recent edit after updating a note', async () => {

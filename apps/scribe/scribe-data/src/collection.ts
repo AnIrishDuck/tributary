@@ -147,6 +147,7 @@ export async function getAllCollections(
 
 /**
  * Get all named collections with their slugs for listing.
+ * Queries the synced collection table directly (no join needed).
  * Does not include the library.
  *
  * @param db The TributaryLocal database instance
@@ -156,11 +157,10 @@ export async function getAllCollectionsWithSlugs(
   db: TributaryLocal
 ): Promise<CollectionSlugRow[]> {
   const result = await db.query(
-    `SELECT c.collection_uuid, c.insert_datetime, cs.slug, cs.title, cs.indexed_at
-     FROM collection c
-     INNER JOIN collection_slug cs ON c.collection_uuid = cs.collection_uuid
-     WHERE c.parent_collection_uuid IS NOT NULL
-     ORDER BY cs.title`,
+    `SELECT collection_uuid, slug, title, insert_datetime
+     FROM collection
+     WHERE parent_collection_uuid IS NOT NULL
+     ORDER BY title`,
     []
   )
 
@@ -201,7 +201,8 @@ export async function getCollectionBySlug(
 }
 
 /**
- * Get all collections matching a slug
+ * Get all collections matching a slug.
+ * Queries the synced collection table directly.
  *
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
@@ -212,7 +213,8 @@ export async function getCollectionsBySlug(
   slug: string
 ): Promise<CollectionSlug[]> {
   const result = await db.query(
-    `SELECT * FROM collection_slug WHERE slug = $1`,
+    `SELECT collection_uuid, slug, title, parent_collection_uuid
+     FROM collection WHERE slug = $1 AND parent_collection_uuid IS NOT NULL`,
     [slug]
   )
 
@@ -348,6 +350,7 @@ export async function getNotesInCollection(
 
 /**
  * Get a collection by its slug scoped to a specific parent collection.
+ * Queries the synced collection table directly.
  *
  * @param db The TributaryLocal database instance
  * @param slug The slug to search for
@@ -360,7 +363,8 @@ export async function getCollectionBySlugUnderParent(
   parentUuid: string
 ): Promise<CollectionSlug | null> {
   const result = await db.query(
-    `SELECT * FROM collection_slug WHERE slug = $1 AND parent_collection_uuid = $2`,
+    `SELECT collection_uuid, slug, title, parent_collection_uuid
+     FROM collection WHERE slug = $1 AND parent_collection_uuid = $2`,
     [slug, parentUuid]
   )
 
@@ -374,6 +378,7 @@ export async function getCollectionBySlugUnderParent(
 /**
  * Get the slug path for a collection (excluding the library root).
  * Returns an array of slug segments from the first named collection down to the given collection.
+ * Uses the synced collection.slug column directly.
  *
  * @param db The TributaryStream or TributaryLocal database instance
  * @param collectionUuid The UUID of the collection
@@ -388,11 +393,12 @@ export async function getSlugPath(
   // Exclude the root/library (first ancestor with parent_collection_uuid === null)
   return ancestors
     .filter(a => a.parent_collection_uuid !== null)
-    .map(a => titleToSlug(a.title))
+    .map(a => a.slug)
 }
 
 /**
  * Get the full slug path for a note, including its collection ancestors and own slug.
+ * Uses block.slug from the authoritative version and collection.slug from ancestors.
  *
  * @param db The TributaryLocal database instance
  * @param noteBlockUuid The block UUID of the note
@@ -402,31 +408,21 @@ export async function getNoteSlugPath(
   db: TributaryLocal,
   noteBlockUuid: string
 ): Promise<string[]> {
-  // Get the note's slug
-  const slugResult = await db.query(
-    `SELECT * FROM block_slug WHERE block_uuid = $1`,
-    [noteBlockUuid]
-  )
-
-  if (!slugResult.rows || slugResult.rows.length === 0) {
-    return []
-  }
-
-  const noteSlug = (slugResult.rows[0] as any).slug as string
-
-  // Get the note's collection_id from the authoritative version
-  const noteResult = await db.query(
-    `SELECT b.collection_id FROM block b
+  // Get the note's slug and collection_id from the authoritative version
+  const result = await db.query(
+    `SELECT b.slug, b.collection_id FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      WHERE b.block_uuid = $1`,
     [noteBlockUuid]
   )
 
-  if (!noteResult.rows || noteResult.rows.length === 0) {
-    return [noteSlug]
+  if (!result.rows || result.rows.length === 0) {
+    return []
   }
 
-  const collectionId = (noteResult.rows[0] as any).collection_id
+  const row = result.rows[0] as any
+  const noteSlug = row.slug as string
+  const collectionId = row.collection_id
 
   if (!collectionId) {
     return [noteSlug]

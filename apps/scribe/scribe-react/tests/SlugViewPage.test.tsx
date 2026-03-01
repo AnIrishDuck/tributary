@@ -32,7 +32,7 @@ describe('SlugViewPage', () => {
     }, { timeout: 2000 })
   })
 
-  it('should resolve note when slug matches both a note and a collection (note takes priority)', async () => {
+  it('should show disambiguation page when slug matches both a note and a collection', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
 
@@ -40,7 +40,7 @@ describe('SlugViewPage', () => {
     const library = await scribeData.getLibrary(localDb)
     expect(library).toBeDefined()
 
-    // Helper to create a collection and index it
+    // Create a collection with slug "recipes"
     const col = await scribeData.createCollection(stream, {
       title: 'Recipes',
       parent_collection_uuid: library!.collection_uuid,
@@ -63,13 +63,9 @@ describe('SlugViewPage', () => {
       </WithProviders>
     )
 
-    // In hierarchical routing, notes take priority over collections at the same scope
-    // Should show the note view with Edit FAB
+    // When a note and collection share a slug, the disambiguation page should appear
     await waitFor(() => {
-      expect(screen.getByLabelText('Edit')).toBeInTheDocument()
+      expect(screen.getByText(/Multiple items match/)).toBeInTheDocument()
     }, { timeout: 5000 })
-
-    // Should show the note content
-    expect(screen.getByText(/A note about recipes/)).toBeInTheDocument()
   })
 })

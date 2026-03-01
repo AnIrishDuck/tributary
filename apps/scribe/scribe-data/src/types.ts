@@ -57,24 +57,19 @@ export interface Collection {
 }
 
 /**
- * Database representation of a collection slug
+ * Database representation of a collection slug.
+ * Now backed by the synced `collection` table directly.
  */
-export interface CollectionSlug {
-  collection_uuid: string
-  slug: string
-  title: string
-  indexed_at: string
-  parent_collection_uuid: string | null
-}
+export type CollectionSlug = Pick<Collection, 'collection_uuid' | 'slug' | 'title' | 'parent_collection_uuid'>
 
 /**
- * Collection slug row with insert_datetime for listing
+ * Collection slug row with insert_datetime for listing.
+ * Now backed by the synced `collection` table directly.
  */
 export interface CollectionSlugRow {
   collection_uuid: string
   slug: string
   title: string
-  indexed_at: string
   insert_datetime: string
 }
 
@@ -97,13 +92,13 @@ export interface PGliteResult {
 }
 
 /**
- * Type for a note slug database row
+ * Type for a note slug database row.
+ * Now backed by the synced `block` table directly (title extracted from body).
  */
 export interface NoteSlug {
   block_uuid: string;
   slug: string;
   title: string;
-  indexed_at: string;
 }
 
 /**
@@ -125,13 +120,13 @@ export interface NoteTag {
 }
 
 /**
- * Database representation of a note slug (with proper types for database storage)
+ * Database representation of a note slug (with proper types for database storage).
+ * Now backed by the synced `block` table directly (title extracted from body).
  */
 export interface NoteSlugRow {
   block_uuid: string
   slug: string
   title: string
-  indexed_at: string // ISO string for database storage
   insert_datetime: string // ISO string - when the note was last edited
   collection_id: string | null
 }
