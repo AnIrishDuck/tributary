@@ -16,7 +16,14 @@ import {
   getAllCollections,
   indexAll,
 } from '@tributary/scribe-data'
-import { sync, validateDirectoryStructure } from '../src/sync.js'
+import type { SyncOperation } from '@tributary/scribe-data'
+import {
+  sync,
+  syncAndIndex,
+  computeSyncOperations,
+  executeSyncOperations,
+  validateDirectoryStructure,
+} from '../src/sync.js'
 
 /**
  * Create a test TributaryStream backed by an in-memory DB and FakeServer.
@@ -53,6 +60,47 @@ async function createTempSyncDir(): Promise<string> {
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'scribe-sync-test-'))
   await fs.promises.mkdir(path.join(tmpDir, '.scribe'), { recursive: true })
   return tmpDir
+}
+
+/**
+ * Run all three sync phases and return the computed operations.
+ */
+async function syncThreePhase(
+  stream: TributaryStream,
+  dir: string,
+  options: { dryRun?: boolean; limit?: number } = {}
+): Promise<SyncOperation[]> {
+  await syncAndIndex(stream, dir, options)
+  const localDb = stream.local()
+  const operations = await computeSyncOperations(stream, localDb, dir)
+  await executeSyncOperations(stream, localDb, dir, operations, options)
+  return operations
+}
+
+// ── Helpers for asserting on SyncOperations ─────────────────
+
+/** Create operations for blocks. */
+function blockCreates(ops: SyncOperation[]): SyncOperation[] {
+  return ops.filter(op => op.kind === 'create' && op.target.type === 'block')
+}
+
+/** Create operations for collections. */
+function collectionCreates(ops: SyncOperation[]): SyncOperation[] {
+  return ops.filter(op => op.kind === 'create' && op.target.type === 'collection')
+}
+
+/** Update operations for blocks. */
+function blockUpdates(ops: SyncOperation[]): SyncOperation[] {
+  return ops.filter(op => op.kind === 'update' && op.target.type === 'block')
+}
+
+/** Update operations for collections. */
+function collectionUpdates(ops: SyncOperation[]): SyncOperation[] {
+  return ops.filter(op => op.kind === 'update' && op.target.type === 'collection')
+}
+
+function moves(ops: SyncOperation[]): SyncOperation[] {
+  return ops.filter(op => op.kind === 'move')
 }
 
 describe('validateDirectoryStructure', () => {
@@ -111,7 +159,19 @@ describe('sync — flat notes (no collections)', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Two remote-only notes → two creates targeting local
+    const bCreates = blockCreates(ops)
+    expect(bCreates).toHaveLength(2)
+    expect(bCreates.every(op => op.kind === 'create' && op.target.source === 'local')).toBe(true)
+
+    const slugs = bCreates.map(op => op.target.slug).sort()
+    expect(slugs).toEqual(['beef-stew', 'chicken-soup'])
+
+    // No updates or moves expected
+    expect(blockUpdates(ops)).toHaveLength(0)
+    expect(moves(ops)).toHaveLength(0)
 
     // Verify files were created
     const files = (await fs.promises.readdir(tmpDir)).filter(f => f.endsWith('.md'))
@@ -137,7 +197,13 @@ describe('sync — flat notes (no collections)', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Two remote-only notes with same slug → two creates targeting local
+    const bCreates = blockCreates(ops)
+    expect(bCreates).toHaveLength(2)
+    const uuids = bCreates.map(op => op.target.uuid).sort()
+    expect(uuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
 
     // The "gumbo" slug is duplicated — should be a folder with UUID files
     const gumboDir = path.join(tmpDir, 'gumbo')
@@ -148,8 +214,8 @@ describe('sync — flat notes (no collections)', () => {
     expect(gumboFiles.every(f => f.endsWith('.md'))).toBe(true)
 
     // File names should be UUIDs
-    const uuids = gumboFiles.map(f => f.slice(0, -3)).sort()
-    expect(uuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
+    const fileUuids = gumboFiles.map(f => f.slice(0, -3)).sort()
+    expect(fileUuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
   })
 
   it('should read local file changes back into the database', async () => {
@@ -170,8 +236,19 @@ describe('sync — flat notes (no collections)', () => {
       'utf8'
     )
 
-    // Sync again — should pick up the local change
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Compute operations for the second sync — should detect the local change
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have exactly one block update: local is newer (file was just written)
+    const bUpdates = blockUpdates(ops)
+    expect(bUpdates).toHaveLength(1)
+    const op = bUpdates[0]
+    expect(op.kind).toBe('update')
+    if (op.kind === 'update') {
+      expect(op.target.source).toBe('local')
+      expect(op.target.uuid).toBe(note.block_uuid)
+      expect(op.from.source).toBe('remote')
+    }
 
     // Verify the database has the updated content
     const updated = await getNoteByUuid(stream, note.block_uuid)
@@ -188,7 +265,10 @@ describe('sync — flat notes (no collections)', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: true })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: true })
+
+    // Should still compute 1 create targeting local
+    expect(blockCreates(ops)).toHaveLength(1)
 
     const files = (await fs.promises.readdir(tmpDir)).filter(f => f.endsWith('.md'))
     expect(files).toHaveLength(0)
@@ -231,7 +311,13 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Two remote-only collections → 2 collection creates targeting local
+    const cCreates = collectionCreates(ops)
+    expect(cCreates).toHaveLength(2)
+    const slugs = cCreates.map(op => op.target.slug).sort()
+    expect(slugs).toEqual(['cajun-recipes', 'desserts'])
 
     // Collection directories should exist
     expect(fs.existsSync(path.join(tmpDir, 'cajun-recipes'))).toBe(true)
@@ -267,7 +353,13 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 2 block creates targeting local (gumbo + beef-stew)
+    const bCreates = blockCreates(ops)
+    expect(bCreates).toHaveLength(2)
+    const blockSlugs = bCreates.map(op => op.target.slug).sort()
+    expect(blockSlugs).toEqual(['beef-stew', 'gumbo'])
 
     // Root note should be at the root
     expect(fs.existsSync(path.join(tmpDir, 'beef-stew.md'))).toBe(true)
@@ -306,7 +398,12 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 2 collection creates targeting local (cooking, italian) + 1 block create targeting local (pasta)
+    expect(collectionCreates(ops)).toHaveLength(2)
+    expect(blockCreates(ops)).toHaveLength(1)
+    expect(blockCreates(ops)[0].target.slug).toBe('pasta')
 
     // Note should be at cooking/italian/pasta.md
     expect(fs.existsSync(path.join(tmpDir, 'cooking', 'italian', 'pasta.md'))).toBe(true)
@@ -348,8 +445,16 @@ describe('sync — collections', () => {
     expect(fs.existsSync(gumboPath)).toBe(true)
     await fs.promises.writeFile(gumboPath, '# Gumbo\n\nUpdated gumbo recipe!', 'utf8')
 
-    // Second sync: should pick up the local change
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Second sync: should detect the local change
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have one block update: local file is newer
+    const bUpdates = blockUpdates(ops)
+    expect(bUpdates).toHaveLength(1)
+    if (bUpdates[0].kind === 'update') {
+      expect(bUpdates[0].target.source).toBe('local')
+      expect(bUpdates[0].target.uuid).toBe(note.block_uuid)
+    }
 
     // Verify database has the updated content
     const updated = await getNoteByUuid(stream, note.block_uuid)
@@ -383,8 +488,13 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    // Sync again — should create the note in the database with the correct collection_id
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Sync again — should detect the new local file
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have a block create targeting remote (new local file → push to DB)
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('jambalaya')
 
     // Verify the new note exists in the database with the correct collection_id
     const notesInRecipes = await getNotesInCollection(stream, recipes.collection_uuid)
@@ -419,8 +529,13 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    // Single sync should create the note with the correct collection_id
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Single sync — should detect the new local note
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // The local file should produce a block create targeting remote
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('jambalaya')
 
     // Verify the new note exists in the database with the correct collection_id
     const notesInRecipes = await getNotesInCollection(stream, recipes.collection_uuid)
@@ -454,8 +569,13 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    // Sync again — should create the new note in the database
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Sync again — should detect the new local file
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have a block create targeting remote for the new file
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('brand-new')
 
     // Verify both notes exist in the database
     const allNotes = await getNotesInCollection(stream, null)
@@ -480,7 +600,12 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have one block create targeting remote with slug from the filename
+    const newBlocks = blockCreates(ops)
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('custom-slug')
 
     const allNotes = await getNotesInCollection(stream, null)
     const note = allNotes.find(n => n.body.includes('Completely Different Title'))
@@ -509,7 +634,17 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have a collection create targeting remote for the "recipes" directory
+    const newCollections = collectionCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newCollections).toHaveLength(1)
+    expect(newCollections[0].target.slug).toBe('recipes')
+
+    // Should have a block create targeting remote for the note
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('gumbo')
 
     // Verify a "Recipes" collection was created with slug from directory name
     const collections = await getAllCollections(stream)
@@ -547,7 +682,18 @@ describe('sync — collections', () => {
       'utf8'
     )
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Should have 2 collection creates targeting remote (cooking, italian)
+    const newCollections = collectionCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newCollections).toHaveLength(2)
+    const collSlugs = newCollections.map(op => op.target.slug).sort()
+    expect(collSlugs).toEqual(['cooking', 'italian'])
+
+    // Should have 1 block create targeting remote for pasta
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(newBlocks).toHaveLength(1)
+    expect(newBlocks[0].target.slug).toBe('pasta')
 
     // Verify both collections were created with slugs from directory names
     const collections = await getAllCollections(stream)
@@ -599,7 +745,13 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 2 block creates targeting local for the duplicate-slug notes
+    const bCreates = blockCreates(ops)
+    expect(bCreates).toHaveLength(2)
+    const uuids = bCreates.map(op => op.target.uuid).sort()
+    expect(uuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
 
     // Should create recipes/stew/ folder with UUID files
     const stewDir = path.join(tmpDir, 'recipes', 'stew')
@@ -608,8 +760,8 @@ describe('sync — collections', () => {
     const stewFiles = await fs.promises.readdir(stewDir)
     expect(stewFiles).toHaveLength(2)
 
-    const uuids = stewFiles.map(f => f.slice(0, -3)).sort()
-    expect(uuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
+    const fileUuids = stewFiles.map(f => f.slice(0, -3)).sort()
+    expect(fileUuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
   })
 
   it('should clean up orphaned directories but adopt orphaned .md files as new notes', async () => {
@@ -640,8 +792,14 @@ describe('sync — collections', () => {
     await fs.promises.mkdir(path.join(tmpDir, 'stale-dir'), { recursive: true })
     await fs.promises.writeFile(path.join(tmpDir, 'stale-dir', 'leftover.md'), 'leftover', 'utf8')
 
-    // Sync again
-    await sync(stream, client, tmpDir, { dryRun: false })
+    // Sync again — should detect new local files
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // New local files should produce block creates targeting remote
+    const newBlocks = blockCreates(ops).filter(op => op.target.source === 'remote')
+    // orphan.md + leftover.md (in new stale-dir collection)
+    expect(newBlocks.length).toBeGreaterThanOrEqual(1)
+    expect(newBlocks.some(op => op.target.slug === 'orphan')).toBe(true)
 
     // Existing note should still be present
     expect(fs.existsSync(path.join(tmpDir, 'keep-me.md'))).toBe(true)
@@ -715,7 +873,25 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 5 block creates targeting local
+    expect(blockCreates(ops)).toHaveLength(5)
+    const blockSlugs = blockCreates(ops).map(op => op.target.slug).sort()
+    expect(blockSlugs).toEqual(['chocolate-cake', 'gumbo', 'jambalaya', 'note-a', 'note-b'])
+
+    // 2 collection creates targeting local (cajun-recipes, desserts)
+    expect(collectionCreates(ops)).toHaveLength(2)
+
+    // No updates or moves
+    expect(blockUpdates(ops)).toHaveLength(0)
+    expect(moves(ops)).toHaveLength(0)
+
+    // Creates come before updates come before moves in the sorted list
+    for (let i = 1; i < ops.length; i++) {
+      const order = { create: 0, update: 1, move: 2 } as const;
+      expect(order[ops[i - 1].kind]).toBeLessThanOrEqual(order[ops[i].kind])
+    }
 
     // Verify the full directory structure
     expect(fs.existsSync(path.join(tmpDir, 'note-a.md'))).toBe(true)
@@ -772,7 +948,13 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 2 block creates targeting local (one in work, one in personal)
+    const bCreates = blockCreates(ops)
+    expect(bCreates).toHaveLength(2)
+    // Both should have slug 'ideas'
+    expect(bCreates.every(op => op.target.slug === 'ideas')).toBe(true)
 
     // Both should exist as separate files in their collection directories
     expect(fs.existsSync(path.join(tmpDir, 'work', 'ideas.md'))).toBe(true)
@@ -799,7 +981,17 @@ describe('sync — collections', () => {
 
     await stream.sync(1000)
 
-    await sync(stream, client, tmpDir, { dryRun: false })
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // 1 collection create targeting local
+    const cCreates = collectionCreates(ops)
+    expect(cCreates).toHaveLength(1)
+    expect(cCreates[0].target.slug).toBe('empty-collection')
+    expect(cCreates[0].target.source).toBe('local')
+
+    // No block operations (empty collection has no notes)
+    expect(blockCreates(ops)).toHaveLength(0)
+    expect(blockUpdates(ops)).toHaveLength(0)
 
     expect(fs.existsSync(path.join(tmpDir, 'empty-collection'))).toBe(true)
   })

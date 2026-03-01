@@ -13,9 +13,12 @@ import {
   getNoteSlugPath,
   slugToTitle,
 } from '@tributary/scribe-data';
-import type { Collection } from '@tributary/scribe-data';
+import type { Collection, SyncItem, SyncOperation } from '@tributary/scribe-data';
+import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+
+// ── Public API ──────────────────────────────────────────────
 
 /**
  * Validate that the local directory structure is correct for syncing
@@ -37,22 +40,167 @@ export async function validateDirectoryStructure(directory: string): Promise<voi
 }
 
 /**
- * Sync notes between local directory and Tributary Scribe library
+ * Phase 1: Sync with server and index all notes/collections.
  *
- * This function:
- * 1. Validates the local directory structure
- * 2. Syncs with the server to get latest remote changes
- * 3. Reads all markdown files from the sync directory
- * 4. Updates the database with any changes
- * 5. Ensures slug filenames match the computed slug names
- *
- * Notes are laid out in directories reflecting their collection hierarchy:
- *   - Root notes: {slug}.md or {slug}/{uuid}.md (for duplicate slugs)
- *   - Collection notes: {collection-slug}/{note-slug}.md
- *   - Nested collections: {collection-slug}/{sub-collection-slug}/{note-slug}.md
+ * Fetches the latest remote changes and indexes all notes and collections
+ * so that slug resolution works for the comparison phase.
  *
  * @param stream The TributaryStream instance for synced operations
- * @param client The TributaryClient instance for explicit sync operations
+ * @param directory The local directory to sync with
+ * @param options Sync options
+ */
+export async function syncAndIndex(
+  stream: TributaryStream,
+  directory: string,
+  options: {
+    dryRun?: boolean;
+    limit?: number;
+  } = {}
+): Promise<void> {
+  const { dryRun = false, limit = 100 } = options;
+
+  await validateDirectoryStructure(directory);
+
+  if (!dryRun) {
+    console.log('Syncing with server...');
+    const syncStatus = await stream.sync(1000);
+    console.log(`Server sync completed: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
+  }
+
+  const localDb = stream.local();
+  const preIndexResult = await indexAll(localDb, { limit });
+  if (preIndexResult.indexedCount > 0) {
+    console.log(`Pre-indexed ${preIndexResult.indexedCount} slugs`);
+  }
+}
+
+/**
+ * Phase 2: Compare local and remote state, compile a list of SyncOperations.
+ *
+ * Walks the local directory tree and compares each file/directory to the
+ * database state. Produces Update operations for content differences and
+ * Move operations for slug changes. Changes can flow in both directions
+ * (local → remote, remote → local) depending on which version is newer.
+ *
+ * Operations are sorted with updates before moves for any items where
+ * both operations apply.
+ *
+ * @param stream The TributaryStream instance
+ * @param localDb The TributaryLocal instance
+ * @param directory The local directory to compare
+ * @returns Sorted list of sync operations
+ */
+export async function computeSyncOperations(
+  stream: TributaryStream,
+  localDb: TributaryLocal,
+  directory: string,
+): Promise<SyncOperation[]> {
+  const operations: SyncOperation[] = [];
+  const matchedBlockUuids = new Set<string>();
+  const matchedCollectionUuids = new Set<string>();
+
+  const library = await getLibrary(localDb);
+  const libraryUuid = library?.collection_uuid ?? null;
+
+  // The library root itself is always "matched"
+  if (libraryUuid) {
+    matchedCollectionUuids.add(libraryUuid);
+  }
+
+  // Walk the filesystem and compare each item to the DB state
+  await compareDirectoryLevel(
+    stream, localDb, directory, null, libraryUuid,
+    matchedBlockUuids, matchedCollectionUuids, operations
+  );
+
+  // Find remote blocks not matched to any local file → create locally
+  const allNotes = await getAllNotesWithTitles(localDb);
+  for (const note of allNotes) {
+    if (!matchedBlockUuids.has(note.block_uuid)) {
+      operations.push({
+        kind: 'create',
+        target: {
+          type: 'block',
+          source: 'local',
+          uuid: note.block_uuid,
+          slug: note.slug,
+          datetime: note.insert_datetime,
+        },
+      });
+    }
+  }
+
+  // Find remote collections not matched to any local directory
+  if (libraryUuid) {
+    await findUnmatchedCollections(
+      localDb, libraryUuid, matchedCollectionUuids, operations
+    );
+  }
+
+  // Sort: creates → updates → moves
+  const kindOrder = { create: 0, update: 1, move: 2 };
+  operations.sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind]);
+
+  return operations;
+}
+
+/**
+ * Phase 3: Execute all sync operations sequentially.
+ *
+ * Processes local-to-remote changes (pushing local file edits into the
+ * database), re-indexes, then writes the authoritative database state
+ * back to the filesystem.
+ *
+ * @param stream The TributaryStream instance
+ * @param localDb The TributaryLocal instance
+ * @param directory The local directory to sync
+ * @param operations The list of sync operations to execute
+ * @param options Sync options
+ */
+export async function executeSyncOperations(
+  stream: TributaryStream,
+  localDb: TributaryLocal,
+  directory: string,
+  operations: SyncOperation[],
+  options: {
+    dryRun?: boolean;
+    limit?: number;
+  } = {}
+): Promise<void> {
+  const { dryRun = false, limit = 100 } = options;
+
+  // Log operations summary
+  const creates = operations.filter(op => op.kind === 'create');
+  const updates = operations.filter(op => op.kind === 'update');
+  const moves = operations.filter(op => op.kind === 'move');
+  if (creates.length > 0 || updates.length > 0 || moves.length > 0) {
+    console.log(`Sync operations: ${creates.length} create(s), ${updates.length} update(s), ${moves.length} move(s)`);
+  }
+
+  // Push local changes to database
+  await syncLocalFilesToDatabase(stream, localDb, directory, { dryRun });
+
+  // Re-index (picks up new versions, computes slug paths)
+  const reindexResult = await indexAll(localDb, { limit });
+  console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
+  if (reindexResult.hasMore) {
+    console.log(`Has more to index: ${reindexResult.hasMore}`);
+  }
+
+  // Write authoritative database state to filesystem
+  await syncSlugsDirectory(stream, localDb, directory, { dryRun });
+}
+
+/**
+ * Sync notes between local directory and Tributary Scribe library.
+ *
+ * The sync process is split into three phases:
+ * 1. Remote/local sync and indexing
+ * 2. Compare and compile list of SyncOperations
+ * 3. Execute all sync operations sequentially
+ *
+ * @param stream The TributaryStream instance for synced operations
+ * @param client The TributaryClient instance
  * @param directory The local directory to sync with
  * @param options Sync options
  */
@@ -67,39 +215,220 @@ export async function sync(
 ): Promise<void> {
   const { dryRun = false, limit = 100 } = options;
 
-  // Validate directory structure first - error immediately if not correct
-  await validateDirectoryStructure(directory);
+  // Phase 1: Sync with server and index
+  await syncAndIndex(stream, directory, { dryRun, limit });
 
-  // 1. Sync with server first to get latest changes
-  if (!dryRun) {
-    console.log('Syncing with server...');
-    const syncStatus = await stream.sync(1000);
-    console.log(`Server sync completed: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
-  }
-
-  // Get local database for index operations
   const localDb = stream.local();
 
-  // 2. Index existing notes and collections so that directory walking
-  //    can match collection slugs and note slugs correctly
-  const preIndexResult = await indexAll(localDb, { limit });
-  if (preIndexResult.indexedCount > 0) {
-    console.log(`Pre-indexed ${preIndexResult.indexedCount} slugs`);
-  }
+  // Phase 2: Compute sync operations
+  const operations = await computeSyncOperations(stream, localDb, directory);
 
-  // 3. Read local files and update database
-  await syncLocalFilesToDatabase(stream, localDb, directory, { dryRun });
-
-  // 4. Re-index notes and collections (including any newly created notes)
-  const reindexResult = await indexAll(localDb, { limit });
-  console.log(`Re-indexed ${reindexResult.indexedCount} slugs`);
-  if (reindexResult.hasMore) {
-    console.log(`Has more to index: ${reindexResult.hasMore}`);
-  }
-
-  // 5. Update slugs directory with current database state
-  await syncSlugsDirectory(stream, localDb, directory, { dryRun });
+  // Phase 3: Execute sync operations
+  await executeSyncOperations(stream, localDb, directory, operations, { dryRun, limit });
 }
+
+// ── Internal: Comparison helpers ────────────────────────────
+
+/**
+ * Walk a directory level and compare files/directories to the database state.
+ * Produces SyncOperations for any differences found.
+ */
+async function compareDirectoryLevel(
+  stream: TributaryStream,
+  localDb: TributaryLocal,
+  dir: string,
+  collectionId: string | null,
+  parentCollectionUuid: string | null,
+  matchedBlockUuids: Set<string>,
+  matchedCollectionUuids: Set<string>,
+  operations: SyncOperation[],
+): Promise<void> {
+  if (!fs.existsSync(dir)) return;
+
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+
+    if (entry.isDirectory()) {
+      const dirName = entry.name;
+      const dirPath = path.join(dir, dirName);
+
+      // Check if this directory matches a child collection
+      let matchedCollection: { collection_uuid: string } | null = null;
+      if (parentCollectionUuid) {
+        const collectionSlug = await getCollectionBySlugUnderParent(localDb, dirName, parentCollectionUuid);
+        if (collectionSlug) {
+          matchedCollection = { collection_uuid: collectionSlug.collection_uuid };
+          matchedCollectionUuids.add(collectionSlug.collection_uuid);
+        }
+      }
+
+      if (matchedCollection) {
+        // Known collection directory — recurse into it
+        await compareDirectoryLevel(
+          stream, localDb, dirPath,
+          matchedCollection.collection_uuid,
+          matchedCollection.collection_uuid,
+          matchedBlockUuids, matchedCollectionUuids, operations
+        );
+      } else {
+        // Check if this is a duplicate-slug folder
+        const matchingNoteSlugs = await getNotesBySlugInCollection(localDb, dirName, collectionId);
+
+        if (matchingNoteSlugs.length > 0) {
+          // Duplicate-slug folder — files inside are {uuid}.md
+          const subFiles = (await fs.promises.readdir(dirPath))
+            .filter(f => f.endsWith('.md') && !f.startsWith('.'));
+
+          for (const subFile of subFiles) {
+            const filePath = path.join(dirPath, subFile);
+            const fileUuid = subFile.slice(0, -3);
+            await compareFileToDatabase(
+              stream, localDb, filePath, fileUuid, dirName,
+              matchedBlockUuids, operations
+            );
+          }
+        } else if (parentCollectionUuid) {
+          // New local directory → create collection remotely
+          const newUuid = uuidv4();
+          operations.push({
+            kind: 'create',
+            target: {
+              type: 'collection',
+              source: 'remote',
+              uuid: newUuid,
+              slug: dirName,
+              datetime: new Date().toISOString(),
+            },
+          });
+
+          // Recurse into the new directory
+          await compareDirectoryLevel(
+            stream, localDb, dirPath,
+            newUuid, newUuid,
+            matchedBlockUuids, matchedCollectionUuids, operations
+          );
+        }
+      }
+    } else if (entry.name.endsWith('.md')) {
+      const filePath = path.join(dir, entry.name);
+      const fileSlug = entry.name.slice(0, -3);
+
+      // Look up existing note by slug in the current collection scope
+      const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
+      const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
+
+      await compareFileToDatabase(
+        stream, localDb, filePath, blockUuid, fileSlug,
+        matchedBlockUuids, operations
+      );
+    }
+  }
+}
+
+/**
+ * Compare a single local file to its database counterpart and produce
+ * SyncOperations for any differences.
+ */
+async function compareFileToDatabase(
+  stream: TributaryStream,
+  localDb: TributaryLocal,
+  filePath: string,
+  blockUuid: string | null,
+  slug: string,
+  matchedBlockUuids: Set<string>,
+  operations: SyncOperation[],
+): Promise<void> {
+  const content = await fs.promises.readFile(filePath, 'utf8');
+  const stats = await fs.promises.stat(filePath);
+  const fileMtime = stats.mtime.toISOString();
+
+  if (blockUuid) {
+    matchedBlockUuids.add(blockUuid);
+
+    const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockUuid);
+    if (!authoritativeVersion) return;
+
+    const av = authoritativeVersion as any;
+    const currentNote = await getNoteByVersion(stream, blockUuid, av.version_uuid);
+    if (!currentNote) return;
+
+    if (currentNote.body !== content) {
+      const remoteItem: SyncItem = {
+        type: 'block',
+        source: 'remote',
+        uuid: blockUuid,
+        slug: currentNote.slug,
+        datetime: currentNote.insert_datetime,
+      };
+      const localItem: SyncItem = {
+        type: 'block',
+        source: 'local',
+        uuid: blockUuid,
+        slug,
+        datetime: fileMtime,
+      };
+
+      // Determine direction based on timestamps
+      const fileTime = new Date(fileMtime).getTime();
+      const noteTime = new Date(currentNote.insert_datetime).getTime();
+
+      if (fileTime >= noteTime) {
+        // Local is newer or same age — local wins
+        operations.push({ kind: 'update', from: remoteItem, target: localItem });
+      } else {
+        // Remote is newer — remote wins
+        operations.push({ kind: 'update', from: localItem, target: remoteItem });
+      }
+    }
+  } else {
+    // New local file → create in remote database
+    operations.push({
+      kind: 'create',
+      target: {
+        type: 'block',
+        source: 'remote',
+        uuid: uuidv4(),
+        slug,
+        datetime: fileMtime,
+      },
+    });
+  }
+}
+
+/**
+ * Find remote collections that have no matching local directory.
+ */
+async function findUnmatchedCollections(
+  localDb: TributaryLocal,
+  parentUuid: string,
+  matchedCollectionUuids: Set<string>,
+  operations: SyncOperation[],
+): Promise<void> {
+  const children = await getChildCollections(localDb, parentUuid);
+  for (const child of children) {
+    if (!matchedCollectionUuids.has(child.collection_uuid)) {
+      // Remote collection with no local directory → create locally
+      operations.push({
+        kind: 'create',
+        target: {
+          type: 'collection',
+          source: 'local',
+          uuid: child.collection_uuid,
+          slug: child.slug,
+          datetime: child.insert_datetime,
+        },
+      });
+    }
+    // Recurse into child collections
+    await findUnmatchedCollections(
+      localDb, child.collection_uuid, matchedCollectionUuids, operations
+    );
+  }
+}
+
+// ── Internal: Execution helpers ─────────────────────────────
 
 /**
  * Sync the slugs directory with the current database state.
