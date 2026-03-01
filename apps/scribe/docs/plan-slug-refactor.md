@@ -29,6 +29,10 @@ yet — existing index-based queries continue to work in parallel.
 **`scribe-data/src/migrations.ts`**
 - Add `slug TEXT NOT NULL` to `block` CREATE TABLE in `syncedMigrations()`
 - Add `slug TEXT NOT NULL` to `collection` CREATE TABLE in `syncedMigrations()`
+- Add non-unique index on `block (slug, collection_id)` — this is the primary
+  lookup pattern for slug resolution (`WHERE slug = $1 AND collection_id = $2`)
+- Add non-unique index on `collection (slug, parent_collection_uuid)` — same
+  pattern for collection slug resolution
 - Update `down()` accordingly
 
 **`scribe-data/src/types.ts`**
