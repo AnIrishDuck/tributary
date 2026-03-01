@@ -138,21 +138,33 @@ Switch all slug-based query functions to read from the synced `block.slug` and
 
 ---
 
-## Prompt 3: Remove slug index tables and clean up indexing
+## Prompt 3: Replace slug index tables with collision table
 
 **Target:** `scribe-data`
-**Estimated size:** ~500 +/-
+**Estimated size:** ~600 +/-
 
 Remove the now-unused `block_slug` and `collection_slug` local index tables.
-Clean up the indexing process to stop generating slugs. Keep authoritative
-version tracking, tag extraction, and search indexing intact.
+Replace them with a `slug_collision` local table that caches which
+`(slug, parent)` pairs have multiple items (notes and/or collections). This
+lets listing pages efficiently check for collisions without running GROUP BY
+queries on every render. Clean up the indexing process to stop generating
+slugs but add collision detection. Keep authoritative version tracking, tag
+extraction, and search indexing intact.
 
 ### Files to modify
 
 **`scribe-data/src/migrations.ts`**
 - Remove `block_slug` CREATE TABLE from `localMigrations()`
 - Remove `collection_slug` CREATE TABLE from `localMigrations()`
-- Update `down()` to remove corresponding DROP TABLE statements
+- Add `slug_collision` table:
+  ```sql
+  CREATE TABLE IF NOT EXISTS slug_collision (
+    slug TEXT NOT NULL,
+    parent_id TEXT NOT NULL,
+    PRIMARY KEY (slug, parent_id)
+  )
+  ```
+- Update `down()` accordingly
 
 **`scribe-data/src/indexing.ts`**
 - `indexSlugs()`: Remove all slug-related logic:
@@ -163,21 +175,53 @@ version tracking, tag extraction, and search indexing intact.
   - Keep tag extraction and `block_tag` writes
   - Consider renaming to `indexNoteMetadata()` (optional)
 - Remove `indexCollectionSlugs()` entirely
-- `indexAll()`: Remove the `indexCollectionSlugs()` call
+- Add `rebuildSlugCollisions(db)`: Full rebuild (DELETE + INSERT) since the
+  table is small and derived. Detects collisions across both entity types
+  (notes and collections share a single slug namespace):
+  ```sql
+  DELETE FROM slug_collision;
+
+  WITH all_slugs AS (
+    SELECT b.slug, b.collection_id AS parent_id
+    FROM block b
+    INNER JOIN authoritative_version av
+      ON b.block_uuid = av.block_uuid
+      AND b.version_uuid = av.version_uuid
+    UNION ALL
+    SELECT c.slug, c.parent_collection_uuid AS parent_id
+    FROM collection c
+    WHERE c.parent_collection_uuid IS NOT NULL
+  )
+  INSERT INTO slug_collision (slug, parent_id)
+  SELECT slug, parent_id FROM all_slugs
+  GROUP BY slug, parent_id
+  HAVING COUNT(*) > 1
+  ```
+- Add `getCollidingSlugs(db, parentId): Promise<Set<string>>`:
+  ```sql
+  SELECT slug FROM slug_collision WHERE parent_id = $1
+  ```
+  Returns a `Set<string>` for O(1) per-item collision checks in listing pages.
+- `indexAll()`: Replace `indexCollectionSlugs()` call with
+  `rebuildSlugCollisions()` (runs after authoritative versions are established)
 - Remove dead functions if they only served the index: `getAllNoteSlugs()`
 
 **`scribe-data/src/schema.ts`**
 - Remove `NoteSlugTable` interface (the local table schema type)
+- Add `SlugCollisionTable` interface: `{ slug: string; parent_id: string }`
 
 **`scribe-data/src/index.ts`**
-- Update exports: remove any exports that no longer exist
+- Export `getCollidingSlugs`
+- Remove exports that no longer exist
 
 **Tests**
-- Update indexing tests: `indexSlugs` / `indexAll` no longer produce
-  `block_slug` rows
-- Remove tests for `indexCollectionSlugs`
-- Verify tags and authoritative versions still work
-- Verify search indexing still works
+- `rebuildSlugCollisions` detects two notes with same slug in same collection
+- `rebuildSlugCollisions` detects note + collection sharing a slug
+- `rebuildSlugCollisions` does NOT flag unique slugs
+- `getCollidingSlugs` returns correct Set for a given parent
+- `indexAll` no longer produces `block_slug` / `collection_slug` rows
+- Tags and authoritative versions still work
+- Search indexing still works
 
 ---
 
@@ -238,14 +282,26 @@ new `collision` result type from `resolveSlugPath()`.
   `disambiguation` with the collision data.
 - Currently `duplicateNotes` and `disambiguation` page modes exist in the
   type but are never triggered — wire them up to the collision result.
+- In `loadCollectionData`: call `getCollidingSlugs(localDb, col.collection_uuid)`
+  and include the collision set in the collection mode data passed to the
+  listing view.
 
 **`scribe-react/src/pages/NewCollectionPage.tsx`**
 - After creating a collection, use the returned entity's `.slug` for
   navigation instead of querying the index via `getCollectionBySlug()`.
 
+**`scribe-react/src/pages/NoteListPage.tsx`**
+- After fetching notes and child collections, call
+  `getCollidingSlugs(localDb, parentId)` to get the collision set
+- Pass the set to `NoteListView` as a new prop (e.g., `collidingSlugs`)
+
 **`scribe-react/src/pages/SlugNoteListPage.tsx`**
 - If `NoteSlugRow` type changed (removed `indexed_at`), update any
   references.
+- Accept `collidingSlugs: Set<string>` prop
+- For notes/collections where `collidingSlugs.has(slug)`, show a visual
+  collision indicator (the slug link still resolves via `resolveSlugPath`
+  which returns the collision result type)
 
 **`scribe-react/src/components/Breadcrumbs.tsx`**
 - Use `ancestor.slug` directly instead of `titleToSlug(ancestor.title)`.
