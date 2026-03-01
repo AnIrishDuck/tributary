@@ -53,8 +53,8 @@ describe('Migration Persistence Bug', () => {
     // Without migrations, the block table doesn't exist, so INSERT fails
     await expect(async () => {
       await cliStream.exec(
-        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, slug)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           uuidv4(),
           'scribe/markdown',
@@ -62,7 +62,8 @@ describe('Migration Persistence Bug', () => {
           null,
           new Date().toISOString(),
           'test',
-          '# Test Document\n\nThis is a test.'
+          '# Test Document\n\nThis is a test.',
+          'test-document'
         ]
       )
     }).rejects.toThrow(/relation.*block.*does not exist/)
@@ -85,8 +86,8 @@ describe('Migration Persistence Bug', () => {
     const blockUuid = uuidv4()
     const versionUuid = uuidv4()
     await cliStream.exec(
-      `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, slug)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         blockUuid,
         'scribe/markdown',
@@ -94,10 +95,11 @@ describe('Migration Persistence Bug', () => {
         null,
         new Date().toISOString(),
         'test',
-        '# Test Document\n\nThis is a test.'
+        '# Test Document\n\nThis is a test.',
+        'test-document'
       ]
     )
-    
+
     // Step 2: Simulate scribe-react loading from a FRESH database
     const freshDb = new PGlite()  // Completely fresh database!
     const reactClient = new TributaryClient({
@@ -145,8 +147,8 @@ describe('Migration Persistence Bug', () => {
     const blockUuid = uuidv4()
     const versionUuid = uuidv4()
     await stream.exec(
-      `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, slug)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         blockUuid,
         'scribe/markdown',
@@ -154,7 +156,8 @@ describe('Migration Persistence Bug', () => {
         null,
         new Date().toISOString(),
         'test',
-        '# Test Document\n\nThis is a test.'
+        '# Test Document\n\nThis is a test.',
+        'test-document'
       ]
     )
     
