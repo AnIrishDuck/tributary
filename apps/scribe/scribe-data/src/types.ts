@@ -217,6 +217,39 @@ export interface VersionTreeNode {
   isAuthoritative: boolean
 }
 
+/**
+ * An item involved in a sync operation — either a local or remote block or collection.
+ */
+export interface SyncItem {
+  /** Whether this is a block (note) or collection */
+  type: 'block' | 'collection'
+  /** Whether this item lives on the local filesystem or in the remote database */
+  source: 'local' | 'remote'
+  /** The item's UUID */
+  uuid: string
+  /** The item's slug (with unique de-collided slug if necessary) */
+  slug: string
+  /** Last authoritative modification time (ISO string) */
+  datetime: string
+}
+
+/**
+ * A sync operation describing a change that needs to be applied.
+ *
+ * - Update: an item has a new authoritative version. `target` is the
+ *   authoritative version; `from` is the stale version being replaced.
+ *   When `from` and `target` share the same source, the item is new
+ *   (no counterpart on the other side yet).
+ *
+ * - Move: an item has moved from one slug to another.
+ *
+ * Updates are listed and performed before moves for any items where
+ * both operations apply.
+ */
+export type SyncOperation =
+  | { kind: 'update'; from: SyncItem; target: SyncItem }
+  | { kind: 'move'; from: SyncItem; to: SyncItem }
+
 // Re-export search types from search.ts
 export type {
   SearchOptions,
