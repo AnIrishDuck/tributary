@@ -391,6 +391,8 @@ describe('sync — collections', () => {
     const jambalaya = notesInRecipes.find(n => n.body.includes('Jambalaya'))
     expect(jambalaya).toBeDefined()
     expect(jambalaya!.collection_id).toBe(recipes.collection_uuid)
+    // Slug should be derived from the filename
+    expect(jambalaya!.slug).toBe('jambalaya')
   })
 
   it('should create new notes in collection directories on first sync (no prior indexing)', async () => {
@@ -425,6 +427,8 @@ describe('sync — collections', () => {
     const jambalaya = notesInRecipes.find(n => n.body.includes('Jambalaya'))
     expect(jambalaya).toBeDefined()
     expect(jambalaya!.collection_id).toBe(recipes.collection_uuid)
+    // Slug should be derived from the filename
+    expect(jambalaya!.slug).toBe('jambalaya')
 
     // Verify the file persists on disk after sync
     expect(fs.existsSync(path.join(recipesDir, 'jambalaya.md'))).toBe(true)
@@ -458,10 +462,34 @@ describe('sync — collections', () => {
     const newNote = allNotes.find(n => n.body.includes('brand new note'))
     expect(newNote).toBeDefined()
     expect(newNote!.body).toContain('# Brand New')
+    // Slug should be derived from the filename
+    expect(newNote!.slug).toBe('brand-new')
 
     // Verify the file persists on disk
     expect(fs.existsSync(path.join(tmpDir, 'brand-new.md'))).toBe(true)
     expect(fs.existsSync(path.join(tmpDir, 'existing-note.md'))).toBe(true)
+  })
+
+  it('should derive slug from filename rather than body when creating new notes', async () => {
+    await stream.sync(1000)
+
+    // Create a file where the filename slug differs from what the title would produce
+    await fs.promises.writeFile(
+      path.join(tmpDir, 'custom-slug.md'),
+      '# A Completely Different Title\n\nThe slug should come from the filename, not the title.',
+      'utf8'
+    )
+
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    const allNotes = await getNotesInCollection(stream, null)
+    const note = allNotes.find(n => n.body.includes('Completely Different Title'))
+    expect(note).toBeDefined()
+    // Slug should be 'custom-slug' from the filename, not 'a-completely-different-title' from the body
+    expect(note!.slug).toBe('custom-slug')
+
+    // File should persist with the filename-based slug
+    expect(fs.existsSync(path.join(tmpDir, 'custom-slug.md'))).toBe(true)
   })
 
   it('should create a new collection when a new directory with notes is synced', async () => {
@@ -483,17 +511,19 @@ describe('sync — collections', () => {
 
     await sync(stream, client, tmpDir, { dryRun: false })
 
-    // Verify a "Recipes" collection was created
+    // Verify a "Recipes" collection was created with slug from directory name
     const collections = await getAllCollections(stream)
     const recipesCollection = collections.find(c => c.title === 'Recipes')
     expect(recipesCollection).toBeDefined()
     expect(recipesCollection!.parent_collection_uuid).toBe(library.collection_uuid)
+    expect(recipesCollection!.slug).toBe('recipes')
 
-    // Verify the note was created inside the new collection
+    // Verify the note was created inside the new collection with slug from filename
     const notesInRecipes = await getNotesInCollection(stream, recipesCollection!.collection_uuid)
     const gumbo = notesInRecipes.find(n => n.body.includes('Gumbo'))
     expect(gumbo).toBeDefined()
     expect(gumbo!.collection_id).toBe(recipesCollection!.collection_uuid)
+    expect(gumbo!.slug).toBe('gumbo')
 
     // Verify files persist on disk
     expect(fs.existsSync(path.join(recipesDir, 'gumbo.md'))).toBe(true)
@@ -519,20 +549,23 @@ describe('sync — collections', () => {
 
     await sync(stream, client, tmpDir, { dryRun: false })
 
-    // Verify both collections were created
+    // Verify both collections were created with slugs from directory names
     const collections = await getAllCollections(stream)
     const cookingCollection = collections.find(c => c.title === 'Cooking')
     expect(cookingCollection).toBeDefined()
     expect(cookingCollection!.parent_collection_uuid).toBe(library.collection_uuid)
+    expect(cookingCollection!.slug).toBe('cooking')
 
     const italianCollection = collections.find(c => c.title === 'Italian')
     expect(italianCollection).toBeDefined()
     expect(italianCollection!.parent_collection_uuid).toBe(cookingCollection!.collection_uuid)
+    expect(italianCollection!.slug).toBe('italian')
 
-    // Verify the note is in the innermost collection
+    // Verify the note is in the innermost collection with slug from filename
     const notesInItalian = await getNotesInCollection(stream, italianCollection!.collection_uuid)
     const pasta = notesInItalian.find(n => n.body.includes('Pasta'))
     expect(pasta).toBeDefined()
+    expect(pasta!.slug).toBe('pasta')
 
     // Verify the file persists
     expect(fs.existsSync(path.join(italianDir, 'pasta.md'))).toBe(true)
@@ -579,42 +612,45 @@ describe('sync — collections', () => {
     expect(uuids).toEqual([note1.block_uuid, note2.block_uuid].sort())
   })
 
-  it('should clean up files for deleted notes', async () => {
+  it('should clean up orphaned directories but adopt orphaned .md files as new notes', async () => {
     const library = await createCollection(stream, {
       title: 'My Library',
       inserter: 'test'
     })
 
-    // Create two notes, then one will effectively be "superseded"
     const note1 = await createNote(stream, {
       block_type: 'scribe/markdown',
       body: '# Keep Me\n\nPersistent note.',
       inserter: 'test'
     })
 
-    const note2 = await createNote(stream, {
-      block_type: 'scribe/markdown',
-      body: '# Remove Me\n\nTemporary note.',
-      inserter: 'test'
-    })
-
     await stream.sync(1000)
 
-    // First sync to write both files
+    // First sync to write the note to disk
     await sync(stream, client, tmpDir, { dryRun: false })
 
     expect(fs.existsSync(path.join(tmpDir, 'keep-me.md'))).toBe(true)
-    expect(fs.existsSync(path.join(tmpDir, 'remove-me.md'))).toBe(true)
 
-    // Manually add an extraneous file
+    // Add an extraneous .md file — syncLocalFilesToDatabase will create a note
+    // for it with slug derived from the filename, so it persists
     await fs.promises.writeFile(path.join(tmpDir, 'orphan.md'), 'orphaned', 'utf8')
 
-    // Sync again — orphan.md should be cleaned up
+    // Add an extraneous directory that doesn't match any collection or slug
+    // (without a library it won't be treated as a new collection)
+    await fs.promises.mkdir(path.join(tmpDir, 'stale-dir'), { recursive: true })
+    await fs.promises.writeFile(path.join(tmpDir, 'stale-dir', 'leftover.md'), 'leftover', 'utf8')
+
+    // Sync again
     await sync(stream, client, tmpDir, { dryRun: false })
 
+    // Existing note should still be present
     expect(fs.existsSync(path.join(tmpDir, 'keep-me.md'))).toBe(true)
-    expect(fs.existsSync(path.join(tmpDir, 'remove-me.md'))).toBe(true)
-    expect(fs.existsSync(path.join(tmpDir, 'orphan.md'))).toBe(false)
+
+    // Orphan .md files are adopted as new notes with slug from filename
+    expect(fs.existsSync(path.join(tmpDir, 'orphan.md'))).toBe(true)
+    const allNotes = await getNotesInCollection(stream, null)
+    const orphanNote = allNotes.find(n => n.slug === 'orphan')
+    expect(orphanNote).toBeDefined()
   })
 
   it('should support the full library structure from the docs', async () => {

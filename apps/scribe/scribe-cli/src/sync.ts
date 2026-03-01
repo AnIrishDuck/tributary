@@ -2,7 +2,6 @@ import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-clie
 import {
   getAllNotesWithTitles,
   getAuthoritativeVersionByNoteUuid,
-  getNoteBySlug,
   getNoteByVersion,
   createNote,
   createCollection,
@@ -12,7 +11,7 @@ import {
   getCollectionBySlugUnderParent,
   getNotesBySlugInCollection,
   getNoteSlugPath,
-  titleToSlug,
+  slugToTitle,
 } from '@tributary/scribe-data';
 import type { Collection } from '@tributary/scribe-data';
 import fs from 'fs';
@@ -335,6 +334,7 @@ async function syncFileToDatabase(
   blockUuid: string | null,
   fileLabel: string,
   collectionId: string | null,
+  slug: string | null,
   options: { dryRun?: boolean }
 ): Promise<void> {
   const { dryRun = false } = options;
@@ -381,6 +381,7 @@ async function syncFileToDatabase(
         inserter: 'scribe-cli-sync',
         collection_id: collectionId,
         insert_datetime: fileMtime,
+        ...(slug ? { slug } : {}),
       });
       console.log(`Created new note for file: ${fileLabel}`);
     } else {
@@ -416,17 +417,6 @@ async function syncLocalFilesToDatabase(
   const libraryUuid = library?.collection_uuid ?? null;
 
   await syncDirectoryLevel(stream, localDb, rootDir, null, libraryUuid, options);
-}
-
-/**
- * Convert a slug back to a human-readable title.
- * e.g. "my-recipes" → "My Recipes"
- */
-function slugToTitle(slug: string): string {
-  return slug
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }
 
 /**
@@ -492,7 +482,7 @@ async function syncDirectoryLevel(
           for (const subFile of subFiles) {
             const filePath = path.join(dirPath, subFile);
             const fileUuid = subFile.slice(0, -3);
-            await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${dirName}/${subFile}`, collectionId, { dryRun });
+            await syncFileToDatabase(stream, localDb, filePath, fileUuid, `${dirName}/${subFile}`, collectionId, dirName, { dryRun });
           }
         } else if (parentCollectionUuid) {
           // Unrecognized directory that doesn't correspond to a duplicate slug —
@@ -505,6 +495,7 @@ async function syncDirectoryLevel(
               title,
               parent_collection_uuid: parentCollectionUuid,
               inserter: 'scribe-cli-sync',
+              slug: dirName,
             });
             newCollectionUuid = newCollection.collection_uuid;
             console.log(`Created new collection: ${title}`);
@@ -530,7 +521,7 @@ async function syncDirectoryLevel(
       const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
       const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
 
-      await syncFileToDatabase(stream, localDb, filePath, blockUuid, entry.name, collectionId, { dryRun });
+      await syncFileToDatabase(stream, localDb, filePath, blockUuid, entry.name, collectionId, fileSlug, { dryRun });
     }
   }
 }
