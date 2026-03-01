@@ -1,6 +1,6 @@
 import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client';
 import {
-  getAllNoteSlugs,
+  getAllNotesWithTitles,
   getAuthoritativeVersionByNoteUuid,
   getNoteBySlug,
   getNoteByVersion,
@@ -127,8 +127,8 @@ async function syncSlugsDirectory(
 ): Promise<void> {
   const { dryRun = false } = options;
 
-  // Get all current slugs from the database
-  const noteSlugs = await getAllNoteSlugs(localDb);
+  // Get all notes with their slugs from the authoritative versions
+  const noteSlugs = await getAllNotesWithTitles(localDb);
 
   // Build the full slug path for each note and group by path
   // pathKey → [{block_uuid, slug, pathSegments}]
@@ -140,8 +140,8 @@ async function syncSlugsDirectory(
   const noteEntries: NoteEntry[] = [];
 
   for (const noteSlug of noteSlugs) {
-    const block_uuid = (noteSlug as any).block_uuid;
-    const slug = (noteSlug as any).slug;
+    const block_uuid = noteSlug.block_uuid;
+    const slug = noteSlug.slug;
 
     // Get the full slug path for this note (collection path + note slug)
     const slugPath = await getNoteSlugPath(localDb, block_uuid);
@@ -263,7 +263,7 @@ async function ensureCollectionDirs(
 ): Promise<void> {
   const children = await getChildCollections(localDb, parentCollectionUuid);
   for (const child of children) {
-    const slug = titleToSlug(child.title);
+    const slug = child.slug;
     if (!slug) continue;
     const childPath = [...currentPath, slug];
     const childFsDir = path.join(parentFsDir, slug);

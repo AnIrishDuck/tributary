@@ -528,6 +528,7 @@ export async function rebuildSlugCollisions(db: TributaryLocal): Promise<void> {
       INNER JOIN authoritative_version av
         ON b.block_uuid = av.block_uuid
         AND b.version_uuid = av.version_uuid
+      WHERE b.collection_id IS NOT NULL
       UNION ALL
       SELECT c.slug, c.parent_collection_uuid AS parent_id
       FROM collection c
