@@ -51,6 +51,47 @@ test-cli-scripts:
 		echo "All cli-tests scripts completed (some may have expected failures)"; \
 	fi
 
+# Install all dependencies (in correct order for local references)
+.PHONY: deps
+deps: deps-client deps-cli deps-scribe-data deps-scribe-cli deps-scribe-react deps-supabase
+	@echo "All dependencies installed."
+
+# Install tributary-client dependencies
+.PHONY: deps-client
+deps-client:
+	@echo "Installing tributary-client dependencies..."
+	cd tributary-client && npm install
+
+# Install tributary-cli dependencies
+.PHONY: deps-cli
+deps-cli: deps-client
+	@echo "Installing tributary-cli dependencies..."
+	cd tributary-cli && npm install
+
+# Install scribe-data dependencies
+.PHONY: deps-scribe-data
+deps-scribe-data: deps-client
+	@echo "Installing scribe-data dependencies..."
+	cd apps/scribe/scribe-data && npm install
+
+# Install scribe-cli dependencies
+.PHONY: deps-scribe-cli
+deps-scribe-cli: deps-client deps-scribe-data
+	@echo "Installing scribe-cli dependencies..."
+	cd apps/scribe/scribe-cli && npm install
+
+# Install scribe-react dependencies
+.PHONY: deps-scribe-react
+deps-scribe-react: deps-client deps-scribe-data
+	@echo "Installing scribe-react dependencies..."
+	cd apps/scribe/scribe-react && npm install
+
+# Install supabase edge function dependencies
+.PHONY: deps-supabase
+deps-supabase:
+	@echo "Installing supabase edge function dependencies..."
+	cd supabase/functions && deno install
+
 # Build tributary-cli (needed for cli-tests)
 .PHONY: build-cli
 build-cli:
@@ -87,14 +128,29 @@ clean: clean-test-dbs
 # Help target
 .PHONY: help
 help:
-	@echo "Tributary Test Targets:"
-	@echo "  all              - Run all tests (default)"
-	@echo "  test             - Run all tests"
-	@echo "  test-server      - Run tributary-server tests"
-	@echo "  test-client      - Run tributary-client tests"
-	@echo "  test-cli-scripts - Run cli-tests scripts"
-	@echo "  build-cli        - Build tributary-cli"
-	@echo "  build-client     - Build tributary-client bundle"
-	@echo "  build-all        - Build all components"
-	@echo "  clean-test-dbs   - Remove test databases"
-	@echo "  clean            - Clean build artifacts"
+	@echo "Tributary Targets:"
+	@echo ""
+	@echo "Dependencies:"
+	@echo "  deps              - Install all dependencies"
+	@echo "  deps-client       - Install tributary-client dependencies"
+	@echo "  deps-cli          - Install tributary-cli dependencies"
+	@echo "  deps-scribe-data  - Install scribe-data dependencies"
+	@echo "  deps-scribe-cli   - Install scribe-cli dependencies"
+	@echo "  deps-scribe-react - Install scribe-react dependencies"
+	@echo "  deps-supabase     - Install supabase edge function dependencies"
+	@echo ""
+	@echo "Testing:"
+	@echo "  all               - Run all tests (default)"
+	@echo "  test              - Run all tests"
+	@echo "  test-server       - Run tributary-server tests"
+	@echo "  test-client       - Run tributary-client tests"
+	@echo "  test-cli-scripts  - Run cli-tests scripts"
+	@echo ""
+	@echo "Building:"
+	@echo "  build-cli         - Build tributary-cli"
+	@echo "  build-client      - Build tributary-client bundle"
+	@echo "  build-all         - Build all components"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean-test-dbs    - Remove test databases"
+	@echo "  clean             - Clean build artifacts"
