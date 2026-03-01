@@ -303,8 +303,16 @@ export async function getNotesInCollection(
   db: TributaryStream,
   collectionId: string | null
 ): Promise<Note[]> {
+  let resolvedId = collectionId
+  if (resolvedId === null) {
+    const library = await getLibrary(db)
+    if (library) {
+      resolvedId = library.collection_uuid
+    }
+  }
+
   let result
-  if (collectionId === null) {
+  if (resolvedId === null) {
     result = await db.query(
       `SELECT b.* FROM block b
        INNER JOIN (
@@ -326,7 +334,7 @@ export async function getNotesInCollection(
        ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
        WHERE b.collection_id = $1
        ORDER BY b.insert_datetime DESC`,
-      [collectionId]
+      [resolvedId]
     )
   }
 

@@ -68,7 +68,7 @@ export async function resolveSlugPath(
   }
 
   let currentParentUuid = libraryUuid
-  let currentCollectionId: string | null = null // for note lookup: null = root
+  let currentCollectionId: string | null = libraryUuid // for note lookup: library root
   const ancestors: CollectionSlug[] = []
 
   // Walk all segments except the last as collections

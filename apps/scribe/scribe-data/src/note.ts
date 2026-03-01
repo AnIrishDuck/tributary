@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
+import { getLibrary } from './collection.js'
 
 interface NoteQueryResult {
   version_uuid: string;
@@ -27,6 +28,14 @@ export async function createNote(
 ): Promise<Note> {
   const now = new Date()
 
+  let collection_id = noteData.collection_id ?? null
+  if (collection_id === null) {
+    const library = await getLibrary(db)
+    if (library) {
+      collection_id = library.collection_uuid
+    }
+  }
+
   const newNote: Note = {
     block_uuid: noteData.block_uuid || uuidv4(),
     block_type: noteData.block_type,
@@ -35,7 +44,7 @@ export async function createNote(
     insert_datetime: noteData.insert_datetime ?? now.toISOString(),
     inserter: noteData.inserter,
     body: noteData.body,
-    collection_id: noteData.collection_id ?? null
+    collection_id
   }
 
   await db.exec(

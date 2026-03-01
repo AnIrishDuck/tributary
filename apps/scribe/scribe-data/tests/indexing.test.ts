@@ -843,7 +843,7 @@ describe('scribe-data indexing', () => {
 
       const freeNote = allNotes.find(n => n.title === 'Free Note')
       expect(freeNote).toBeDefined()
-      expect(freeNote!.collection_id).toBeNull()
+      expect(freeNote!.collection_id).toBe(root.collection_uuid)
     })
   })
 })

@@ -1,5 +1,6 @@
 import { TributaryLocal } from 'tributary-client'
 import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow, Collection } from './types'
+import { getLibrary } from './collection.js'
 
 
 // Add proper typing for the query results
@@ -484,8 +485,16 @@ export async function getNotesInCollectionWithSlugs(
   db: TributaryLocal,
   collectionId: string | null
 ): Promise<NoteSlugRow[]> {
+  let resolvedId = collectionId
+  if (resolvedId === null) {
+    const library = await getLibrary(db)
+    if (library) {
+      resolvedId = library.collection_uuid
+    }
+  }
+
   let result
-  if (collectionId === null) {
+  if (resolvedId === null) {
     result = await db.query(
       `SELECT b.block_uuid, b.version_uuid, b.body, b.insert_datetime, b.collection_id, bs.slug, bs.title, bs.indexed_at
        FROM block b
@@ -503,7 +512,7 @@ export async function getNotesInCollectionWithSlugs(
        LEFT JOIN block_slug bs ON b.block_uuid = bs.block_uuid
        WHERE b.collection_id = $1
        ORDER BY b.insert_datetime DESC`,
-      [collectionId]
+      [resolvedId]
     )
   }
 
@@ -563,8 +572,16 @@ export async function getNotesBySlugInCollection(
   slug: string,
   collectionId: string | null
 ): Promise<NoteSlug[]> {
+  let resolvedId = collectionId
+  if (resolvedId === null) {
+    const library = await getLibrary(db)
+    if (library) {
+      resolvedId = library.collection_uuid
+    }
+  }
+
   let result
-  if (collectionId === null) {
+  if (resolvedId === null) {
     result = await db.query(
       `SELECT bs.* FROM block_slug bs
        INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
@@ -578,7 +595,7 @@ export async function getNotesBySlugInCollection(
        INNER JOIN authoritative_version av ON bs.block_uuid = av.block_uuid
        INNER JOIN block b ON av.block_uuid = b.block_uuid AND av.version_uuid = b.version_uuid
        WHERE bs.slug = $1 AND b.collection_id = $2`,
-      [slug, collectionId]
+      [slug, resolvedId]
     )
   }
 

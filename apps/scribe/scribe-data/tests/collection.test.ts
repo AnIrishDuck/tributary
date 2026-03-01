@@ -259,14 +259,19 @@ describe('Collection Operations', () => {
   })
 
   describe('Note-Collection Relationship', () => {
-    test('notes without collection_id belong to library (null)', async () => {
+    test('notes without collection_id get library root UUID as parent', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Stream',
+        inserter: 'test-user'
+      })
+
       const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Root Note\n\nThis note belongs to the library.',
         inserter: 'test-user'
       })
 
-      expect(note.collection_id).toBeNull()
+      expect(note.collection_id).toBe(root.collection_uuid)
     })
 
     test('should create a note assigned to a named collection', async () => {
@@ -382,12 +387,17 @@ describe('Collection Operations', () => {
         collection_id: null
       })
 
-      expect(moved.collection_id).toBeNull()
+      expect(moved.collection_id).toBe(root.collection_uuid)
     })
   })
 
   describe('getNotesInCollection', () => {
-    test('should return library-level notes (collection_id IS NULL)', async () => {
+    test('should return library-level notes (collection_id = library UUID)', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Stream',
+        inserter: 'test-user'
+      })
+
       await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Root Note A\n\nFirst root note.',
@@ -400,7 +410,7 @@ describe('Collection Operations', () => {
         inserter: 'test-user'
       })
 
-      const notes = await getNotesInCollection(syncedDb, null)
+      const notes = await getNotesInCollection(syncedDb, root.collection_uuid)
 
       expect(notes).toHaveLength(2)
     })
@@ -562,7 +572,7 @@ describe('Collection Operations', () => {
       expect(collections).toHaveLength(2)
 
       // Verify notes per collection using getNotesInCollection
-      const rootNotes = await getNotesInCollection(syncedDb, null)
+      const rootNotes = await getNotesInCollection(syncedDb, root.collection_uuid)
       expect(rootNotes).toHaveLength(2)
 
       const cajunNotes = await getNotesInCollection(syncedDb, cajun.collection_uuid)
@@ -574,12 +584,12 @@ describe('Collection Operations', () => {
   })
 
   describe('Default Collection Behavior', () => {
-    test('library with no root collection implies "Notes"', async () => {
+    test('library with no root collection: notes get null collection_id', async () => {
       // Before creating a library, getLibrary returns null
       const root = await getLibrary(syncedDb)
       expect(root).toBeNull()
 
-      // Notes can still be created — they belong to the implied library
+      // Notes can still be created — without a library, collection_id stays null
       const note = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# My Note\n\nJust a regular note.',
@@ -592,7 +602,7 @@ describe('Collection Operations', () => {
       const collections = await getAllCollections(syncedDb)
       expect(collections).toHaveLength(0)
 
-      // Library notes can still be queried
+      // Library notes can still be queried via IS NULL
       const rootNotes = await getNotesInCollection(syncedDb, null)
       expect(rootNotes).toHaveLength(1)
     })
@@ -913,8 +923,8 @@ describe('Collection Operations', () => {
       // Index so slugs exist
       await indexAll(localDb)
 
-      // Root-level notes (collection_id IS NULL)
-      const rootNotes = await getNotesInCollectionWithSlugs(localDb, null)
+      // Root-level notes (collection_id = library UUID)
+      const rootNotes = await getNotesInCollectionWithSlugs(localDb, library.collection_uuid)
       expect(rootNotes).toHaveLength(1)
       expect(rootNotes[0].title).toBe('Root Note')
 
@@ -923,9 +933,9 @@ describe('Collection Operations', () => {
       expect(childNotes).toHaveLength(1)
       expect(childNotes[0].title).toBe('Child Note')
 
-      // Notes in library collection itself (should be empty - notes are either root or in subcollection)
+      // Root-level notes belong to the library collection
       const libraryNotes = await getNotesInCollectionWithSlugs(localDb, library.collection_uuid)
-      expect(libraryNotes).toHaveLength(0)
+      expect(libraryNotes).toHaveLength(1)
     })
   })
 
@@ -1006,8 +1016,8 @@ describe('Collection Operations', () => {
       expect(inCollection).toHaveLength(1)
       expect(inCollection[0].block_uuid).toBe(nestedChild.block_uuid)
 
-      // Looking up slug "child" at root (null) should return only the root one
-      const atRoot = await getNotesBySlugInCollection(localDb, 'child', null)
+      // Looking up slug "child" at root (library UUID) should return only the root one
+      const atRoot = await getNotesBySlugInCollection(localDb, 'child', library.collection_uuid)
       expect(atRoot).toHaveLength(1)
       expect(atRoot[0].block_uuid).toBe(rootChild.block_uuid)
     })
@@ -1356,7 +1366,7 @@ describe('Collection Operations', () => {
       expect(latest!.collection_id).toBe(collectionB.collection_uuid)
     })
 
-    test('moveNote moves a note to library root (collection_id = null)', async () => {
+    test('moveNote moves a note to library root (collection_id = library UUID)', async () => {
       const library = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
@@ -1377,11 +1387,11 @@ describe('Collection Operations', () => {
 
       // Move note to library root
       const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user')
-      expect(movedNote.collection_id).toBeNull()
+      expect(movedNote.collection_id).toBe(library.collection_uuid)
 
       // Verify latest version is at root
       const latest = await getLatestNoteVersion(syncedDb, note.block_uuid)
-      expect(latest!.collection_id).toBeNull()
+      expect(latest!.collection_id).toBe(library.collection_uuid)
     })
 
     test('moveNote throws when note does not exist', async () => {
