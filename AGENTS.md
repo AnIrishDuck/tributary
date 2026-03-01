@@ -39,18 +39,6 @@ user if you think standard base64 is needed.
 
 For TypeScript crypto: tweetnacl / tweetnacl-ts.
 
-## Fetching library docs
-
-For Rust crates: `cd <package-dir> && ../doc-cargo <crate-name>` — this dumps
-HTML docs into `.agent-docs/<crate-name>`.
-
-For TypeScript / npm packages: ask the user for help if you're having trouble
-with a dependency.
-
-## Postgres
-
-Test database credentials are in `tributary-server/.env`.
-
 ## Important
 
 - **Do not start servers.** The environment is a Docker container. Ask the user
