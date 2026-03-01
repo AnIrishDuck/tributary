@@ -16,10 +16,11 @@ import {
   getCollectionsBySlug,
   getCollectionBySlugUnderParent,
   getSlugPath,
-  getNoteSlugPath
+  getNoteSlugPath,
+  checkMoveCollision
 } from '../src/collection.js'
 import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
-import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
+import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection, extractTitleFromMarkdown } from '../src/indexing.js'
 import { resolveSlugPath, resolveSlugPathPartial } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -1724,6 +1725,293 @@ describe('Collection Operations', () => {
       expect(resolved).not.toBeNull()
       expect(resolved!.type).toBe('collection')
       expect(resolved!.entity.collection_uuid).toBe(italian.collection_uuid)
+    })
+
+    test('moveNote renames a note when newSlug is provided', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Original Title\n\nSome content.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      // Move with rename (same collection, new slug)
+      const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user', 'new-slug')
+      expect(movedNote.slug).toBe('new-slug')
+      expect(movedNote.body).toBe('# New Slug\n\nSome content.')
+
+      // Verify slug changes after reindexing
+      await indexAll(localDb)
+      const slugPath = await getNoteSlugPath(localDb, note.block_uuid)
+      expect(slugPath).toEqual(['new-slug'])
+    })
+
+    test('moveNote moves and renames simultaneously', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Old Name\n\nContent here.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      // Move to collection and rename
+      const movedNote = await moveNote(
+        syncedDb, note.block_uuid, collection.collection_uuid, 'test-user', 'new-name'
+      )
+      expect(movedNote.slug).toBe('new-name')
+      expect(movedNote.body).toBe('# New Name\n\nContent here.')
+      expect(movedNote.collection_id).toBe(collection.collection_uuid)
+
+      // Verify slug path after reindexing
+      await indexAll(localDb)
+      const slugPath = await getNoteSlugPath(localDb, note.block_uuid)
+      expect(slugPath).toEqual(['recipes', 'new-name'])
+    })
+
+    test('moveNote without newSlug preserves original body and slug', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Keep This Title\n\nDo not change.',
+        inserter: 'test-user'
+      })
+
+      const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user')
+      expect(movedNote.body).toBe('# Keep This Title\n\nDo not change.')
+      expect(movedNote.slug).toBe('keep-this-title')
+    })
+
+    test('moveCollection renames a collection when newSlug is provided', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Old Name',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Move (same parent) with rename via slug
+      await moveCollection(syncedDb, collection.collection_uuid, library.collection_uuid, 'new-name')
+
+      const updated = await getCollectionByUuid(syncedDb, collection.collection_uuid)
+      expect(updated!.slug).toBe('new-name')
+      expect(updated!.title).toBe('New Name')
+
+      // Verify slug changes after reindexing
+      await indexAll(localDb)
+      const slugPath = await getSlugPath(syncedDb, collection.collection_uuid)
+      expect(slugPath).toEqual(['new-name'])
+    })
+
+    test('moveCollection moves and renames simultaneously', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const parentA = await createCollection(syncedDb, {
+        title: 'Parent A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const parentB = await createCollection(syncedDb, {
+        title: 'Parent B',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Original',
+        parent_collection_uuid: parentA.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Move to parentB and rename via slug
+      await moveCollection(syncedDb, child.collection_uuid, parentB.collection_uuid, 'renamed')
+      await indexAll(localDb)
+
+      const updated = await getCollectionByUuid(syncedDb, child.collection_uuid)
+      expect(updated!.slug).toBe('renamed')
+      expect(updated!.title).toBe('Renamed')
+      expect(updated!.parent_collection_uuid).toBe(parentB.collection_uuid)
+
+      const slugPath = await getSlugPath(syncedDb, child.collection_uuid)
+      expect(slugPath).toEqual(['parent-b', 'renamed'])
+    })
+
+    test('moveCollection without newSlug preserves original title and slug', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Keep This Name',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await moveCollection(syncedDb, collection.collection_uuid, library.collection_uuid)
+
+      const updated = await getCollectionByUuid(syncedDb, collection.collection_uuid)
+      expect(updated!.title).toBe('Keep This Name')
+      expect(updated!.slug).toBe('keep-this-name')
+    })
+  })
+
+  describe('Collision Detection', () => {
+    test('checkMoveCollision returns false when no collision exists', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Note\n\nContent.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      await indexAll(localDb)
+
+      // Check if moving "my-note" into "recipes" would collide — it shouldn't
+      const collision = await checkMoveCollision(
+        localDb, 'my-note', collection.collection_uuid, collection.collection_uuid, note.block_uuid
+      )
+      expect(collision).toBe(false)
+    })
+
+    test('checkMoveCollision detects collision with existing note', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Create two notes with different titles
+      const existingNote = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nExisting pasta recipe.',
+        inserter: 'test-user',
+        collection_id: collection.collection_uuid
+      })
+
+      const noteToMove = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Other Note\n\nWill be renamed to pasta.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      await indexAll(localDb)
+
+      // Check if renaming "other-note" to "pasta" in "recipes" would collide
+      const collision = await checkMoveCollision(
+        localDb, 'pasta', collection.collection_uuid, collection.collection_uuid, noteToMove.block_uuid
+      )
+      expect(collision).toBe(true)
+    })
+
+    test('checkMoveCollision detects collision with existing collection', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const existingCollection = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const noteToMove = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Some Note\n\nContent.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      await indexAll(localDb)
+
+      // Check if renaming note to "recipes" at root would collide with the collection
+      const collision = await checkMoveCollision(
+        localDb, 'recipes', library.collection_uuid, library.collection_uuid, noteToMove.block_uuid
+      )
+      expect(collision).toBe(true)
+    })
+
+    test('checkMoveCollision excludes the entity itself from collision check', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Note\n\nContent.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      await indexAll(localDb)
+
+      // Moving "my-note" to root with the same slug should NOT be a collision
+      const collision = await checkMoveCollision(
+        localDb, 'my-note', library.collection_uuid, library.collection_uuid, note.block_uuid
+      )
+      expect(collision).toBe(false)
+    })
+
+    test('checkMoveCollision excludes collection itself from collision check', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // Renaming "recipes" to "recipes" at root should NOT be a collision
+      const collision = await checkMoveCollision(
+        localDb, 'recipes', library.collection_uuid, library.collection_uuid, collection.collection_uuid
+      )
+      expect(collision).toBe(false)
     })
   })
 })

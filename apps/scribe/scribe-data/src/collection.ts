@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
-import { titleToSlug } from './indexing.js'
+import { titleToSlug, slugToTitle, getNotesBySlugInCollection } from './indexing.js'
 
 /**
  * Create a new collection in the database
@@ -168,21 +168,30 @@ export async function getAllCollectionsWithSlugs(
 }
 
 /**
- * Move a collection to a new parent collection.
+ * Move a collection to a new parent collection, optionally renaming it.
  *
  * @param db The TributaryStream database instance
  * @param collectionUuid The UUID of the collection to move
  * @param newParentUuid The UUID of the new parent collection
+ * @param newSlug Optional new slug for the collection (also updates the title)
  */
 export async function moveCollection(
   db: TributaryStream,
   collectionUuid: string,
-  newParentUuid: string
+  newParentUuid: string,
+  newSlug?: string
 ): Promise<void> {
-  await db.exec(
-    `UPDATE collection SET parent_collection_uuid = $1 WHERE collection_uuid = $2`,
-    [newParentUuid, collectionUuid]
-  )
+  if (newSlug !== undefined) {
+    await db.exec(
+      `UPDATE collection SET parent_collection_uuid = $1, slug = $2, title = $3 WHERE collection_uuid = $4`,
+      [newParentUuid, newSlug, slugToTitle(newSlug), collectionUuid]
+    )
+  } else {
+    await db.exec(
+      `UPDATE collection SET parent_collection_uuid = $1 WHERE collection_uuid = $2`,
+      [newParentUuid, collectionUuid]
+    )
+  }
 }
 
 /**
@@ -431,5 +440,38 @@ export async function getNoteSlugPath(
   // Build the collection slug path and append the note slug
   const collectionPath = await getSlugPath(db, collectionId)
   return [...collectionPath, noteSlug]
+}
+
+/**
+ * Check if moving/renaming an entity to the given slug at the target collection
+ * would result in a slug collision with existing entities.
+ *
+ * @param localDb The TributaryLocal database instance
+ * @param targetSlug The slug the entity would have at the target location
+ * @param targetCollectionId The target collection UUID for note lookup (null resolves to library root)
+ * @param targetParentUuid The parent UUID for collection collision checks
+ * @param excludeUuid The UUID of the entity being moved (excluded from collision check)
+ * @returns true if there would be a collision
+ */
+export async function checkMoveCollision(
+  localDb: TributaryLocal,
+  targetSlug: string,
+  targetCollectionId: string | null,
+  targetParentUuid: string,
+  excludeUuid: string
+): Promise<boolean> {
+  // Check for note collisions
+  const collidingNotes = await getNotesBySlugInCollection(localDb, targetSlug, targetCollectionId)
+  if (collidingNotes.some(n => n.block_uuid !== excludeUuid)) {
+    return true
+  }
+
+  // Check for collection collisions
+  const collidingCollection = await getCollectionBySlugUnderParent(localDb, targetSlug, targetParentUuid)
+  if (collidingCollection && collidingCollection.collection_uuid !== excludeUuid) {
+    return true
+  }
+
+  return false
 }
 

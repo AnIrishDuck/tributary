@@ -15,18 +15,28 @@ export interface MoveModalProps {
 type ValidationState =
   | { status: 'empty' }
   | { status: 'validating' }
-  | { status: 'valid'; targetUuid: string | null; resolvedPath: string }
+  | { status: 'valid'; targetUuid: string | null; resolvedPath: string; newSlug: string; hasCollision: boolean }
   | { status: 'invalid'; message: string }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
   isOpen, onClose, entityType, entityId, currentSlugPath, prefix, onMoved
 }) => {
-  const [targetPath, setTargetPath] = useState('')
+  const currentSlug = currentSlugPath.split('/').pop() || ''
+  const [targetPath, setTargetPath] = useState(`./${currentSlug}`)
   const [validation, setValidation] = useState<ValidationState>({ status: 'empty' })
   const [validating, setValidating] = useState(false)
   const [isMoving, setIsMoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { client } = useTributary()
+
+  // Reset target path when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTargetPath(`./${currentSlug}`)
+      setValidation({ status: 'empty' })
+      setError(null)
+    }
+  }, [isOpen, currentSlug])
 
   // Current parent path for relative resolution
   const currentParentPath = currentSlugPath.split('/').slice(0, -1).join('/')
@@ -45,7 +55,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     const timer = setTimeout(() => {
     const validate = async () => {
       try {
-        const { resolveLink, resolveSlugPath, getLibrary } = await import('scribe-data')
+        const { resolveLink, resolveSlugPath, getLibrary, checkMoveCollision } = await import('scribe-data')
 
         // Resolve relative/absolute link
         const resolved = resolveLink(currentParentPath, targetPath.trim())
@@ -56,6 +66,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
         const absolutePath = resolved.path
         const segments = absolutePath.split('/').filter(s => s.length > 0)
+
+        // Must have at least one segment (the entity slug)
+        if (segments.length === 0) {
+          if (!cancelled) setValidation({ status: 'invalid', message: 'Path must include a name for the item' })
+          return
+        }
 
         if (!client) {
           if (!cancelled) setValidation({ status: 'invalid', message: 'Client not available' })
@@ -73,32 +89,58 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           return
         }
 
-        // Handle root path "/"
-        if (segments.length === 0) {
-          if (!cancelled) {
-            if (entityType === 'note') {
-              setValidation({ status: 'valid', targetUuid: null, resolvedPath: '/' })
-            } else {
-              setValidation({ status: 'valid', targetUuid: library.collection_uuid, resolvedPath: '/' })
-            }
+        // Split into parent path segments and entity slug
+        const entitySlug = segments[segments.length - 1]
+        const parentSegments = segments.slice(0, -1)
+
+        let targetUuid: string | null
+        let targetParentUuid: string
+
+        if (parentSegments.length === 0) {
+          // Target is at library root
+          if (entityType === 'note') {
+            targetUuid = null
+          } else {
+            targetUuid = library.collection_uuid
           }
-          return
+          targetParentUuid = library.collection_uuid
+        } else {
+          // Resolve the parent path
+          const parentResult = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+          if (cancelled) return
+
+          if (!parentResult) {
+            const parentPath = '/' + parentSegments.join('/')
+            setValidation({ status: 'invalid', message: `Parent path "${parentPath}" does not exist` })
+            return
+          }
+          if (parentResult.type !== 'collection') {
+            const parentPath = '/' + parentSegments.join('/')
+            setValidation({ status: 'invalid', message: `Parent path "${parentPath}" is a note, not a collection` })
+            return
+          }
+
+          targetUuid = parentResult.entity.collection_uuid
+          targetParentUuid = parentResult.entity.collection_uuid
         }
 
-        // Resolve the target path
-        const result = await resolveSlugPath(localDb, segments, library.collection_uuid)
         if (cancelled) return
 
-        if (!result) {
-          setValidation({ status: 'invalid', message: `Path "${absolutePath}" does not exist` })
-          return
-        }
-        if (result.type !== 'collection') {
-          setValidation({ status: 'invalid', message: `Path "${absolutePath}" is a note, not a collection` })
-          return
-        }
+        // Check for collision at the target location
+        const collisionCollectionId = entityType === 'note' ? targetUuid : targetParentUuid
+        const hasCollision = await checkMoveCollision(
+          localDb, entitySlug, collisionCollectionId, targetParentUuid, entityId
+        )
 
-        setValidation({ status: 'valid', targetUuid: result.entity.collection_uuid, resolvedPath: absolutePath })
+        if (cancelled) return
+
+        setValidation({
+          status: 'valid',
+          targetUuid,
+          resolvedPath: absolutePath,
+          newSlug: entitySlug,
+          hasCollision
+        })
       } catch (err: any) {
         if (!cancelled) setValidation({ status: 'invalid', message: err.message || 'Validation error' })
       } finally {
@@ -109,7 +151,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     validate()
     }, 300)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [targetPath, client, prefix, currentParentPath, entityType])
+  }, [targetPath, client, prefix, currentParentPath, entityType, entityId])
 
   const onMove = useCallback(async () => {
     if (validation.status !== 'valid' || validating || !client) return
@@ -125,22 +167,26 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
       const localDb = stream.local()
 
+      // Pass new slug only if it changed
+      const newSlug = validation.newSlug
+      const slugChanged = newSlug !== currentSlug ? newSlug : undefined
+
       if (entityType === 'note') {
-        await moveNote(stream, entityId, validation.targetUuid, 'web-ui')
+        await moveNote(stream, entityId, validation.targetUuid, 'web-ui', slugChanged)
       } else {
         if (!validation.targetUuid) throw new Error('Invalid target for collection move')
-        await moveCollection(stream, entityId, validation.targetUuid)
+        await moveCollection(stream, entityId, validation.targetUuid, slugChanged)
       }
 
       // Sync and re-index
       await stream.sync(1000)
       await indexAll(localDb)
 
-      // Compute new slug path
-      const entitySlug = currentSlugPath.split('/').pop() || ''
-      const newPath = validation.resolvedPath === '/'
-        ? entitySlug
-        : `${validation.resolvedPath.slice(1)}/${entitySlug}`
+      // Compute new slug path from the resolved absolute path
+      // resolvedPath is like "/recipes/new-name", strip leading /
+      const newPath = validation.resolvedPath.startsWith('/')
+        ? validation.resolvedPath.slice(1)
+        : validation.resolvedPath
 
       onMoved(newPath)
     } catch (err: any) {
@@ -148,7 +194,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     } finally {
       setIsMoving(false)
     }
-  }, [validation, validating, client, prefix, entityType, entityId, currentSlugPath, onMoved])
+  }, [validation, validating, client, prefix, entityType, entityId, currentSlug, onMoved])
 
   if (!isOpen) return null
 
@@ -173,14 +219,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
         <div className="mb-4">
           <label htmlFor="move-target" className="block text-sm font-medium text-gray-700 mb-1">
-            Target collection path
+            Target path
           </label>
           <input
             id="move-target"
             type="text"
             value={targetPath}
             onChange={(e) => setTargetPath(e.target.value)}
-            placeholder="e.g. /recipes or ../other-collection"
+            placeholder="e.g. /recipes/my-note or ./new-name"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
             autoFocus
             onKeyDown={(e) => {
@@ -190,22 +236,21 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             }}
           />
           <p className="mt-1 text-xs text-gray-400">
-            Use absolute paths (/path) or relative paths (../sibling)
+            Use absolute paths (/path/name) or relative paths (../sibling/name)
           </p>
         </div>
 
         {/* Validation feedback */}
-        {validation.status === 'valid' && (
+        {validation.status === 'valid' && !validation.hasCollision && (
           <div className="mb-4 flex items-center gap-2 text-green-700 bg-green-50 px-3 py-2 rounded-lg text-sm">
             <CheckCircleIcon className="w-4 h-4 flex-shrink-0" />
-            <span>Will move to <span className="font-mono">{
-              (() => {
-                const entitySlug = currentSlugPath.split('/').pop() || ''
-                return validation.resolvedPath === '/'
-                  ? `/${entitySlug}`
-                  : `${validation.resolvedPath}/${entitySlug}`
-              })()
-            }</span></span>
+            <span>Will move to <span className="font-mono">{validation.resolvedPath}</span></span>
+          </div>
+        )}
+        {validation.status === 'valid' && validation.hasCollision && (
+          <div className="mb-4 flex items-center gap-2 text-amber-700 bg-amber-50 px-3 py-2 rounded-lg text-sm">
+            <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0" />
+            <span>Slug collision at <span className="font-mono">{validation.resolvedPath}</span> — will be accessible at <span className="font-mono">{validation.resolvedPath}/{entityId}</span></span>
           </div>
         )}
         {validation.status === 'invalid' && (

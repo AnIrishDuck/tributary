@@ -9,6 +9,7 @@ import {
   extractTitleFromMarkdown,
   titleToSlug,
   slugToTitle,
+  replaceMarkdownTitle,
   extractTagsFromMarkdown,
   getNoteSlugByUuid,
   getAuthoritativeVersionByNoteUuid,
@@ -99,6 +100,30 @@ describe('scribe-data indexing', () => {
     for (const title of titles) {
       expect(slugToTitle(titleToSlug(title))).toBe(title)
     }
+  })
+
+  test('replaceMarkdownTitle replaces the first H1 heading', () => {
+    const body = '# Old Title\n\nSome content here.'
+    const result = replaceMarkdownTitle(body, 'New Title')
+    expect(result).toBe('# New Title\n\nSome content here.')
+  })
+
+  test('replaceMarkdownTitle preserves the rest of the body', () => {
+    const body = '# Old Title\n\nParagraph one.\n\n## Subtitle\n\nParagraph two.'
+    const result = replaceMarkdownTitle(body, 'New Title')
+    expect(result).toBe('# New Title\n\nParagraph one.\n\n## Subtitle\n\nParagraph two.')
+  })
+
+  test('replaceMarkdownTitle prepends title when body has none', () => {
+    const body = 'Just some text without a heading.'
+    const result = replaceMarkdownTitle(body, 'Added Title')
+    expect(result).toBe('# Added Title\n\nJust some text without a heading.')
+  })
+
+  test('replaceMarkdownTitle only replaces the first H1', () => {
+    const body = '# First Title\n\nContent.\n\n# Second Title\n\nMore.'
+    const result = replaceMarkdownTitle(body, 'Replaced')
+    expect(result).toBe('# Replaced\n\nContent.\n\n# Second Title\n\nMore.')
   })
 
   test('should extract tags from markdown correctly', () => {
