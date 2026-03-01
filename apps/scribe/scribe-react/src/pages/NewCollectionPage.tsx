@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatus } from '../context/syncStatusContext'
-import { createCollection, getLibrary, indexAll, getCollectionBySlug, titleToSlug, getSlugPath, Collection } from 'scribe-data'
+import { createCollection, getLibrary, indexAll, titleToSlug, getSlugPath, Collection } from 'scribe-data'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
@@ -56,27 +56,21 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
         resolvedParentUuid = library.collection_uuid
       }
 
-      // Create the collection
-      await createCollection(stream, {
+      // Create the collection — the returned entity has a .slug property
+      const newCollection = await createCollection(stream, {
         title: title.trim(),
         parent_collection_uuid: resolvedParentUuid,
         inserter: 'web-ui'
       })
 
-      // Sync and re-index to generate the collection slug
+      // Sync and re-index
       await stream.sync(1000)
       await indexAll(localDb)
 
       // Navigate to the new collection via its full slug path
-      // Re-query to get the newly created collection's slug path
-      const collectionSlug = await getCollectionBySlug(localDb, titleToSlug(title.trim()))
-      if (collectionSlug) {
-        const slugPathSegments = await getSlugPath(localDb, collectionSlug.collection_uuid)
-        if (slugPathSegments.length > 0) {
-          navigate(`/pk/${prefix}/${slugPathSegments.join('/')}`)
-        } else {
-          navigate(`/pk/${prefix}/`)
-        }
+      const slugPathSegments = await getSlugPath(localDb, newCollection.collection_uuid)
+      if (slugPathSegments.length > 0) {
+        navigate(`/pk/${prefix}/${slugPathSegments.join('/')}`)
       } else {
         navigate(`/pk/${prefix}/`)
       }

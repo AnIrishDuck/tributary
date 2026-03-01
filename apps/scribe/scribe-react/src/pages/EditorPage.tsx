@@ -319,9 +319,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           }
         } catch {
           // Fallback to flat slug if path resolution fails
-          const slug = (blockSlugResult as any)?.slug
-          if (slug && typeof slug === 'string') {
-            navigate(`/pk/${prefix}/${slug}`)
+          if (blockSlugResult?.slug) {
+            navigate(`/pk/${prefix}/${blockSlugResult.slug}`)
           } else {
             navigate(`/pk/${prefix}/`)
           }
