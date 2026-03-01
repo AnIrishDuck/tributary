@@ -163,6 +163,39 @@ describe('Collection Operations', () => {
     })
   })
 
+  describe('Collection Slug', () => {
+    test('collection creation sets slug from title', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Stream',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Cajun Recipes',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      expect(collection.slug).toBe('cajun-recipes')
+    })
+
+    test('collection creation accepts explicit slug override', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Stream',
+        inserter: 'test-user'
+      })
+
+      const collection = await createCollection(syncedDb, {
+        title: 'Cajun Recipes',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user',
+        slug: 'custom-cajun'
+      })
+
+      expect(collection.slug).toBe('custom-cajun')
+    })
+  })
+
   describe('getCollectionByUuid', () => {
     test('should retrieve a collection by UUID', async () => {
       const root = await createCollection(syncedDb, {
@@ -1467,6 +1500,38 @@ describe('Collection Operations', () => {
       const uuids = topLevel.map(c => c.collection_uuid)
       expect(uuids).toContain(child.collection_uuid)
       expect(uuids).toContain(parent.collection_uuid)
+    })
+
+    test('moveNote preserves slug on the synced block table', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const collectionA = await createCollection(syncedDb, {
+        title: 'Collection A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const collectionB = await createCollection(syncedDb, {
+        title: 'Collection B',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta Recipe\n\nContent.',
+        inserter: 'test-user',
+        collection_id: collectionA.collection_uuid
+      })
+
+      expect(note.slug).toBe('pasta-recipe')
+
+      const movedNote = await moveNote(syncedDb, note.block_uuid, collectionB.collection_uuid, 'test-user')
+      expect(movedNote.slug).toBe('pasta-recipe')
+      expect(movedNote.collection_id).toBe(collectionB.collection_uuid)
     })
 
     test('move operations update slug paths after re-indexing', async () => {

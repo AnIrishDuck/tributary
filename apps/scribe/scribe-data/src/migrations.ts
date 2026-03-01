@@ -16,7 +16,8 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
       insert_datetime TEXT NOT NULL,
       inserter TEXT NOT NULL,
       body TEXT NOT NULL,
-      collection_id TEXT
+      collection_id TEXT,
+      slug TEXT NOT NULL
     )
   `)
 
@@ -24,6 +25,12 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
     ALTER TABLE block
     ADD CONSTRAINT block_uuid_version_uuid_unique
     UNIQUE (block_uuid, version_uuid)
+  `)
+
+  // Index for slug resolution: WHERE slug = $1 AND collection_id = $2
+  await stream.exec(`
+    CREATE INDEX IF NOT EXISTS block_slug_collection_id
+    ON block (slug, collection_id)
   `)
 
   // Create the collection table
@@ -35,7 +42,8 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
       insert_datetime TEXT NOT NULL,
       inserter TEXT NOT NULL,
       linked_stream_id TEXT,
-      linked_stream_key TEXT
+      linked_stream_key TEXT,
+      slug TEXT NOT NULL
     )
   `)
 
@@ -43,6 +51,12 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
   await stream.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS collection_one_root
     ON collection ((1)) WHERE parent_collection_uuid IS NULL
+  `)
+
+  // Index for collection slug resolution: WHERE slug = $1 AND parent_collection_uuid = $2
+  await stream.exec(`
+    CREATE INDEX IF NOT EXISTS collection_slug_parent
+    ON collection (slug, parent_collection_uuid)
   `)
 }
 

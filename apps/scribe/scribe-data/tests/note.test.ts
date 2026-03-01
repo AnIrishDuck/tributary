@@ -13,7 +13,8 @@ import {
   getVersionHistory,
   getVersionPosition,
   getVersionTree,
-  getVersionByUuid
+  getVersionByUuid,
+  moveNote
 } from '../src/note.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -616,5 +617,90 @@ describe('version tree', () => {
     const nodes = await getVersionTree(syncedDb, uuidv4())
 
     expect(nodes).toEqual([])
+  })
+
+  describe('Note Slug', () => {
+    test('note creation sets slug from H1 title', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Recipe Title\n\nSome content here.',
+        inserter: 'test-user'
+      })
+
+      expect(note.slug).toBe('my-recipe-title')
+    })
+
+    test('note creation falls back to block_uuid when no title', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: 'No heading here, just plain text.',
+        inserter: 'test-user'
+      })
+
+      expect(note.slug).toBe(note.block_uuid)
+    })
+
+    test('note creation accepts explicit slug override', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Recipe Title\n\nSome content here.',
+        inserter: 'test-user',
+        slug: 'custom-slug'
+      })
+
+      expect(note.slug).toBe('custom-slug')
+    })
+
+    test('createNoteVersion carries forward slug', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Original Title\n\nOriginal content.',
+        inserter: 'test-user'
+      })
+
+      expect(note.slug).toBe('original-title')
+
+      const v2 = await createNoteVersion(syncedDb, note.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# Different Title\n\nUpdated content.',
+        inserter: 'test-user'
+      })
+
+      // Slug should be carried forward from v1, not re-derived
+      expect(v2.slug).toBe('original-title')
+    })
+
+    test('createNoteVersion accepts slug override', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Original Title\n\nOriginal content.',
+        inserter: 'test-user'
+      })
+
+      const v2 = await createNoteVersion(syncedDb, note.block_uuid, {
+        block_type: 'scribe/markdown',
+        body: '# Updated Title\n\nUpdated content.',
+        inserter: 'test-user',
+        slug: 'renamed-slug'
+      })
+
+      expect(v2.slug).toBe('renamed-slug')
+    })
+
+    test('moveNote preserves slug', async () => {
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Note\n\nContent.',
+        inserter: 'test-user',
+        collection_id: null
+      })
+
+      expect(note.slug).toBe('my-note')
+
+      const moved = await moveNote(syncedDb, note.block_uuid, 'some-collection-id', 'test-user')
+
+      expect(moved.slug).toBe('my-note')
+      expect(moved.collection_id).toBe('some-collection-id')
+    })
   })
 })

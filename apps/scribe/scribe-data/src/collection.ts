@@ -24,9 +24,12 @@ export async function createCollection(
     inserter: string
     linked_stream_id?: string | null
     linked_stream_key?: string | null
+    slug?: string
   }
 ): Promise<Collection> {
   const now = new Date()
+
+  const slug = data.slug !== undefined ? data.slug : titleToSlug(data.title)
 
   const newCollection: Collection = {
     collection_uuid: data.collection_uuid || uuidv4(),
@@ -35,12 +38,13 @@ export async function createCollection(
     insert_datetime: now.toISOString(),
     inserter: data.inserter,
     linked_stream_id: data.linked_stream_id ?? null,
-    linked_stream_key: data.linked_stream_key ?? null
+    linked_stream_key: data.linked_stream_key ?? null,
+    slug
   }
 
   await db.exec(
-    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       newCollection.collection_uuid,
       newCollection.title,
@@ -48,7 +52,8 @@ export async function createCollection(
       newCollection.insert_datetime,
       newCollection.inserter,
       newCollection.linked_stream_id,
-      newCollection.linked_stream_key
+      newCollection.linked_stream_key,
+      newCollection.slug
     ]
   )
 

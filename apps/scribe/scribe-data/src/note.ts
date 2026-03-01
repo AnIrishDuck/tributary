@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
 import { getLibrary } from './collection.js'
+import { titleToSlug, extractTitleFromMarkdown } from './indexing.js'
 
 interface NoteQueryResult {
   version_uuid: string;
@@ -24,10 +25,14 @@ export async function createNote(
     prior_version_uuid?: string | null
     collection_id?: string | null
     insert_datetime?: string
+    slug?: string
   }
 ): Promise<Note> {
   const now = new Date()
 
+  const blockUuid = noteData.block_uuid || uuidv4()
+
+  // Default collection_id to library root when not specified
   let collection_id = noteData.collection_id ?? null
   if (collection_id === null) {
     const library = await getLibrary(db)
@@ -36,20 +41,30 @@ export async function createNote(
     }
   }
 
+  // Derive slug: explicit > from title > fall back to block_uuid
+  let slug: string
+  if (noteData.slug !== undefined) {
+    slug = noteData.slug
+  } else {
+    const title = extractTitleFromMarkdown(noteData.body)
+    slug = title ? titleToSlug(title) : blockUuid
+  }
+
   const newNote: Note = {
-    block_uuid: noteData.block_uuid || uuidv4(),
+    block_uuid: blockUuid,
     block_type: noteData.block_type,
     version_uuid: uuidv4(),
     prior_version_uuid: noteData.prior_version_uuid !== undefined ? noteData.prior_version_uuid : null,
     insert_datetime: noteData.insert_datetime ?? now.toISOString(),
     inserter: noteData.inserter,
     body: noteData.body,
-    collection_id
+    collection_id,
+    slug
   }
 
   await db.exec(
-    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       newNote.block_uuid,
       newNote.block_type,
@@ -58,20 +73,21 @@ export async function createNote(
       newNote.insert_datetime,
       newNote.inserter,
       newNote.body,
-      newNote.collection_id
+      newNote.collection_id,
+      newNote.slug
     ]
   )
-  
+
   // Retrieve the inserted note
   const result = await db.query(
     `SELECT * FROM block WHERE version_uuid = $1`,
     [newNote.version_uuid]
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     throw new Error('Failed to retrieve inserted note')
   }
-  
+
   return result.rows[0] as Note
 }
 
@@ -91,11 +107,12 @@ export async function createNoteVersion(
     body: string
     inserter: string
     collection_id?: string | null
+    slug?: string
   }
 ): Promise<Note> {
-  // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id
+  // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id and slug
   const result = await db.query(
-    `SELECT version_uuid, collection_id FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    `SELECT version_uuid, collection_id, slug FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
   )
 
@@ -103,6 +120,8 @@ export async function createNoteVersion(
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   // Use explicitly provided collection_id, otherwise carry forward from latest version
   const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
+  // Use explicitly provided slug, otherwise carry forward from latest version
+  const slug = noteData.slug !== undefined ? noteData.slug : (versionResult?.slug ?? undefined)
 
   return createNote(db, {
     block_uuid,
@@ -110,7 +129,8 @@ export async function createNoteVersion(
     body: noteData.body,
     inserter: noteData.inserter,
     prior_version_uuid,
-    collection_id
+    collection_id,
+    slug
   })
 }
 

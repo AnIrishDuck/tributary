@@ -39,6 +39,7 @@ export interface Note {
   inserter: string
   body: string
   collection_id: string | null
+  slug: string
 }
 
 /**
@@ -52,6 +53,7 @@ export interface Collection {
   inserter: string
   linked_stream_id: string | null
   linked_stream_key: string | null
+  slug: string
 }
 
 /**

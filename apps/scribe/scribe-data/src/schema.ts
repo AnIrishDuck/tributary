@@ -40,6 +40,11 @@ export interface NoteTable {
    * The content of the note
    */
   body: string
+
+  /**
+   * URL-friendly slug for this note, derived from title or block_uuid
+   */
+  slug: string
 }
 
 /**
@@ -172,6 +177,11 @@ export interface CollectionTable {
    * Base64url-encoded private write key of the linked library (null if not a linked collection)
    */
   linked_stream_key: string | null
+
+  /**
+   * URL-friendly slug for this collection, derived from title
+   */
+  slug: string
 }
 
 /**
