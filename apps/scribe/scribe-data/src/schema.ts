@@ -73,28 +73,19 @@ export interface IndexedNoteTable {
 }
 
 /**
- * Database representation of a note slug (non-synchronized)
+ * Database representation of a slug collision (non-synchronized).
+ * Caches which (slug, parent) pairs have multiple items (notes and/or collections).
  */
-export interface NoteSlugTable {
+export interface SlugCollisionTable {
   /**
-   * Unique identifier for the note
-   */
-  block_uuid: string
-
-  /**
-   * The URL-friendly slug derived from the note title
+   * The URL-friendly slug that has collisions
    */
   slug: string
 
   /**
-   * The original title of the note
+   * The parent collection UUID where the collision occurs
    */
-  title: string
-
-  /**
-   * Timestamp when this slug was indexed (ISO string format)
-   */
-  indexed_at: string
+  parent_id: string
 }
 
 /**
@@ -265,9 +256,9 @@ export interface ScribeSchema {
   indexed_block: IndexedNoteTable
 
   /**
-   * Table containing note slugs (non-synchronized)
+   * Table caching slug collisions (non-synchronized)
    */
-  block_slug: NoteSlugTable
+  slug_collision: SlugCollisionTable
 
   /**
    * Table containing authoritative version mappings (non-synchronized)

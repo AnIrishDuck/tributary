@@ -74,11 +74,11 @@ describe('SearchPage', () => {
       </WithProviders>
     )
     
-    // Wait for results
+    // Wait for results (slugToTitle converts 'javascript-tutorial' → 'Javascript Tutorial')
     await waitFor(() => {
-      expect(screen.getByText('JavaScript Tutorial')).toBeInTheDocument()
+      expect(screen.getByText('Javascript Tutorial')).toBeInTheDocument()
     }, { timeout: 3000 })
-    
+
     // Should not show Python note
     expect(screen.queryByText('Python Guide')).not.toBeInTheDocument()
   })
@@ -190,7 +190,7 @@ describe('SearchPage', () => {
     
     // Should find the JavaScript Tutorial (has both words)
     await waitFor(() => {
-      expect(screen.getByText('JavaScript Tutorial')).toBeInTheDocument()
+      expect(screen.getByText('Javascript Tutorial')).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 

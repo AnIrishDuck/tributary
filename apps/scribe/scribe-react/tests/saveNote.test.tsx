@@ -61,7 +61,7 @@ describe('saveNote function', () => {
     const results = await searchNotes(localDb, 'photosynthesis')
 
     expect(results).toHaveLength(1)
-    expect(results[0].title).toBe('Photosynthesis')
+    expect(results[0].title).toBe('photosynthesis')
   })
 
   it('should preserve block UUID when creating new note (no blockUuid)', async () => {

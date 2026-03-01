@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow, Collection } from './types'
+import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
 import { getLibrary } from './collection.js'
 
 
@@ -124,18 +124,17 @@ export interface IndexSlugsResult {
 }
 
 /**
- * Index slugs and tags for unindexed notes
- * 
+ * Index metadata for unindexed notes
+ *
  * This function:
  * 1. Finds unindexed notes by comparing the block table with the indexed_block table
  * 2. Determines which notes are authoritative (latest version)
- * 3. Extracts titles from authoritative notes and converts them to slugs
- * 4. Extracts tags from authoritative notes
- * 5. Updates the block_slug and block_tag index tables
- * 
+ * 3. Extracts tags from authoritative notes
+ * 4. Updates the indexed_block, authoritative_version, and block_tag tables
+ *
  * @param localDb The TributaryLocal database instance for local operations (index tables)
  * @param options Indexing options
- * @returns Result indicating how many slugs were indexed and if there are more
+ * @returns Result indicating how many notes were indexed and if there are more
  */
 export async function indexSlugs(
   localDb: TributaryLocal,
@@ -179,28 +178,22 @@ export async function indexSlugs(
 
   console.log(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
 
-  // Phase 1: CPU-only work — extract titles, slugs, and tags from markdown.
+  // Phase 1: CPU-only work — extract tags from markdown.
   const cpuStart = performance.now()
   const now = new Date().toISOString()
 
   interface ProcessedNote {
     block_uuid: string
     version_uuid: string
-    title: string | null
-    slug: string | null
     tags: string[]
   }
 
   const processed: ProcessedNote[] = unindexedNotes.map(note => ({
     block_uuid: note.block_uuid,
     version_uuid: note.version_uuid,
-    title: extractTitleFromMarkdown(note.body),
-    slug: (() => { const t = extractTitleFromMarkdown(note.body); return t ? titleToSlug(t) : null })(),
     tags: extractTagsFromMarkdown(note.body)
   }))
 
-  const withSlugs = processed.filter(n => n.slug && n.title)
-  const withoutSlugs = processed.filter(n => !n.slug || !n.title)
   const allTags: { block_uuid: string, tag: string }[] = []
   for (const n of processed) {
     for (const tag of n.tags) {
@@ -209,7 +202,7 @@ export async function indexSlugs(
   }
 
   const indexedBlockUuids = processed.map(n => n.block_uuid)
-  let indexedCount = withSlugs.length
+  const indexedCount = processed.length
   const cpuMs = Math.round(performance.now() - cpuStart)
 
   // Phase 2: Batch DB writes — a small constant number of multi-row queries
@@ -249,31 +242,6 @@ export async function indexSlugs(
       )
     }
 
-    // Batch upsert block_slug for notes that have slugs
-    if (withSlugs.length > 0) {
-      const vals = withSlugs.map((_, i) => {
-        const b = i * 4
-        return `($${b+1}, $${b+2}, $${b+3}, $${b+4})`
-      }).join(', ')
-      const params = withSlugs.flatMap(n => [n.block_uuid, n.slug, n.title, now])
-      await tx.query(
-        `INSERT INTO block_slug (block_uuid, slug, title, indexed_at)
-         VALUES ${vals}
-         ON CONFLICT (block_uuid)
-         DO UPDATE SET slug = EXCLUDED.slug, title = EXCLUDED.title, indexed_at = EXCLUDED.indexed_at`,
-        params
-      )
-    }
-
-    // Delete block_slug for notes without slugs
-    if (withoutSlugs.length > 0) {
-      const placeholders = withoutSlugs.map((_, i) => `$${i+1}`).join(', ')
-      await tx.query(
-        `DELETE FROM block_slug WHERE block_uuid IN (${placeholders})`,
-        withoutSlugs.map(n => n.block_uuid)
-      )
-    }
-
     // Delete all old tags for processed notes in one shot, then bulk-insert new ones
     {
       const placeholders = processed.map((_, i) => `$${i+1}`).join(', ')
@@ -297,23 +265,13 @@ export async function indexSlugs(
   })
 
   const dbMs = Math.round(performance.now() - dbStart)
-  console.log(`indexSlugs: indexed ${indexedCount} slugs (cpu ${cpuMs}ms, db ${dbMs}ms)`)
+  console.log(`indexSlugs: indexed ${indexedCount} notes (cpu ${cpuMs}ms, db ${dbMs}ms)`)
 
   return {
     indexedCount,
     hasMore: unindexedNotes.length === limit,
     indexedBlockUuids
   }
-}
-
-/**
- * Get all note slugs
- * @param db The TributaryLocal database instance
- * @returns Array of note slugs
- */
-export async function getAllNoteSlugs(db: TributaryLocal) {
-  const result = await db.query(`SELECT * FROM block_slug`, [])
-  return result.rows || []
 }
 
 /**
@@ -553,42 +511,53 @@ export async function getNotesInCollectionWithSlugs(
 }
 
 /**
- * Index slugs for all non-root collections.
- * Collections don't have versioning, so this is a full resync every time.
+ * Fully rebuild the slug_collision table.
+ * Detects collisions across both entity types (notes and collections share
+ * a single slug namespace within each parent). The table is small and
+ * derived, so a full DELETE + INSERT is cheap.
  *
- * @param localDb The TributaryLocal database instance
+ * @param db The TributaryLocal database instance
  */
-export async function indexCollectionSlugs(localDb: TributaryLocal): Promise<void> {
-  // Query all non-root collections (those with a parent)
-  const result = await localDb.query(
-    `SELECT * FROM collection WHERE parent_collection_uuid IS NOT NULL`,
-    []
+export async function rebuildSlugCollisions(db: TributaryLocal): Promise<void> {
+  await db.query(`DELETE FROM slug_collision`, [])
+
+  await db.query(`
+    WITH all_slugs AS (
+      SELECT b.slug, b.collection_id AS parent_id
+      FROM block b
+      INNER JOIN authoritative_version av
+        ON b.block_uuid = av.block_uuid
+        AND b.version_uuid = av.version_uuid
+      WHERE b.collection_id IS NOT NULL
+      UNION ALL
+      SELECT c.slug, c.parent_collection_uuid AS parent_id
+      FROM collection c
+      WHERE c.parent_collection_uuid IS NOT NULL
+    )
+    INSERT INTO slug_collision (slug, parent_id)
+    SELECT slug, parent_id FROM all_slugs
+    GROUP BY slug, parent_id
+    HAVING COUNT(*) > 1
+  `, [])
+}
+
+/**
+ * Get slugs that have collisions within a given parent collection.
+ * Returns a Set<string> for O(1) per-item collision checks in listing pages.
+ *
+ * @param db The TributaryLocal database instance
+ * @param parentId The parent collection UUID
+ * @returns Set of slugs that collide within this parent
+ */
+export async function getCollidingSlugs(
+  db: TributaryLocal,
+  parentId: string
+): Promise<Set<string>> {
+  const result = await db.query(
+    `SELECT slug FROM slug_collision WHERE parent_id = $1`,
+    [parentId]
   )
-
-  const collections = (result.rows || []) as Collection[]
-  const now = new Date().toISOString()
-
-  const withSlugs = collections
-    .map(col => ({ ...col, slug: titleToSlug(col.title) }))
-    .filter(col => col.slug)
-
-  await localDb.transaction(async (tx: any) => {
-    // Clear existing collection slugs and rebuild
-    await tx.query(`DELETE FROM collection_slug`, [])
-
-    if (withSlugs.length > 0) {
-      const vals = withSlugs.map((_, i) => {
-        const b = i * 5
-        return `($${b+1}, $${b+2}, $${b+3}, $${b+4}, $${b+5})`
-      }).join(', ')
-      const params = withSlugs.flatMap(col => [col.collection_uuid, col.slug, col.title, now, col.parent_collection_uuid])
-      await tx.query(
-        `INSERT INTO collection_slug (collection_uuid, slug, title, indexed_at, parent_collection_uuid)
-         VALUES ${vals}`,
-        params
-      )
-    }
-  })
+  return new Set((result.rows || []).map((row: any) => row.slug))
 }
 
 /**
@@ -672,11 +641,11 @@ export async function indexAll(
   // Import search functions
   const { indexSearchVectors } = await import('./search.js')
 
-  // First index slugs and tags
+  // First index note metadata (authoritative versions and tags)
   const slugResult = await indexSlugs(localDb, options)
 
-  // Index collection slugs (cheap — few rows)
-  await indexCollectionSlugs(localDb)
+  // Rebuild slug collision cache (cheap — few rows)
+  await rebuildSlugCollisions(localDb)
 
   // Then index search vectors only for the notes that were just processed,
   // avoiding a redundant full-table scan to find unindexed notes.

@@ -4,7 +4,8 @@ import { up } from '../src/migrations.js'
 import {
   indexSlugs,
   indexAll,
-  indexCollectionSlugs,
+  rebuildSlugCollisions,
+  getCollidingSlugs,
   extractTitleFromMarkdown,
   titleToSlug,
   slugToTitle,
@@ -160,7 +161,7 @@ describe('scribe-data indexing', () => {
     // Run indexing
     const result: IndexSlugsResult = await indexSlugs(localDb)
     
-    expect(result.indexedCount).toBe(0) // No slug to index
+    expect(result.indexedCount).toBe(1) // Note is indexed even without a title
     expect(result.hasMore).toBe(false)
     
     // Check that the note was still marked as indexed by checking authoritative version
@@ -670,49 +671,65 @@ describe('scribe-data indexing', () => {
     })
   })
 
-  describe('collection slug indexing', () => {
-    test('indexCollectionSlugs generates correct slugs from titles', async () => {
+  describe('slug collision detection', () => {
+    test('rebuildSlugCollisions detects two notes with same slug in same collection', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
       })
 
-      await createCollection(syncedDb, {
-        title: 'Italian Recipes',
-        parent_collection_uuid: root.collection_uuid,
-        inserter: 'test-user'
+      // Create two notes with the same slug in the same collection
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nFirst pasta recipe.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
       })
 
-      await createCollection(syncedDb, {
-        title: 'Travel Notes',
-        parent_collection_uuid: root.collection_uuid,
-        inserter: 'test-user'
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nSecond pasta recipe.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
       })
 
-      await indexCollectionSlugs(localDb)
+      await indexSlugs(localDb)
+      await rebuildSlugCollisions(localDb)
 
-      const italianResults = await getCollectionsBySlug(localDb, 'italian-recipes')
-      expect(italianResults).toHaveLength(1)
-      expect(italianResults[0].title).toBe('Italian Recipes')
-
-      const travelResults = await getCollectionsBySlug(localDb, 'travel-notes')
-      expect(travelResults).toHaveLength(1)
-      expect(travelResults[0].title).toBe('Travel Notes')
+      const collisions = await getCollidingSlugs(localDb, root.collection_uuid)
+      expect(collisions.has('pasta')).toBe(true)
     })
 
-    test('indexCollectionSlugs does not index the root collection', async () => {
+    test('rebuildSlugCollisions detects note + collection sharing a slug', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
       })
 
-      await indexCollectionSlugs(localDb)
+      // Create a collection with slug "recipes"
+      await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
 
-      const results = await getCollectionsBySlug(localDb, 'my-library')
-      expect(results).toHaveLength(0)
+      // Create a note with slug "recipes" in the same parent
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Recipes\n\nMy favourite recipes.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid,
+        slug: 'recipes'
+      })
+
+      await indexSlugs(localDb)
+      await rebuildSlugCollisions(localDb)
+
+      const collisions = await getCollidingSlugs(localDb, root.collection_uuid)
+      expect(collisions.has('recipes')).toBe(true)
     })
 
-    test('getCollectionsBySlug returns all matching collections', async () => {
+    test('rebuildSlugCollisions does NOT flag unique slugs', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
@@ -724,26 +741,67 @@ describe('scribe-data indexing', () => {
         inserter: 'test-user'
       })
 
-      await indexCollectionSlugs(localDb)
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Travel Notes\n\nSome travel notes.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
+      })
 
-      const results = await getCollectionsBySlug(localDb, 'recipes')
-      expect(results).toHaveLength(1)
-      expect(results[0].title).toBe('Recipes')
+      await indexSlugs(localDb)
+      await rebuildSlugCollisions(localDb)
 
-      // Non-existent slug returns empty array
-      const noResults = await getCollectionsBySlug(localDb, 'nonexistent')
-      expect(noResults).toHaveLength(0)
+      const collisions = await getCollidingSlugs(localDb, root.collection_uuid)
+      expect(collisions.size).toBe(0)
     })
 
-    test('collection_slug table is created by migration', async () => {
-      // The up() migration was called in beforeEach, so the table should exist
-      // Verify by querying it (should not throw)
-      const result = await localDb.query('SELECT * FROM collection_slug', [])
-      expect(result.rows).toBeDefined()
-      expect(result.rows).toHaveLength(0)
+    test('getCollidingSlugs returns correct Set for a given parent', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: root.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      // Two notes with same slug under root
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nPasta 1.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
+      })
+
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Pasta\n\nPasta 2.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
+      })
+
+      // One unique note under child — no collision there
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Tiramisu\n\nTiramisu recipe.',
+        inserter: 'test-user',
+        collection_id: child.collection_uuid
+      })
+
+      await indexSlugs(localDb)
+      await rebuildSlugCollisions(localDb)
+
+      const rootCollisions = await getCollidingSlugs(localDb, root.collection_uuid)
+      expect(rootCollisions.has('pasta')).toBe(true)
+      expect(rootCollisions.size).toBe(1)
+
+      const childCollisions = await getCollidingSlugs(localDb, child.collection_uuid)
+      expect(childCollisions.size).toBe(0)
     })
 
-    test('indexAll indexes collection slugs alongside note slugs', async () => {
+    test('indexAll no longer produces block_slug / collection_slug rows', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
@@ -761,50 +819,92 @@ describe('scribe-data indexing', () => {
         inserter: 'test-user'
       })
 
-      // indexAll should index both note slugs and collection slugs
       await indexAll(localDb)
 
-      const collectionResults = await getCollectionsBySlug(localDb, 'project-notes')
-      expect(collectionResults).toHaveLength(1)
+      // block_slug and collection_slug tables should not exist
+      await expect(localDb.query('SELECT * FROM block_slug', [])).rejects.toThrow()
+      await expect(localDb.query('SELECT * FROM collection_slug', [])).rejects.toThrow()
 
-      const noteSlug = await getNoteSlugByUuid(localDb, (await getAllNotesWithTitles(localDb))[0].block_uuid)
-      expect(noteSlug).toBeDefined()
+      // slug_collision table should exist
+      const result = await localDb.query('SELECT * FROM slug_collision', [])
+      expect(result.rows).toBeDefined()
     })
 
-    test('indexCollectionSlugs stores parent_collection_uuid', async () => {
+    test('slug_collision table is created by migration', async () => {
+      // The up() migration was called in beforeEach, so the table should exist
+      const result = await localDb.query('SELECT * FROM slug_collision', [])
+      expect(result.rows).toBeDefined()
+      expect(result.rows).toHaveLength(0)
+    })
+
+    test('tags and authoritative versions still work after indexAll', async () => {
       const root = await createCollection(syncedDb, {
         title: 'My Library',
         inserter: 'test-user'
       })
 
-      const child = await createCollection(syncedDb, {
-        title: 'Recipes',
+      const note = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Tagged Note\n\nThis has [#important](#important) and [#work](#work) tags.',
+        inserter: 'test-user',
+        collection_id: root.collection_uuid
+      })
+
+      await indexAll(localDb)
+
+      // Authoritative version should be tracked
+      const av = await getAuthoritativeVersionByNoteUuid(localDb, note.block_uuid)
+      expect(av).toBeDefined()
+      expect(av?.version_uuid).toBe(note.version_uuid)
+
+      // Tags should be extracted
+      const tags = await getTagsForNote(localDb, note.block_uuid)
+      expect(tags).toHaveLength(2)
+      expect(tags).toContain('important')
+      expect(tags).toContain('work')
+    })
+
+    test('search indexing still works after indexAll', async () => {
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const searchResults = await searchNotes(localDb, 'JavaScript')
+      expect(searchResults).toHaveLength(1)
+      expect(searchResults[0].snippet).toBeTruthy()
+    })
+
+    test('indexAll indexes notes and rebuilds collisions together', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      await createCollection(syncedDb, {
+        title: 'Project Notes',
         parent_collection_uuid: root.collection_uuid,
         inserter: 'test-user'
       })
 
-      const grandchild = await createCollection(syncedDb, {
-        title: 'Italian',
-        parent_collection_uuid: child.collection_uuid,
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Test Note\n\nContent.',
         inserter: 'test-user'
       })
 
-      await indexCollectionSlugs(localDb)
+      await indexAll(localDb)
 
-      // Check that parent_collection_uuid is stored in collection_slug rows
-      const result = await localDb.query(
-        `SELECT * FROM collection_slug WHERE collection_uuid = $1`,
-        [child.collection_uuid]
-      )
-      expect(result.rows).toHaveLength(1)
-      expect((result.rows![0] as any).parent_collection_uuid).toBe(root.collection_uuid)
+      // Collection slugs are readable from the synced table
+      const collectionResults = await getCollectionsBySlug(localDb, 'project-notes')
+      expect(collectionResults).toHaveLength(1)
 
-      const grandchildResult = await localDb.query(
-        `SELECT * FROM collection_slug WHERE collection_uuid = $1`,
-        [grandchild.collection_uuid]
-      )
-      expect(grandchildResult.rows).toHaveLength(1)
-      expect((grandchildResult.rows![0] as any).parent_collection_uuid).toBe(child.collection_uuid)
+      // Note slug is readable via authoritative version join
+      const noteSlug = await getNoteSlugByUuid(localDb, (await getAllNotesWithTitles(localDb))[0].block_uuid)
+      expect(noteSlug).toBeDefined()
     })
 
     test('getAllNotesWithTitles includes collection_id', async () => {
