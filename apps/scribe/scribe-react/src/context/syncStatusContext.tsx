@@ -230,7 +230,7 @@ export const SyncStatusProvider: React.FC<{
 
         // Reindex synced libraries so notes appear in the UI.
         // Skip when nothing changed to avoid unnecessary DB writes
-        // (indexCollectionSlugs rewrites its entire table on every call).
+        // (rebuildSlugCollisions rewrites its entire table on every call).
         if (hadChanges) {
           // Resolve the home stream's local DB once for caching linked library metadata
           let homeLocal: Awaited<ReturnType<TributaryStream['local']>> | null = null

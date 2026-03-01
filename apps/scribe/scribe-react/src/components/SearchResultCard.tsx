@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
-import { SearchResult } from 'scribe-data'
+import { SearchResult, slugToTitle } from 'scribe-data'
 
 interface SearchResultCardProps {
   /**
@@ -47,7 +47,7 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
           
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-1">
-              {result.title || 'Untitled Note'}
+              {result.title && result.title !== result.block_uuid ? slugToTitle(result.title) : 'Untitled Note'}
             </h3>
             
             {result.snippet && (
