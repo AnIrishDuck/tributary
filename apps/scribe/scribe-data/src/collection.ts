@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
-import { titleToSlug, slugToTitle, getNotesBySlugInCollection } from './indexing.js'
+import { titleToSlug, getNotesBySlugInCollection } from './indexing.js'
 
 /**
  * Create a new collection in the database
@@ -168,12 +168,13 @@ export async function getAllCollectionsWithSlugs(
 }
 
 /**
- * Move a collection to a new parent collection, optionally renaming it.
+ * Move a collection to a new parent collection, optionally renaming its slug.
+ * The collection title is left unchanged.
  *
  * @param db The TributaryStream database instance
  * @param collectionUuid The UUID of the collection to move
  * @param newParentUuid The UUID of the new parent collection
- * @param newSlug Optional new slug for the collection (also updates the title)
+ * @param newSlug Optional new slug for the collection
  */
 export async function moveCollection(
   db: TributaryStream,
@@ -183,8 +184,8 @@ export async function moveCollection(
 ): Promise<void> {
   if (newSlug !== undefined) {
     await db.exec(
-      `UPDATE collection SET parent_collection_uuid = $1, slug = $2, title = $3 WHERE collection_uuid = $4`,
-      [newParentUuid, newSlug, slugToTitle(newSlug), collectionUuid]
+      `UPDATE collection SET parent_collection_uuid = $1, slug = $2 WHERE collection_uuid = $3`,
+      [newParentUuid, newSlug, collectionUuid]
     )
   } else {
     await db.exec(

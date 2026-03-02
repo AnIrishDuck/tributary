@@ -20,7 +20,7 @@ import {
   checkMoveCollision
 } from '../src/collection.js'
 import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
-import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection, extractTitleFromMarkdown } from '../src/indexing.js'
+import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
 import { resolveSlugPath, resolveSlugPathPartial } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -1743,7 +1743,7 @@ describe('Collection Operations', () => {
       // Move with rename (same collection, new slug)
       const movedNote = await moveNote(syncedDb, note.block_uuid, null, 'test-user', 'new-slug')
       expect(movedNote.slug).toBe('new-slug')
-      expect(movedNote.body).toBe('# New Slug\n\nSome content.')
+      expect(movedNote.body).toBe('# Original Title\n\nSome content.')
 
       // Verify slug changes after reindexing
       await indexAll(localDb)
@@ -1775,7 +1775,7 @@ describe('Collection Operations', () => {
         syncedDb, note.block_uuid, collection.collection_uuid, 'test-user', 'new-name'
       )
       expect(movedNote.slug).toBe('new-name')
-      expect(movedNote.body).toBe('# New Name\n\nContent here.')
+      expect(movedNote.body).toBe('# Old Name\n\nContent here.')
       expect(movedNote.collection_id).toBe(collection.collection_uuid)
 
       // Verify slug path after reindexing
@@ -1813,7 +1813,7 @@ describe('Collection Operations', () => {
 
       const updated = await getCollectionByUuid(syncedDb, collection.collection_uuid)
       expect(updated!.slug).toBe('new-name')
-      expect(updated!.title).toBe('New Name')
+      expect(updated!.title).toBe('Old Name')
 
       // Verify slug changes after reindexing
       await indexAll(localDb)
@@ -1851,7 +1851,7 @@ describe('Collection Operations', () => {
 
       const updated = await getCollectionByUuid(syncedDb, child.collection_uuid)
       expect(updated!.slug).toBe('renamed')
-      expect(updated!.title).toBe('Renamed')
+      expect(updated!.title).toBe('Original')
       expect(updated!.parent_collection_uuid).toBe(parentB.collection_uuid)
 
       const slugPath = await getSlugPath(syncedDb, child.collection_uuid)
