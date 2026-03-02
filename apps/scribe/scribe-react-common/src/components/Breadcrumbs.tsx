@@ -1,0 +1,112 @@
+import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react'
+import { Link } from 'react-router'
+import { Collection } from 'scribe-data'
+
+interface BreadcrumbsProps {
+  ancestors: Collection[]
+  prefix: string
+  /** When true, all items (including the last) are rendered as links. Used for note views where the note title is shown separately. */
+  allLinks?: boolean
+  /** An extra slug to display at the end of the breadcrumb trail (e.g. the current note slug). */
+  trailingSlug?: string
+}
+
+export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, trailingSlug }) => {
+  // Build cumulative slug paths for each non-root ancestor
+  const nonRootAncestors = ancestors.filter(a => a.parent_collection_uuid !== null)
+
+  const navRef = useRef<HTMLElement>(null)
+  const [hiddenCount, setHiddenCount] = useState(0)
+
+  // Stable key for ancestor identity to detect changes
+  const ancestorKey = nonRootAncestors.map(a => a.collection_uuid).join(',')
+
+  // Reset hidden count when ancestors change
+  useEffect(() => {
+    setHiddenCount(0)
+  }, [ancestorKey])
+
+  // Progressively hide items from the front until content fits.
+  // useLayoutEffect runs synchronously before paint, so the cascade
+  // (check -> increment -> re-render -> check) is invisible to the user.
+  useLayoutEffect(() => {
+    if (!navRef.current) return
+    const el = navRef.current
+    // Keep at least the most proximate ancestor visible
+    if (el.scrollWidth > el.clientWidth && hiddenCount < nonRootAncestors.length) {
+      setHiddenCount(prev => prev + 1)
+    }
+  }, [hiddenCount, ancestorKey, nonRootAncestors.length])
+
+  // Re-measure on container resize
+  const resetHiddenCount = useCallback(() => setHiddenCount(0), [])
+  useEffect(() => {
+    if (!navRef.current || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(resetHiddenCount)
+    observer.observe(navRef.current)
+    return () => observer.disconnect()
+  }, [resetHiddenCount])
+
+  if (nonRootAncestors.length === 0 && !trailingSlug) return null
+
+  const visibleAncestors = nonRootAncestors.slice(hiddenCount)
+  const showEllipsis = hiddenCount > 0
+
+  return (
+    <nav ref={navRef} className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
+      <Link
+        to={`/pk/${prefix}/`}
+        className="hover:text-blue-600 transition-colors flex-shrink-0"
+      >
+        /
+      </Link>
+      {showEllipsis && (
+        <>
+          <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+          <span className="text-gray-400 flex-shrink-0">&hellip;</span>
+        </>
+      )}
+      {visibleAncestors.map((ancestor, visIndex) => {
+        // Map back to the original index for cumulative path building
+        const originalIndex = hiddenCount + visIndex
+        const cumulativePath = nonRootAncestors
+          .slice(0, originalIndex + 1)
+          .map(a => a.slug)
+          .join('/')
+
+        const isLast = originalIndex === nonRootAncestors.length - 1
+        const slug = ancestor.slug
+
+        return (
+          <React.Fragment key={ancestor.collection_uuid}>
+            {(visIndex > 0 || showEllipsis) ? (
+              <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+            ) : (
+              <span className="ml-1 flex-shrink-0" />
+            )}
+            {isLast && !allLinks ? (
+              <span className="text-gray-900 font-medium flex-shrink-0">{slug}</span>
+            ) : (
+              <Link
+                to={`/pk/${prefix}/${cumulativePath}`}
+                className="hover:text-blue-600 transition-colors flex-shrink-0"
+              >
+                {slug}
+              </Link>
+            )}
+          </React.Fragment>
+        )
+      })}
+      {trailingSlug && (
+        <>
+          {(visibleAncestors.length > 0 || showEllipsis) ? (
+            <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+          ) : (
+            <span className="ml-1 flex-shrink-0" />
+          )}
+          <span className="text-gray-900 font-medium flex-shrink-0">{trailingSlug}</span>
+        </>
+      )}
+    </nav>
+  )
+}

@@ -6,6 +6,8 @@
     "tributary-cli",
     "apps/scribe/scribe-data",
     "apps/scribe/scribe-cli",
+    "apps/scribe/scribe-react-common",
+    "apps/scribe/scribe-react-note",
     "apps/scribe/scribe-react"
   ]
 }
