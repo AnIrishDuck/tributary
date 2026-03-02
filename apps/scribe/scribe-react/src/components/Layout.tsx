@@ -5,6 +5,7 @@ import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
 import { useTributary } from '../context/tributaryContext'
 import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const Layout: React.FC = () => {
   const location = useLocation()
@@ -12,6 +13,8 @@ const Layout: React.FC = () => {
   const globalSyncStatus = syncContext?.globalSyncStatus
   const { logout } = useTributary()
   const [loggingOut, setLoggingOut] = useState(false)
+
+  useDocumentTitle()
 
   const handleLogout = async () => {
     if (!logout || loggingOut) return
