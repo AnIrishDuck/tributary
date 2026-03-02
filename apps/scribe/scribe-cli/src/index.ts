@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { TributaryClient, deriveStreamSeed } from 'tributary-client';
 import { createCliServer, cliLogin, cliLogout, getCliAuthToken } from 'tributary-client/cli';
-import { localMigrations, createHomeLibrary } from '@tributary/scribe-data';
+import { localMigrations, createHomeLibrary } from 'scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import { PGlite } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';

@@ -17,9 +17,11 @@ See README.md for architecture details.
 
 ## Dependencies & building
 
-Run `make deps` to install all dependencies (respects correct ordering for
-local references). Run `make build-all` to build everything. See `make help`
-for all available targets.
+This repo uses **npm workspaces** to manage all TypeScript packages from a
+single root `package.json`. Run `npm install` (or `make deps`) at the repo root
+to install all dependencies. Cross-package references use `"*"` versions
+resolved via workspaces. Run `make build-all` to build everything. See
+`make help` for all available targets.
 
 ## Testing
 

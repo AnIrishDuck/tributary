@@ -51,40 +51,16 @@ test-cli-scripts:
 		echo "All cli-tests scripts completed (some may have expected failures)"; \
 	fi
 
-# Install all dependencies (in correct order for local references)
+# Install all dependencies (npm workspaces handles cross-package references)
 .PHONY: deps
-deps: deps-client deps-cli deps-scribe-data deps-scribe-cli deps-scribe-react deps-supabase
+deps: deps-npm deps-supabase
 	@echo "All dependencies installed."
 
-# Install tributary-client dependencies
-.PHONY: deps-client
-deps-client:
-	@echo "Installing tributary-client dependencies..."
-	cd tributary-client && npm install
-
-# Install tributary-cli dependencies
-.PHONY: deps-cli
-deps-cli: deps-client
-	@echo "Installing tributary-cli dependencies..."
-	cd tributary-cli && npm install
-
-# Install scribe-data dependencies
-.PHONY: deps-scribe-data
-deps-scribe-data: deps-client
-	@echo "Installing scribe-data dependencies..."
-	cd apps/scribe/scribe-data && npm install
-
-# Install scribe-cli dependencies
-.PHONY: deps-scribe-cli
-deps-scribe-cli: deps-client deps-scribe-data
-	@echo "Installing scribe-cli dependencies..."
-	cd apps/scribe/scribe-cli && npm install
-
-# Install scribe-react dependencies
-.PHONY: deps-scribe-react
-deps-scribe-react: deps-client deps-scribe-data
-	@echo "Installing scribe-react dependencies..."
-	cd apps/scribe/scribe-react && npm install
+# Install all npm workspace dependencies
+.PHONY: deps-npm
+deps-npm:
+	@echo "Installing npm workspace dependencies..."
+	npm install
 
 # Install supabase edge function dependencies
 .PHONY: deps-supabase
@@ -132,11 +108,7 @@ help:
 	@echo ""
 	@echo "Dependencies:"
 	@echo "  deps              - Install all dependencies"
-	@echo "  deps-client       - Install tributary-client dependencies"
-	@echo "  deps-cli          - Install tributary-cli dependencies"
-	@echo "  deps-scribe-data  - Install scribe-data dependencies"
-	@echo "  deps-scribe-cli   - Install scribe-cli dependencies"
-	@echo "  deps-scribe-react - Install scribe-react dependencies"
+	@echo "  deps-npm          - Install npm workspace dependencies"
 	@echo "  deps-supabase     - Install supabase edge function dependencies"
 	@echo ""
 	@echo "Testing:"

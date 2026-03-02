@@ -1,0 +1,11 @@
+{
+  "name": "tributary",
+  "private": true,
+  "workspaces": [
+    "tributary-client",
+    "tributary-cli",
+    "apps/scribe/scribe-data",
+    "apps/scribe/scribe-cli",
+    "apps/scribe/scribe-react"
+  ]
+}

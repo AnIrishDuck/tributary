@@ -12,8 +12,8 @@ import {
   getNotesBySlugInCollection,
   getNoteSlugPath,
   slugToTitle,
-} from '@tributary/scribe-data';
-import type { Collection, SyncItem, SyncOperation } from '@tributary/scribe-data';
+} from 'scribe-data';
+import type { Collection, SyncItem, SyncOperation } from 'scribe-data';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';

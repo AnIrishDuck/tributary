@@ -4,10 +4,9 @@ import path from 'path'
 export default defineConfig({
   resolve: {
     alias: {
-      '@tributary/scribe-data': path.resolve(__dirname, '../scribe-data/src'),
+      'scribe-data': path.resolve(__dirname, '../scribe-data/src'),
       'tributary-client/cli': path.resolve(__dirname, '../../../tributary-client/src/cliUtils.ts'),
       'tributary-client': path.resolve(__dirname, '../../../tributary-client/src'),
-      'urlsafe-base64': path.resolve(__dirname, 'node_modules/urlsafe-base64'),
     },
   },
   test: {

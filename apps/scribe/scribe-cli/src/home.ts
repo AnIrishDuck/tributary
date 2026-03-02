@@ -1,6 +1,6 @@
 import { TributaryClient, TributaryStream } from 'tributary-client';
-import { localMigrations, getLinkedLibraries } from '@tributary/scribe-data';
-import type { Collection } from '@tributary/scribe-data';
+import { localMigrations, getLinkedLibraries } from 'scribe-data';
+import type { Collection } from 'scribe-data';
 
 const CONFIG_APP_ID = 'scribe';
 
