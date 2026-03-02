@@ -2,9 +2,9 @@ import React from 'react'
 import nacl from 'tweetnacl'
 import { TributaryClient, TributaryStream, Server } from 'tributary-client'
 import { createHomeLibrary, createLibrary } from 'scribe-data'
-import { createTestTributaryClient } from '../src/context/tributaryContext'
-import { TributaryProvider } from '../src/context/tributaryContext'
-import { SyncStatusProvider } from '../src/context/syncStatusContext'
+import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
+import { TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
+import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
 import { TestFakeServer } from './test-server'
 
 /**

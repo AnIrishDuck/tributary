@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { useTributary } from '../context/tributaryContext'
-import { useSyncStatus } from '../context/syncStatusContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { createCollection, getLibrary, indexAll, titleToSlug, getSlugPath, Collection } from 'scribe-data'
-import { Breadcrumbs } from '../components/Breadcrumbs'
+import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 export interface NewCollectionPageProps {

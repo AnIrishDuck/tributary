@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { createTestTributaryClient } from '../src/context/tributaryContext'
+import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { WithProviders } from './test-utils'
 
 describe('App', () => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, Link, useParams } from 'react-router'
-import { useTributary } from '../context/tributaryContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { importLibrary } from 'scribe-data'
 import { ShieldCheckIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 

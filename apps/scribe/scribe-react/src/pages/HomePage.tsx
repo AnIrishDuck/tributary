@@ -3,8 +3,8 @@ import { Link } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon, ShareIcon } from '@heroicons/react/24/outline'
 import { getLibraries, LibraryInfo } from '../actions/getLibraries'
 import { getHomeCollections } from '../actions/getHomeCollections'
-import { useTributary } from '../context/tributaryContext'
-import { useSyncStatus } from '../context/syncStatusContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()

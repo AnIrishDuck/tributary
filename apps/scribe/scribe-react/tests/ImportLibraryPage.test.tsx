@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import ImportLibraryPage from '../src/pages/ImportLibraryPage'
-import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
+import { TributaryProvider, createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { MemoryRouter } from 'react-router'
 import * as nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
