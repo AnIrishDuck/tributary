@@ -64,7 +64,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+  /new-note'])
+    expect(lines).toEqual(['+   /new-note'])
   })
 
   it('should format a remote create', () => {
@@ -77,7 +77,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+  abcd1234:/remote-note'])
+    expect(lines).toEqual(['+   abcd1234:/remote-note'])
   })
 
   it('should format a local update', () => {
@@ -95,7 +95,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+- /changed'])
+    expect(lines).toEqual(['+-  /changed'])
   })
 
   it('should format a remote update', () => {
@@ -113,7 +113,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+- abcd1234:/remote-changed'])
+    expect(lines).toEqual(['+-  abcd1234:/remote-changed'])
   })
 
   it('should format a local move', () => {
@@ -131,7 +131,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['*  /moved => /collection/moved'])
+    expect(lines).toEqual(['*   /moved => /collection/moved'])
   })
 
   it('should format a remote move', () => {
@@ -149,7 +149,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['*  abcd1234:/remote-moved => abcd1234:/collection/remote-moved'])
+    expect(lines).toEqual(['*   abcd1234:/remote-moved => abcd1234:/collection/remote-moved'])
   })
 
   it('should format collection creates', () => {
@@ -162,7 +162,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+  /recipes'])
+    expect(lines).toEqual(['+   /recipes'])
   })
 
   it('should format nested paths', () => {
@@ -186,8 +186,8 @@ describe('formatDiffStat', () => {
     ]
     const lines = formatDiffStat(ops, pk)
     expect(lines).toEqual([
-      '+  /cooking/italian/pasta',
-      '+  abcd1234:/desserts/cake',
+      '+   /cooking/italian/pasta',
+      '+   abcd1234:/desserts/cake',
     ])
   })
 
@@ -277,13 +277,13 @@ describe('formatDiffStat', () => {
 
     const lines = formatDiffStat(ops, '1abfu259')
     expect(lines).toEqual([
-      '+  /local-created',
-      '+  /collection',
-      '+  1abfu259:/remote-created',
-      '+- /changed',
-      '+- 1abfu259:/remote-changed',
-      '*  /moved => /collection/moved',
-      '*  1abfu259:/remote-moved => 1abfu259:/collection/remote-moved',
+      '+   /local-created',
+      '+   /collection',
+      '+   1abfu259:/remote-created',
+      '+-  /changed',
+      '+-  1abfu259:/remote-changed',
+      '*   /moved => /collection/moved',
+      '*   1abfu259:/remote-moved => 1abfu259:/collection/remote-moved',
     ])
   })
 })
@@ -522,8 +522,8 @@ describe('diff stat — path computation', () => {
     // - local-only (new local file → push to remote) → local format
     // - recipes collection (remote → pull to local) → remote format
     // - remote-note (remote → pull to local) → remote format
-    expect(lines).toContainEqual('+  /local-only')
-    expect(lines).toContainEqual('+  abcd1234:/recipes')
-    expect(lines).toContainEqual('+  abcd1234:/recipes/remote-note')
+    expect(lines).toContainEqual('+   /local-only')
+    expect(lines).toContainEqual('+   abcd1234:/recipes')
+    expect(lines).toContainEqual('+   abcd1234:/recipes/remote-note')
   })
 })

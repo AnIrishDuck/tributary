@@ -34,9 +34,9 @@ function formatItemPath(itemPath: string, source: 'local' | 'remote', pkPrefix: 
  * Format sync operations as a diff stat summary.
  *
  * Each line shows what would happen during a sync:
- * - `+  /path`         — create a new item
- * - `+- /path`         — update an existing item
- * - `*  /from => /to`  — move an item
+ * - `+   /path`         — create a new item
+ * - `+-  /path`         — update an existing item
+ * - `*   /from => /to`  — move an item
  *
  * Local items use the local path. Remote items are prefixed
  * with the first 8 characters of the library public key.
@@ -54,18 +54,18 @@ export function formatDiffStat(operations: SyncOperation[], pkPrefix: string): s
     switch (op.kind) {
       case 'create': {
         const display = formatItemPath(op.target.path, source, pkPrefix);
-        lines.push(`+  ${display}`);
+        lines.push(`+   ${display}`);
         break;
       }
       case 'update': {
         const display = formatItemPath(op.target.path, source, pkPrefix);
-        lines.push(`+- ${display}`);
+        lines.push(`+-  ${display}`);
         break;
       }
       case 'move': {
         const fromDisplay = formatItemPath(op.from.path, source, pkPrefix);
         const toDisplay = formatItemPath(op.to.path, source, pkPrefix);
-        lines.push(`*  ${fromDisplay} => ${toDisplay}`);
+        lines.push(`*   ${fromDisplay} => ${toDisplay}`);
         break;
       }
     }
