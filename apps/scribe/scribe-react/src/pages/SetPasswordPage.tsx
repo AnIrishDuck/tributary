@@ -59,7 +59,7 @@ export default function SetPasswordPage({ supabase, session, client, onComplete 
 
       // 3. Create home library with derived keypair
       const keyPair = nacl.sign.keyPair.fromSeed(streamSeed)
-      await createHomeLibrary(client, 'Home Library', keyPair)
+      await createHomeLibrary(client, 'Home', keyPair)
 
       // 4. Done — App.tsx re-enters normal flow
       onComplete()
