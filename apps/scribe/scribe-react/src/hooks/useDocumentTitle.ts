@@ -39,8 +39,8 @@ function getPageName(slugPath: string, libraryName: string): string {
  * Sets document.title based on the current library and page context.
  *
  * - No library prefix → "Scribe"
- * - Library root       → "{library name} | Scribe (home library)"
- * - Sub-collection     → "{collection name} | Scribe (linked library)"
+ * - Library root       → "{library name} | Scribe"
+ * - Sub-collection     → "{collection name} | Scribe"
  */
 export function useDocumentTitle() {
   const location = useLocation()
@@ -79,11 +79,8 @@ export function useDocumentTitle() {
     const libStatus = syncStatus?.[prefix]
     const libraryName = libStatus?.libraryTitle || 'Library'
 
-    const isHome = prefix === homeStreamId
-    const libraryType = isHome ? 'home library' : 'linked library'
-
     const pageName = getPageName(slugPath, libraryName)
 
-    document.title = `${pageName} | Scribe (${libraryType})`
+    document.title = `${pageName} | Scribe`
   }, [prefix, slugPath, syncStatus, homeStreamId])
 }
