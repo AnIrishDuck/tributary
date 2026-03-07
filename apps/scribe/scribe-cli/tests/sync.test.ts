@@ -15,8 +15,8 @@ import {
   getNotesInCollection,
   getAllCollections,
   indexAll,
-} from '@tributary/scribe-data'
-import type { SyncOperation } from '@tributary/scribe-data'
+} from 'scribe-data'
+import type { SyncOperation } from 'scribe-data'
 import {
   sync,
   syncAndIndex,

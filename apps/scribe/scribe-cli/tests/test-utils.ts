@@ -2,7 +2,7 @@ import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { syncedMigrations, localMigrations, createCollection } from '@tributary/scribe-data'
+import { syncedMigrations, localMigrations, createCollection } from 'scribe-data'
 
 /**
  * Create a test TributaryClient with an in-memory database and fake server.

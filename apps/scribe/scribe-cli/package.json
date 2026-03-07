@@ -15,10 +15,10 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.11",
-    "@tributary/scribe-data": "file:../scribe-data",
+    "scribe-data": "*",
     "@types/uuid": "^10.0.0",
     "commander": "^9.4.1",
-    "tributary-client": "file:../../../tributary-client",
+    "tributary-client": "*",
     "tweetnacl": "^1.0.3",
     "urlsafe-base64": "^1.0.0",
     "uuid": "^13.0.0"
