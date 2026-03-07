@@ -1,5 +1,14 @@
 `scribe` is a tributary app for editing, indexing, and cross-linking documents.
 
+# Packages
+
+- **scribe-data** - data layer: types, schema, migrations, indexing, search, and note operations
+- **scribe-react-common** - shared React utilities, UI components, context providers, and test helpers
+- **scribe-react-note** - note viewing/editing, draft management, and the CodeMirror editor
+- **scribe-react-listing** - note listing, collection browsing, and full-text search
+- **scribe-react** - main Vite SPA: routing, app shell, authentication, and page composition
+- **scribe-cli** - CLI for debugging and managing scribe data
+
 The core datatype is the `block`. Each block has:
 
 - a `block_uuid` for uniquely identifying the block.
