@@ -7,7 +7,7 @@
 - **scribe-react-note** - note viewing/editing, draft management, and the CodeMirror editor
 - **scribe-react-listing** - note listing, collection browsing, and full-text search
 - **scribe-react** - main Vite SPA: routing, app shell, authentication, and page composition
-- **scribe-cli** - CLI for debugging and managing scribe data
+- **scribe-cli** - CLI for local syncing and debugging scribe data
 
 The core datatype is the `block`. Each block has:
 
