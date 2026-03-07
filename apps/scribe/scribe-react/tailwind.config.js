@@ -4,6 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
     "../scribe-react-common/src/**/*.{js,ts,jsx,tsx}",
+    "../scribe-react-listing/src/**/*.{js,ts,jsx,tsx}",
     "../scribe-react-note/src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
