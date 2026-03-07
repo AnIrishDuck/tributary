@@ -18,7 +18,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    setupFiles: './tests/setup.ts',
+    setupFiles: 'scribe-react-common/tests/setup.ts',
     testTimeout: 30000,
     globals: true,
   },

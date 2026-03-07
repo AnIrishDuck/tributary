@@ -5,7 +5,7 @@ import SetPasswordPage from '../src/pages/SetPasswordPage'
 import { Session, SupabaseClient } from '@supabase/supabase-js'
 import { TributaryClient } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
-import { TestFakeServer } from './test-server'
+import { TestFakeServer } from 'scribe-react-common/tests/test-server'
 
 // Use TestFakeServer + in-memory PGlite directly (same pattern as sync.test.ts)
 // so writes succeed without a real auth token.
