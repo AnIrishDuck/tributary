@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { useTributary } from '../context/tributaryContext'
-import { useSyncStatus } from '../context/syncStatusContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import SlugLoadingPage from './SlugLoadingPage'
 import SlugErrorPage from './SlugErrorPage'
-import NoteViewPage from './NoteViewPage'
+import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
-import EditorPage from './EditorPage'
+import EditorPage from 'scribe-react-note/src/pages/EditorPage'
 import NewCollectionPage from './NewCollectionPage'
 import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
-import { getDraftForNote } from '../drafts/draftStorage'
+import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
 
 interface BlockSlugInfo {
   block_uuid: string;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { useTributary } from '../context/tributaryContext'
-import { useSyncStatus } from '../context/syncStatusContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { saveNote } from '../actions/saveNote'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -13,7 +13,7 @@ import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
-import { Breadcrumbs } from '../components/Breadcrumbs'
+import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 
 export interface EditorPageProps {
   prefix: string

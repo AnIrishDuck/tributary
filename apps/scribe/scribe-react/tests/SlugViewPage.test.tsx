@@ -3,9 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { createTestTributaryClient } from '../src/context/tributaryContext'
+import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { createTestClientWithStream, WithProviders } from './test-utils'
-import { saveNote } from '../src/actions/saveNote'
+import { saveNote } from 'scribe-react-note/src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
 describe('SlugViewPage', () => {

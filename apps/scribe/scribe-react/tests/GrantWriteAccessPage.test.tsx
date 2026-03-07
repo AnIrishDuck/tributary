@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import GrantWriteAccessPage from '../src/pages/GrantWriteAccessPage'
-import { TributaryProvider, createTestTributaryClient } from '../src/context/tributaryContext'
+import { TributaryProvider, createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { createNote } from 'scribe-data/src/note'
 import { up } from 'scribe-data'
 import * as nacl from 'tweetnacl'

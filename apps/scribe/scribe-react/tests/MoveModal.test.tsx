@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
-import { saveNote } from '../src/actions/saveNote'
+import { saveNote } from 'scribe-react-note/src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
 /**

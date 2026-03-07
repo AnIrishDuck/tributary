@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
-import { useTributary } from '../context/tributaryContext'
-import { useSyncStatus } from '../context/syncStatusContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { searchNotes, SearchResult } from 'scribe-data'
-import { SearchBar } from '../components/SearchBar'
-import { SearchResultCard } from '../components/SearchResultCard'
+import { SearchBar } from 'scribe-react-common/src/components/SearchBar'
+import { SearchResultCard } from 'scribe-react-common/src/components/SearchResultCard'
 import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
 const RESULTS_PER_PAGE = 20

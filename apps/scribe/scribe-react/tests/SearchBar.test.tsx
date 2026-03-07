@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { SearchBar } from '../src/components/SearchBar'
+import { SearchBar } from 'scribe-react-common/src/components/SearchBar'
 
 describe('SearchBar', () => {
   it('should render search input', () => {

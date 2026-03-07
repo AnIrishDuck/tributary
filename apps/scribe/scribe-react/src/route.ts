@@ -6,7 +6,7 @@ import SlugViewPage from './pages/SlugViewPage'
 import HomePage from './pages/HomePage'
 import NoteListPage from './pages/NoteListPage'
 import SearchPage from './pages/SearchPage'
-import Layout from './components/Layout'
+import Layout from 'scribe-react-common/src/components/Layout'
 import React from 'react'
 
 // Error components for routes

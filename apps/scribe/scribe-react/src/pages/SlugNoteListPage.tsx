@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import { Breadcrumbs } from '../components/Breadcrumbs'
-import { MoveModal } from '../components/MoveModal'
+import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
+import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
-import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from '../drafts/draftStorage'
-import { useBottomNav } from '../context/bottomNavContext'
+import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
+import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 
 interface NoteListViewProps {
   collections: { collection: Collection; slug: string | null }[]
