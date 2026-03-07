@@ -76,7 +76,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 py-3 shadow-sm">
+      <div className="bg-white border-b border-gray-200 py-3 shadow-sm sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

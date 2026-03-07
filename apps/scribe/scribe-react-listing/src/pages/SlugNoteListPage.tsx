@@ -97,6 +97,8 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Sticky header group: sync banner + nav header */}
+      <div className="sticky top-0 z-40">
       {/* Sync Progress Banner */}
       {showSyncProgress && (
         <div className="bg-blue-50 border-b border-blue-200 py-2">
@@ -146,6 +148,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
