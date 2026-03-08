@@ -211,51 +211,45 @@ export interface SuggestSlugsOptions {
 /**
  * Suggest slugs matching a prefix, for typeahead/autocomplete.
  *
- * The prefix is split into segments on '/'. All segments except the last are
- * resolved as collections to find the parent scope. The final segment is used
- * as a prefix filter on slugs within that parent collection.
+ * All segments except the last are resolved as collections (via
+ * `resolveSlugPathPartial`) to find the parent scope. The final segment is
+ * used as a prefix filter on slugs within that parent collection.
  *
- * For example, given prefix 'cooking/ital':
+ * For example, given segments ['cooking', 'ital']:
  * 1. Resolve 'cooking' as a collection under the library root.
  * 2. Find all notes and collections under 'cooking' whose slug starts with 'ital'.
  *
  * @param db The TributaryLocal database instance
- * @param prefix The typed prefix, e.g. 'cook' or 'cooking/ital'
+ * @param segments Array of slug segments, e.g. ['cooking', 'ital']
  * @param libraryUuid The UUID of the library (root collection)
  * @param options Limit and type filter options
  * @returns Array of matching slug suggestions, up to `limit`
  */
 export async function suggestSlugs(
   db: TributaryLocal,
-  prefix: string,
+  segments: string[],
   libraryUuid: string,
   options: SuggestSlugsOptions = {}
 ): Promise<SlugSuggestion[]> {
   const limit = options.limit ?? 5
   const slugType = options.slug_type
 
-  const segments = prefix.split('/').filter(s => s.length > 0)
-
   // The last segment is the prefix to match against; all prior segments
   // are parent collections to resolve.
   const parentSegments = segments.slice(0, -1)
   const searchPrefix = segments.length > 0 ? segments[segments.length - 1] : ''
 
-  // Resolve parent path
-  let parentUuid = libraryUuid
-  const resolvedPath: string[] = []
-
-  for (const seg of parentSegments) {
-    const collection = await getCollectionBySlugUnderParent(db, seg, parentUuid)
-    if (!collection) {
-      // Parent path doesn't exist — no suggestions
-      return []
-    }
-    resolvedPath.push(seg)
-    parentUuid = collection.collection_uuid
+  // Resolve parent path using existing partial resolution
+  const partial = await resolveSlugPathPartial(db, parentSegments, libraryUuid)
+  if (partial.missingSegments.length > 0) {
+    // Parent path doesn't fully exist — no suggestions
+    return []
   }
 
-  const pathPrefix = resolvedPath.length > 0 ? resolvedPath.join('/') + '/' : ''
+  const parentUuid = partial.parentUuid
+  const pathPrefix = partial.resolvedSegments.length > 0
+    ? partial.resolvedSegments.join('/') + '/'
+    : ''
   const suggestions: SlugSuggestion[] = []
 
   // Query matching collections

@@ -26,7 +26,7 @@ describe('suggestSlugs', () => {
   })
 
   test('returns empty array when no slugs match', async () => {
-    const suggestions = await suggestSlugs(localDb, 'xyz', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['xyz'], libraryUuid)
     expect(suggestions).toEqual([])
   })
 
@@ -48,7 +48,7 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'gr', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['gr'], libraryUuid)
 
     expect(suggestions.length).toBe(2)
     expect(suggestions.every(s => s.type === 'note')).toBe(true)
@@ -67,7 +67,7 @@ describe('suggestSlugs', () => {
       inserter: 'test-user'
     })
 
-    const suggestions = await suggestSlugs(localDb, 'co', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['co'], libraryUuid)
 
     expect(suggestions.length).toBe(1)
     expect(suggestions[0].type).toBe('collection')
@@ -88,7 +88,7 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'coo', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['coo'], libraryUuid)
 
     expect(suggestions.length).toBe(2)
     const types = suggestions.map(s => s.type).sort()
@@ -121,14 +121,14 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'cooking/pa', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['cooking', 'pa'], libraryUuid)
 
     expect(suggestions.length).toBe(2)
     expect(suggestions.every(s => s.slug_path.startsWith('cooking/pa'))).toBe(true)
   })
 
   test('returns empty when parent path does not exist', async () => {
-    const suggestions = await suggestSlugs(localDb, 'nonexistent/foo', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['nonexistent', 'foo'], libraryUuid)
     expect(suggestions).toEqual([])
   })
 
@@ -142,7 +142,7 @@ describe('suggestSlugs', () => {
     }
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'note', libraryUuid, { limit: 3 })
+    const suggestions = await suggestSlugs(localDb, ['note'], libraryUuid, { limit: 3 })
     expect(suggestions.length).toBe(3)
   })
 
@@ -156,7 +156,7 @@ describe('suggestSlugs', () => {
     }
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'test', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['test'], libraryUuid)
     expect(suggestions.length).toBe(5)
   })
 
@@ -173,7 +173,7 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'coo', libraryUuid, { slug_type: 'note' })
+    const suggestions = await suggestSlugs(localDb, ['coo'], libraryUuid, { slug_type: 'note' })
 
     expect(suggestions.length).toBe(1)
     expect(suggestions[0].type).toBe('note')
@@ -192,7 +192,7 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'coo', libraryUuid, { slug_type: 'collection' })
+    const suggestions = await suggestSlugs(localDb, ['coo'], libraryUuid, { slug_type: 'collection' })
 
     expect(suggestions.length).toBe(1)
     expect(suggestions[0].type).toBe('collection')
@@ -217,14 +217,14 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, 'cooking/italian/pa', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['cooking', 'italian', 'pa'], libraryUuid)
 
     expect(suggestions.length).toBe(1)
     expect(suggestions[0].slug_path).toBe('cooking/italian/pasta')
     expect(suggestions[0].type).toBe('note')
   })
 
-  test('empty prefix returns items at library root', async () => {
+  test('empty segments returns items at library root', async () => {
     await createCollection(syncedDb, {
       title: 'Cooking',
       parent_collection_uuid: libraryUuid,
@@ -237,9 +237,9 @@ describe('suggestSlugs', () => {
     })
     await indexAll(localDb)
 
-    const suggestions = await suggestSlugs(localDb, '', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, [], libraryUuid)
 
-    // Empty prefix matches everything with LIKE '%' at root
+    // Empty segments: searchPrefix is '', LIKE '%' matches everything at root
     expect(suggestions.length).toBe(2)
   })
 
@@ -260,7 +260,7 @@ describe('suggestSlugs', () => {
       inserter: 'test-user'
     })
 
-    const suggestions = await suggestSlugs(localDb, 'cooking/i', libraryUuid)
+    const suggestions = await suggestSlugs(localDb, ['cooking', 'i'], libraryUuid)
 
     expect(suggestions.length).toBe(2)
     expect(suggestions.every(s => s.type === 'collection')).toBe(true)
