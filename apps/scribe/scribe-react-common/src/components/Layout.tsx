@@ -44,7 +44,7 @@ const Layout: React.FC = () => {
 
   return (
     <BottomNavProvider value={bottomNavCtx}>
-    <div className="min-h-dvh bg-gray-50 flex flex-col">
+    <div className={`bg-gray-50 flex flex-col ${isEditorPage ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
       <OfflineBanner />
       {logout && isHome && (
         <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -61,7 +61,7 @@ const Layout: React.FC = () => {
           </div>
         </div>
       )}
-      <main className="flex-1 pb-16 md:pb-0">
+      <main className={`flex-1 ${isEditorPage ? 'min-h-0' : 'pb-16 md:pb-0'}`}>
         <Outlet />
       </main>
 
