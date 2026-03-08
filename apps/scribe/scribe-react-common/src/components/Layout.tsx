@@ -61,7 +61,7 @@ const Layout: React.FC = () => {
           </div>
         </div>
       )}
-      <main className={`flex-1 ${isEditorPage ? 'min-h-0' : 'pb-16 md:pb-0'}`}>
+      <main className={`flex-1 ${isEditorPage ? 'min-h-0 flex flex-col' : 'pb-16 md:pb-0'}`}>
         <Outlet />
       </main>
 
