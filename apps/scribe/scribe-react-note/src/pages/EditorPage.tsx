@@ -337,7 +337,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   }
 
   return (
-    <div className="h-dvh bg-gray-50 flex flex-col">
+    <div className="h-dvh bg-gray-50 flex flex-col overflow-hidden">
       {/* Conflict Warning Banner */}
       {showConflictWarning && (
         <ConflictWarning onReload={onConflictReload} onDismiss={onConflictDismiss} />
