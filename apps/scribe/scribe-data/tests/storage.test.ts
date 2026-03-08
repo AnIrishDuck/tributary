@@ -1,10 +1,9 @@
 import { test, expect, describe } from 'vitest'
-import { TributaryClient, FakeServer } from 'tributary-client'
+import { TributaryClient, FakeServer, estimateStreamStorageBytes } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
-import * as base64url from 'urlsafe-base64'
 import {
-  estimateStreamStorageBytes,
+  estimateLibraryStorage,
   estimateAllLibraryStorage,
   estimateQuota,
 } from '../src/storage.js'
@@ -18,171 +17,30 @@ function makeClient(server?: FakeServer) {
   return { client, server: s, pglite }
 }
 
-describe('estimateStreamStorageBytes', () => {
-  test('returns zero for an empty schema with no tables', async () => {
-    const pglite = new PGlite('memory://')
-    await pglite.exec('CREATE SCHEMA IF NOT EXISTS empty_test')
+describe('estimateLibraryStorage', () => {
+  test('returns storage estimate with note count for a library', async () => {
+    const server = new FakeServer()
+    const { client } = makeClient(server)
+    const keyPair = nacl.sign.keyPair()
 
-    const { estimatedBytes, noteCount } = await estimateStreamStorageBytes(
-      pglite,
-      'empty_test'
-    )
-    expect(estimatedBytes).toBe(0)
-    expect(noteCount).toBe(0)
-  })
+    const { stream, streamId } = await createHomeLibrary(client, 'My Library', keyPair)
 
-  test('returns non-zero estimate for a schema with data', async () => {
-    const pglite = new PGlite('memory://')
-    const schemaName = 'scribe_teststorage1'
-    await pglite.exec(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`)
-    await pglite.exec(`
-      CREATE TABLE "${schemaName}".block (
-        block_uuid TEXT NOT NULL,
-        block_type TEXT NOT NULL,
-        version_uuid TEXT NOT NULL PRIMARY KEY,
-        prior_version_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        body TEXT NOT NULL,
-        collection_id TEXT,
-        slug TEXT NOT NULL
-      )
-    `)
+    // Create some notes
+    await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# First note\n\nSome content here.',
+      inserter: 'user',
+    })
+    await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Second note\n\nMore content.',
+      inserter: 'user',
+    })
 
-    // Insert some data
-    for (let i = 0; i < 10; i++) {
-      await pglite.query(
-        `INSERT INTO "${schemaName}".block
-         (block_uuid, block_type, version_uuid, insert_datetime, inserter, body, slug)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          `note-${i}`,
-          'scribe/markdown',
-          `version-${i}`,
-          new Date().toISOString(),
-          'test-user',
-          `# Note ${i}\n\nThis is the body of note ${i} with some content.`,
-          `note-${i}`,
-        ]
-      )
-    }
-
-    const { estimatedBytes, noteCount } = await estimateStreamStorageBytes(
-      pglite,
-      schemaName
-    )
-    expect(estimatedBytes).toBeGreaterThan(0)
-    expect(noteCount).toBe(10)
-  })
-
-  test('estimate grows proportionally with more data', async () => {
-    const pglite = new PGlite('memory://')
-
-    // Create two schemas with different amounts of data
-    const smallSchema = 'scribe_small'
-    const largeSchema = 'scribe_large'
-
-    for (const schema of [smallSchema, largeSchema]) {
-      await pglite.exec(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
-      await pglite.exec(`
-        CREATE TABLE "${schema}".block (
-          block_uuid TEXT NOT NULL,
-          block_type TEXT NOT NULL,
-          version_uuid TEXT NOT NULL PRIMARY KEY,
-          prior_version_uuid TEXT,
-          insert_datetime TEXT NOT NULL,
-          inserter TEXT NOT NULL,
-          body TEXT NOT NULL,
-          collection_id TEXT,
-          slug TEXT NOT NULL
-        )
-      `)
-    }
-
-    // Insert 5 small notes
-    for (let i = 0; i < 5; i++) {
-      await pglite.query(
-        `INSERT INTO "${smallSchema}".block
-         (block_uuid, block_type, version_uuid, insert_datetime, inserter, body, slug)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          `note-${i}`,
-          'scribe/markdown',
-          `v-${i}`,
-          new Date().toISOString(),
-          'user',
-          'Short.',
-          `n-${i}`,
-        ]
-      )
-    }
-
-    // Insert 50 notes with long bodies
-    const longBody = '# Long Note\n\n' + 'Lorem ipsum dolor sit amet. '.repeat(100)
-    for (let i = 0; i < 50; i++) {
-      await pglite.query(
-        `INSERT INTO "${largeSchema}".block
-         (block_uuid, block_type, version_uuid, insert_datetime, inserter, body, slug)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          `note-${i}`,
-          'scribe/markdown',
-          `v-${i}`,
-          new Date().toISOString(),
-          'user',
-          longBody,
-          `n-${i}`,
-        ]
-      )
-    }
-
-    const small = await estimateStreamStorageBytes(pglite, smallSchema)
-    const large = await estimateStreamStorageBytes(pglite, largeSchema)
-
-    expect(large.estimatedBytes).toBeGreaterThan(small.estimatedBytes)
-    expect(large.noteCount).toBe(50)
-    expect(small.noteCount).toBe(5)
-  })
-
-  test('counts distinct notes, not versions', async () => {
-    const pglite = new PGlite('memory://')
-    const schemaName = 'scribe_versions'
-    await pglite.exec(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`)
-    await pglite.exec(`
-      CREATE TABLE "${schemaName}".block (
-        block_uuid TEXT NOT NULL,
-        block_type TEXT NOT NULL,
-        version_uuid TEXT NOT NULL PRIMARY KEY,
-        prior_version_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        body TEXT NOT NULL,
-        collection_id TEXT,
-        slug TEXT NOT NULL
-      )
-    `)
-
-    // Same note, 5 versions
-    for (let i = 0; i < 5; i++) {
-      await pglite.query(
-        `INSERT INTO "${schemaName}".block
-         (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, slug)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          'single-note',
-          'scribe/markdown',
-          `version-${i}`,
-          i > 0 ? `version-${i - 1}` : null,
-          new Date().toISOString(),
-          'user',
-          `# Edited ${i} times`,
-          'single-note',
-        ]
-      )
-    }
-
-    const { noteCount } = await estimateStreamStorageBytes(pglite, schemaName)
-    expect(noteCount).toBe(1)
+    const estimate = await estimateLibraryStorage(stream)
+    expect(estimate.streamId).toBe(streamId)
+    expect(estimate.estimatedBytes).toBeGreaterThan(0)
+    expect(estimate.noteCount).toBe(2)
   })
 })
 
@@ -302,5 +160,55 @@ describe('estimateQuota', () => {
     // In Node/vitest, navigator.storage is not available
     const result = await estimateQuota()
     expect(result).toBeNull()
+  })
+})
+
+describe('estimateStreamStorageBytes (re-exported from tributary-client)', () => {
+  test('estimate grows proportionally with data', async () => {
+    const pglite = new PGlite('memory://')
+
+    const smallSchema = 'scribe_small'
+    const largeSchema = 'scribe_large'
+
+    for (const schema of [smallSchema, largeSchema]) {
+      await pglite.exec(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+      await pglite.exec(`
+        CREATE TABLE "${schema}".block (
+          block_uuid TEXT NOT NULL,
+          block_type TEXT NOT NULL,
+          version_uuid TEXT NOT NULL PRIMARY KEY,
+          prior_version_uuid TEXT,
+          insert_datetime TEXT NOT NULL,
+          inserter TEXT NOT NULL,
+          body TEXT NOT NULL,
+          collection_id TEXT,
+          slug TEXT NOT NULL
+        )
+      `)
+    }
+
+    for (let i = 0; i < 5; i++) {
+      await pglite.query(
+        `INSERT INTO "${smallSchema}".block
+         (block_uuid, block_type, version_uuid, insert_datetime, inserter, body, slug)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [`note-${i}`, 'scribe/markdown', `v-${i}`, new Date().toISOString(), 'user', 'Short.', `n-${i}`]
+      )
+    }
+
+    const longBody = '# Long Note\n\n' + 'Lorem ipsum dolor sit amet. '.repeat(100)
+    for (let i = 0; i < 50; i++) {
+      await pglite.query(
+        `INSERT INTO "${largeSchema}".block
+         (block_uuid, block_type, version_uuid, insert_datetime, inserter, body, slug)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [`note-${i}`, 'scribe/markdown', `v-${i}`, new Date().toISOString(), 'user', longBody, `n-${i}`]
+      )
+    }
+
+    const small = await estimateStreamStorageBytes(pglite, smallSchema)
+    const large = await estimateStreamStorageBytes(pglite, largeSchema)
+
+    expect(large.estimatedBytes).toBeGreaterThan(small.estimatedBytes)
   })
 })
