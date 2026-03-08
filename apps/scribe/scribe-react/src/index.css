@@ -53,8 +53,9 @@
     bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }
 
-  /* FAB positioning without bottom nav (editor pages) */
+  /* FAB positioning without bottom nav (editor pages) — just above safe area
+     so it slightly overlaps the bottom of the editor card */
   .fab-bottom {
-    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px));
   }
 }
