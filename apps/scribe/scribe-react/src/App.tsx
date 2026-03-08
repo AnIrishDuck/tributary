@@ -13,9 +13,18 @@ import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroico
 import SetPasswordPage from './pages/SetPasswordPage'
 
 // Create a Supabase auth client (only if project URL is configured)
+// persistSession + autoRefreshToken keep the session alive across app
+// suspends (common in PWAs). detectSessionInUrl handles OAuth/recovery
+// redirects. The session expiry is configurable via CONFIG.
 let supabaseAuth: SupabaseClient | null = null
 if (CONFIG.SUPABASE_PROJECT_URL && CONFIG.API_KEY) {
-  supabaseAuth = createSupabaseClient(CONFIG.SUPABASE_PROJECT_URL, CONFIG.API_KEY)
+  supabaseAuth = createSupabaseClient(CONFIG.SUPABASE_PROJECT_URL, CONFIG.API_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
 }
 
 // Detect password recovery redirect before Supabase processes the hash.
@@ -52,6 +61,17 @@ async function createTributaryClient(session: Session | null) {
 }
 
 const router = createHashRouter(routes)
+
+// Check whether a Supabase session has exceeded the configurable expiry
+// window. Supabase tracks `created_at` on every session (epoch seconds).
+// We compare that against CONFIG.SESSION_EXPIRY_SECONDS so operators can
+// extend sessions to e.g. one week for PWA use.
+function isSessionExpired(session: Session): boolean {
+  const createdAt = (session as any).created_at
+  if (typeof createdAt !== 'number') return false
+  const age = Math.floor(Date.now() / 1000) - createdAt
+  return age > CONFIG.SESSION_EXPIRY_SECONDS
+}
 
 interface DerivedKeyPair {
   publicKey: Uint8Array
@@ -202,7 +222,13 @@ function App() {
 
     // Get initial session
     supabaseAuth.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+      if (session && isSessionExpired(session)) {
+        // Persisted session has exceeded the configured expiry — force re-auth
+        supabaseAuth!.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(session)
+      }
       setAuthReady(true)
     })
 
@@ -215,6 +241,35 @@ function App() {
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  // Proactively refresh the session when the PWA returns to the foreground.
+  // When a PWA is backgrounded or the device sleeps, the Supabase auto-refresh
+  // timer stops. By the time the user returns, the access token may have expired.
+  // This handler fires on visibility change and tries to refresh the session so
+  // the user doesn't get hit with a login prompt.
+  useEffect(() => {
+    if (!supabaseAuth) return
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      supabaseAuth!.auth.getSession().then(({ data: { session: current } }) => {
+        if (!current) return
+        if (isSessionExpired(current)) {
+          supabaseAuth!.auth.signOut()
+          return
+        }
+        // If the access token is within 5 minutes of expiry, force a refresh
+        const expiresAt = current.expires_at ?? 0
+        const fiveMinutes = 5 * 60
+        if (expiresAt - Math.floor(Date.now() / 1000) < fiveMinutes) {
+          supabaseAuth!.auth.refreshSession()
+        }
+      })
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   // Initialize tributary client once we have a session (or auth is not configured)
@@ -317,14 +372,26 @@ function App() {
   // are lost and derivedKeyPair (React state) is gone.  Force a clean
   // re-authentication so the user can re-enter their password and
   // re-derive the key pair.
+  //
+  // To avoid spurious re-auth prompts in PWAs (where the app may be
+  // suspended for long periods), we first attempt a session refresh
+  // before resorting to a full logout.
   useEffect(() => {
     if (!client || derivedKeyPair || passwordRecovery) return
 
     let mounted = true
 
-    client.getHomeStream().then(homeStream => {
+    client.getHomeStream().then(async homeStream => {
       if (!homeStream && mounted) {
-        console.warn('[app] No home stream and no derived key pair — forcing re-authentication')
+        // Try refreshing the session first — the token may still be valid
+        if (supabaseAuth) {
+          const { data, error } = await supabaseAuth.auth.refreshSession()
+          if (!error && data.session) {
+            // Session is still valid but we lost the derived key pair.
+            // Must re-authenticate to re-derive encryption keys.
+            console.warn('[app] No home stream — session valid but key pair lost, forcing re-login')
+          }
+        }
         logout().then(() => window.location.reload())
       }
     })

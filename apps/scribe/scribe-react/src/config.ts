@@ -1,6 +1,9 @@
 // Configuration for scribe-react
 // Server URL can be set via environment variable or defaults to localhost
 
+// Default session expiry: 1 week in seconds
+const DEFAULT_SESSION_EXPIRY_SECONDS = 7 * 24 * 60 * 60
+
 export const CONFIG = {
   // API URL for the tributary server
   // In production, this should be set via import.meta.env.VITE_API_URL
@@ -18,4 +21,9 @@ export const CONFIG = {
 
   // Application ID for scribe libraries
   APP_ID: 'scribe',
+
+  // Session expiry in seconds. Controls how long a persisted session remains
+  // valid before requiring re-authentication. Defaults to 1 week (604800s).
+  // Set via VITE_SESSION_EXPIRY_SECONDS to override.
+  SESSION_EXPIRY_SECONDS: Number(import.meta.env.VITE_SESSION_EXPIRY_SECONDS) || DEFAULT_SESSION_EXPIRY_SECONDS,
 } as const
