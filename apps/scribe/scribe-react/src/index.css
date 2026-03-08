@@ -53,8 +53,9 @@
     bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }
 
-  /* FAB positioning without bottom nav (editor pages) */
+  /* FAB positioning without bottom nav (editor pages) — sits higher on mobile
+     so it slightly overlaps the editor status bar */
   .fab-bottom {
-    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
   }
 }

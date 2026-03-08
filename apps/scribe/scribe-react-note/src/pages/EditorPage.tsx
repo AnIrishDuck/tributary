@@ -369,7 +369,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
         </div>
       </div>
 
-      <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-8 w-full">
         {isNewNote && ancestors && (
           <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={dynamicSlug} />
         )}
@@ -410,7 +410,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           </div>
         )}
 
-        <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100dvh-250px)]">
+        <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100dvh-140px)] md:h-[calc(100dvh-250px)]">
           <div className="flex-1 overflow-hidden">
             <CodeMirror
               value={content}
@@ -427,7 +427,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
             />
           </div>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
+          <div className="px-4 py-2 md:px-6 md:py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
             <div className="flex items-center gap-4 text-sm text-gray-500">
               <span className="flex items-center">
                 <DocumentTextIcon className="w-4 h-4 mr-2" />
