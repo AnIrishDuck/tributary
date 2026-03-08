@@ -337,7 +337,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-dvh bg-gray-50 flex flex-col">
       {/* Conflict Warning Banner */}
       {showConflictWarning && (
         <ConflictWarning onReload={onConflictReload} onDismiss={onConflictDismiss} />
@@ -369,7 +369,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
         </div>
       </div>
 
-      <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-8 w-full">
+      <div className="flex-1 min-h-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-8 w-full flex flex-col">
         {isNewNote && ancestors && (
           <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={dynamicSlug} />
         )}
@@ -410,7 +410,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           </div>
         )}
 
-        <div className="card shadow-lg overflow-hidden flex flex-col h-[calc(100dvh-140px)] md:h-[calc(100dvh-250px)]">
+        <div className="card shadow-lg overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-hidden">
             <CodeMirror
               value={content}
