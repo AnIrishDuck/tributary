@@ -56,6 +56,25 @@ async function createTributaryClient(session: Session | null) {
 
 const router = createHashRouter(routes)
 
+// localStorage key for the persisted stream seed.  The seed is equivalent to
+// the signing private key — storing it in localStorage puts it on the same
+// trust boundary as the Supabase refresh token that's already there.
+const STREAM_SEED_STORAGE_KEY = 'scribe-stream-seed'
+
+function persistStreamSeed(seed: Uint8Array) {
+  localStorage.setItem(STREAM_SEED_STORAGE_KEY, base64url.encode(Buffer.from(seed)))
+}
+
+function loadPersistedStreamSeed(): Uint8Array | null {
+  const raw = localStorage.getItem(STREAM_SEED_STORAGE_KEY)
+  if (!raw) return null
+  return new Uint8Array(base64url.decode(raw))
+}
+
+function clearPersistedStreamSeed() {
+  localStorage.removeItem(STREAM_SEED_STORAGE_KEY)
+}
+
 // Check whether a Supabase session has exceeded the configurable expiry
 // window. Supabase tracks `created_at` on every session (epoch seconds).
 // We compare that against CONFIG.SESSION_EXPIRY_SECONDS so operators can
@@ -96,8 +115,11 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
         return
       }
 
-      // Derive stream seed and keypair for home library registration
+      // Derive stream seed and keypair for home library registration.
+      // Persist the seed so PWA restarts can re-derive the key pair
+      // without prompting for the password again.
       const streamSeed = await deriveStreamSeed(password, email, CONFIG.APP_ID)
+      persistStreamSeed(streamSeed)
       const keyPair = nacl.sign.keyPair.fromSeed(streamSeed)
       onDerivedKeyPair(keyPair)
     } catch (err: any) {
@@ -200,6 +222,7 @@ function App() {
 
   // Logout: sign out of Supabase, wipe local DB, and reset client state
   async function logout() {
+    clearPersistedStreamSeed()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
@@ -330,14 +353,15 @@ function App() {
     }
   }, [client, derivedKeyPair, session])
 
-  // Detect unrecoverable state: client is ready but has no home stream and
-  // no derivedKeyPair to register one.  This happens when the page is
-  // refreshed before the initial registerHomeKey flushes to IndexedDB —
-  // the Supabase session survives (localStorage) but the PGlite writes
-  // are lost and derivedKeyPair (React state) is gone.  Force a clean
-  // re-authentication so the user can re-enter their password and
-  // re-derive the key pair.  (A token refresh can't help here — the
-  // derived key pair is in-memory state that requires the user's password.)
+  // Recover from missing home stream without forcing re-login.
+  // This happens when the page is refreshed (or the PWA resumes) before the
+  // initial registerHomeKey flushes to IndexedDB — the Supabase session
+  // survives (localStorage) but PGlite's writes are lost and derivedKeyPair
+  // (React state) is gone.
+  //
+  // If we have a persisted stream seed we can re-derive the key pair and
+  // re-run registration without prompting for the password.  Only force
+  // re-authentication as a last resort when no seed is available.
   useEffect(() => {
     if (!client || derivedKeyPair || passwordRecovery) return
 
@@ -345,8 +369,15 @@ function App() {
 
     client.getHomeStream().then(homeStream => {
       if (!homeStream && mounted) {
-        console.warn('[app] No home stream and no derived key pair — forcing re-authentication')
-        logout().then(() => window.location.reload())
+        const seed = loadPersistedStreamSeed()
+        if (seed) {
+          console.info('[app] No home stream — restoring key pair from persisted seed')
+          const keyPair = nacl.sign.keyPair.fromSeed(seed)
+          setDerivedKeyPair(keyPair)
+        } else {
+          console.warn('[app] No home stream and no persisted seed — forcing re-authentication')
+          logout().then(() => window.location.reload())
+        }
       }
     })
 
