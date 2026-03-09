@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { PlusIcon, DocumentTextIcon, ArrowDownIcon, ShareIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { getLibraries, LibraryInfo } from '../actions/getLibraries'
 import { getHomeCollections } from '../actions/getHomeCollections'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
@@ -11,8 +11,6 @@ const HomePage: React.FC = () => {
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
-  const [copiedLibraryId, setCopiedLibraryId] = useState<string | null>(null)
-
   // Clear focused library so all libraries sync on the home page
   useEffect(() => {
     setFocusedLibrary(null)
@@ -41,26 +39,6 @@ const HomePage: React.FC = () => {
 
     fetchData()
   }, [client, syncStatus])
-
-  const handleShare = async (e: React.MouseEvent, streamId: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!client) return
-
-    try {
-      const writeKey = await client.getWriteKey(streamId)
-      if (!writeKey) {
-        console.error('No write key found for library')
-        return
-      }
-      const url = `${window.location.origin}${window.location.pathname}#/import/write/${writeKey}`
-      await navigator.clipboard.writeText(url)
-      setCopiedLibraryId(streamId)
-      setTimeout(() => setCopiedLibraryId(null), 2000)
-    } catch (err) {
-      console.error('Failed to copy share link:', err)
-    }
-  }
 
   const hasItems = libraries !== null && libraries.length > 0
   const itemCount = libraries?.length ?? 0
@@ -147,19 +125,16 @@ const HomePage: React.FC = () => {
                             )}
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => handleShare(e, library.libraryId)}
+                        <Link
+                          to={`/pk/${library.libraryId}/&library`}
+                          onClick={(e) => e.stopPropagation()}
                           className="flex-shrink-0 mr-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          aria-label="Share library"
-                          title="Copy share link"
+                          aria-label="Library settings"
+                          title="Library settings"
                         >
-                          {copiedLibraryId === library.libraryId ? (
-                            <span className="text-xs font-medium text-green-600">Copied!</span>
-                          ) : (
-                            <ShareIcon className="h-4 w-4" />
-                          )}
-                        </button>
-                        <div className="flex-shrink-0">
+                          <Cog6ToothIcon className="h-4 w-4" />
+                        </Link>
+                        <div className="flex-shrink-0 hidden md:block">
                           <svg className="h-5 w-5 text-gray-400 group-hover:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>

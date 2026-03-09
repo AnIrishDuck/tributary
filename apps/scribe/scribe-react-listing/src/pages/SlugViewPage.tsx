@@ -12,6 +12,7 @@ import EditorPage from 'scribe-react-note/src/pages/EditorPage'
 import NewCollectionPage from './NewCollectionPage'
 import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
+import LibrarySettingsPage from './LibrarySettingsPage'
 import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
 
 interface BlockSlugInfo {
@@ -39,6 +40,7 @@ type PageMode =
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
+  | { type: 'librarySettings' }
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -63,6 +65,12 @@ const SlugViewPage: React.FC = () => {
     const loadContent = async () => {
       if (!client || !prefix || !splatPath) {
         setMode({ type: 'error', message: 'Missing required parameters' })
+        return
+      }
+
+      // --- Handle &library (library settings page) ---
+      if (splatPath === '&library') {
+        setMode({ type: 'librarySettings' })
         return
       }
 
@@ -483,6 +491,10 @@ const SlugViewPage: React.FC = () => {
         initialTitle={mode.initialTitle}
       />
     )
+  }
+
+  if (mode.type === 'librarySettings') {
+    return <LibrarySettingsPage prefix={prefix || ''} />
   }
 
   if (mode.type === 'missingSlug') {

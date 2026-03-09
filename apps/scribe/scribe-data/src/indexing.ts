@@ -661,3 +661,33 @@ export async function indexAll(
     indexedBlockUuids: slugResult.indexedBlockUuids
   }
 }
+
+export interface LibraryStats {
+  editCount: number
+  noteCount: number
+  collectionCount: number
+}
+
+/**
+ * Get summary statistics for a library: total edits (block rows),
+ * distinct notes, and named collections.
+ *
+ * @param db The TributaryLocal database instance
+ * @returns Counts of edits, notes, and collections
+ */
+export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats> {
+  const result = await db.query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM block) AS edit_count,
+       (SELECT COUNT(DISTINCT block_uuid)::int FROM block) AS note_count,
+       (SELECT COUNT(*)::int FROM collection WHERE parent_collection_uuid IS NOT NULL) AS collection_count`,
+    []
+  )
+
+  const row = result.rows?.[0] as any
+  return {
+    editCount: row?.edit_count ?? 0,
+    noteCount: row?.note_count ?? 0,
+    collectionCount: row?.collection_count ?? 0,
+  }
+}
