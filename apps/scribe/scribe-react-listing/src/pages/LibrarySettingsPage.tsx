@@ -3,7 +3,14 @@ import { Link } from 'react-router'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
-import { getLibraryDisplayName, getLibraryStats, LibraryStats } from 'scribe-data'
+import { getLibraryDisplayName, getLibraryStats, LibraryStats, StreamStorageEstimate } from 'scribe-data'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
 
 interface LibrarySettingsPageProps {
   prefix: string
@@ -14,6 +21,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [stats, setStats] = useState<LibraryStats | null>(null)
+  const [storageEstimate, setStorageEstimate] = useState<StreamStorageEstimate | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -40,6 +48,8 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
           return
         }
 
+        const stream = await client.get('scribe', prefix)
+
         const [name, libraryStats] = await Promise.all([
           getLibraryDisplayName(localDb),
           getLibraryStats(localDb),
@@ -47,6 +57,11 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
 
         setLibraryName(name)
         setStats(libraryStats)
+
+        if (stream) {
+          const storage = await stream.estimateStorage()
+          setStorageEstimate(storage)
+        }
       } catch (err) {
         console.error('Failed to load library settings:', err)
       } finally {
@@ -125,7 +140,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
           {stats && (
             <div className="px-8 py-6 border-b border-gray-100">
               <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Statistics</h2>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-gray-50 rounded-xl">
                   <p className="text-2xl font-semibold text-gray-900">{stats.editCount}</p>
                   <p className="text-sm text-gray-500 mt-1">Edits</p>
@@ -138,6 +153,12 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
                   <p className="text-2xl font-semibold text-gray-900">{stats.collectionCount}</p>
                   <p className="text-sm text-gray-500 mt-1">Collections</p>
                 </div>
+                {storageEstimate && (
+                  <div className="text-center p-4 bg-gray-50 rounded-xl">
+                    <p className="text-2xl font-semibold text-gray-900">{formatBytes(storageEstimate.estimatedBytes)}</p>
+                    <p className="text-sm text-gray-500 mt-1">Storage</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
