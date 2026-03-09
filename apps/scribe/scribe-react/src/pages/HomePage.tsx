@@ -1,16 +1,145 @@
-import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router'
-import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+import React, { useEffect, useState, useCallback } from 'react'
+import { Link, useSearchParams, useNavigate } from 'react-router'
+import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { getLibraries, LibraryInfo } from '../actions/getLibraries'
 import { getHomeCollections } from '../actions/getHomeCollections'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
+import { importLibrary } from 'scribe-data'
+import * as base64url from 'urlsafe-base64'
+
+/**
+ * Validate that a string is a plausible Ed25519 private key:
+ * - valid base64url encoding
+ * - decodes to exactly 64 bytes
+ */
+function validatePrivateKey(key: string): { valid: boolean; error?: string } {
+  if (!key.trim()) return { valid: false }
+  try {
+    const decoded = base64url.decode(key.trim())
+    if (decoded.length !== 64) {
+      return { valid: false, error: 'Key must be 64 bytes (got ' + decoded.length + ')' }
+    }
+    return { valid: true }
+  } catch {
+    return { valid: false, error: 'Invalid base64url encoding' }
+  }
+}
+
+const ImportCard: React.FC<{
+  onCancel: () => void
+  onImported: () => void
+}> = ({ onCancel, onImported }) => {
+  const { client } = useTributary()
+  const [privateKey, setPrivateKey] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const navigate = useNavigate()
+
+  const validation = privateKey ? validatePrivateKey(privateKey) : { valid: false }
+  const showError = error || (privateKey.length > 0 && validation.error)
+
+  const handleImport = async () => {
+    if (!client || !validation.valid) return
+
+    setImporting(true)
+    setError(null)
+
+    try {
+      const { prefix } = await importLibrary(client, privateKey.trim())
+      onImported()
+      setTimeout(() => navigate(`/${prefix}/`), 0)
+    } catch (err) {
+      setError(`Failed to import: ${(err as Error).message}`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="p-4 bg-white rounded-xl border border-blue-300 shadow-md">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600">
+            <ArrowDownIcon className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="text-base font-medium text-gray-900">Import Library</h4>
+            <p className="text-sm text-gray-500">Paste your private key below</p>
+          </div>
+        </div>
+        <button
+          onClick={onCancel}
+          disabled={importing}
+          className="flex-shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+          aria-label="Cancel import"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
+      </div>
+
+      <textarea
+        rows={3}
+        value={privateKey}
+        onChange={(e) => { setPrivateKey(e.target.value); setError(null) }}
+        disabled={importing}
+        className={`block w-full rounded-lg border px-3 py-2 text-sm font-mono
+          focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+          ${showError ? 'border-red-300' : 'border-gray-300'}
+          shadow-sm resize-none disabled:opacity-50`}
+        placeholder="Paste your private key (base64url encoded)"
+      />
+
+      {showError && (
+        <p className="mt-1.5 text-xs text-red-600">{showError}</p>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={handleImport}
+          disabled={!validation.valid || importing}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {importing ? (
+            <>
+              <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Importing...
+            </>
+          ) : (
+            'Import'
+          )}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={importing}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showImport, setShowImport] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Open import card if ?import is in the URL (e.g. from mobile nav)
+  useEffect(() => {
+    if (searchParams.has('import')) {
+      setShowImport(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   // Clear focused library so all libraries sync on the home page
   useEffect(() => {
     setFocusedLibrary(null)
@@ -40,6 +169,18 @@ const HomePage: React.FC = () => {
     fetchData()
   }, [client, syncStatus])
 
+  const handleStartImport = useCallback(() => {
+    setShowImport(true)
+  }, [])
+
+  const handleCancelImport = useCallback(() => {
+    setShowImport(false)
+  }, [])
+
+  const handleImported = useCallback(() => {
+    setShowImport(false)
+  }, [])
+
   const hasItems = libraries !== null && libraries.length > 0
   const itemCount = libraries?.length ?? 0
   const itemLabel = itemCount === 1 ? 'library' : 'libraries'
@@ -51,14 +192,16 @@ const HomePage: React.FC = () => {
           <div className="text-center py-8">
             <p className="text-gray-500">Loading your libraries...</p>
           </div>
-        ) : hasItems ? (
+        ) : hasItems || showImport ? (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-gray-900">Your Libraries</h3>
-                <p className="mt-2 text-gray-600">
-                  You have {itemCount} {itemLabel} available.
-                </p>
+                {hasItems && (
+                  <p className="mt-2 text-gray-600">
+                    You have {itemCount} {itemLabel} available.
+                  </p>
+                )}
               </div>
               <div className="flex gap-3">
                 <Link
@@ -68,18 +211,25 @@ const HomePage: React.FC = () => {
                 >
                   <PlusIcon className="h-6 w-6" />
                 </Link>
-                <Link
-                  to="/import"
-                  className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
+                <button
+                  onClick={handleStartImport}
+                  disabled={showImport}
+                  className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Import existing library"
                 >
                   <ArrowDownIcon className="h-6 w-6" />
-                </Link>
+                </button>
               </div>
             </div>
             <div className="px-8 py-6 bg-gray-50">
               <div className="space-y-3">
-                {libraries!.map((library) => {
+                {showImport && (
+                  <ImportCard
+                    onCancel={handleCancelImport}
+                    onImported={handleImported}
+                  />
+                )}
+                {libraries?.map((library) => {
                     // Merge per-library metadata from the sync loop
                     const libStatus = syncStatus[library.libraryId]
                     const displayName = libStatus?.libraryTitle || library.libraryTitle || 'Notes'
@@ -177,13 +327,13 @@ const HomePage: React.FC = () => {
                   <PlusIcon className="h-5 w-5 mr-2" />
                   Create New Library
                 </Link>
-                <Link
-                  to="/import"
+                <button
+                  onClick={handleStartImport}
                   className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
                 >
                   <ArrowDownIcon className="h-5 w-5 mr-2" />
                   Import Existing Library
-                </Link>
+                </button>
               </div>
             </div>
           </div>
