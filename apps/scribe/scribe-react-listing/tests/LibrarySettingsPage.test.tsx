@@ -86,7 +86,7 @@ describe('LibrarySettingsPage', () => {
     expect(collectionsContainer.querySelector('p')!.textContent).toBe('1')
   })
 
-  it('should show back link to library', async () => {
+  it('should show back link to home', async () => {
     const { client, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
 
@@ -104,9 +104,9 @@ describe('LibrarySettingsPage', () => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    // Should have a back link
-    const backLink = screen.getByText(/Back to Test Stream/)
+    // Should have a back link to home (← Home)
+    const backLink = screen.getByText(/← Home/)
     expect(backLink).toBeInTheDocument()
-    expect(backLink.closest('a')).toHaveAttribute('href', `/pk/${base64Part}/`)
+    expect(backLink.closest('a')).toHaveAttribute('href', '/')
   })
 })

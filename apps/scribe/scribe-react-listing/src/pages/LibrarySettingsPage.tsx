@@ -76,6 +76,8 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   }
 
   const displayName = libraryName || 'Library'
+  const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
+  const showSyncProgress = librarySyncStatus && !librarySyncStatus.synced
 
   if (loading) {
     return (
@@ -89,14 +91,28 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      {/* Sync Progress Banner */}
+      {showSyncProgress && (
+        <div className="sticky top-0 z-40 bg-blue-50 border-b border-blue-200 py-2">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-blue-900 font-medium">
+                Syncing: {librarySyncStatus.currentIndex}/{librarySyncStatus.finalIndex} blocks
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-4">
           <Link
-            to={`/pk/${prefix}/`}
+            to="/"
             className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
           >
-            &larr; Back to {displayName}
+            &larr; Home
           </Link>
         </div>
 
