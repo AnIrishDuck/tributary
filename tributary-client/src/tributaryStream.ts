@@ -6,6 +6,7 @@ import { Server } from './server.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import { computeHash } from './hashUtils.js';
+import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
 
 // Type definitions for our transaction log
 interface TransactionLogEntry {
@@ -89,6 +90,14 @@ export class TributaryStream {
     // Remove quotes from schema name if already quoted, then re-quote properly
     const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
     return `"${cleanSchemaName}"."${table}"`;
+  }
+
+  /**
+   * Estimate the storage used by this stream's schema.
+   */
+  async estimateStorage(): Promise<StreamStorageEstimate> {
+    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
+    return estimateStreamStorageBytes(this.pglite, cleanSchemaName);
   }
 
   /**

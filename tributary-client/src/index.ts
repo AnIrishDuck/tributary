@@ -7,6 +7,8 @@ export { FakeServer } from './fakeServer.js';
 export { createTestServer } from './testUtils.js';
 export type { Server } from './server.js';
 export type { SyncStatus } from './tributaryStream.js';
+export type { StreamStorageEstimate, QuotaEstimate } from './storage.js';
+export { estimateStreamStorageBytes, estimateQuota } from './storage.js';
 export { computeHash } from './hashUtils.js';
 export { deriveAuthKey, deriveStreamSeed } from './kdf.js';
 export {
