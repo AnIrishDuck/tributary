@@ -56,23 +56,23 @@ async function createTributaryClient(session: Session | null) {
 
 const router = createHashRouter(routes)
 
-// localStorage key for the persisted root key.  The root key is equivalent to
+// localStorage key for the persisted root seed.  The root seed is equivalent to
 // the signing private key — storing it in localStorage puts it on the same
 // trust boundary as the Supabase refresh token that's already there.
-const ROOT_KEY_STORAGE_KEY = 'scribe-root-key'
+const ROOT_SEED_STORAGE_KEY = 'scribe-root-seed'
 
-function persistRootKey(seed: Uint8Array) {
-  localStorage.setItem(ROOT_KEY_STORAGE_KEY, base64url.encode(Buffer.from(seed)))
+function persistRootSeed(seed: Uint8Array) {
+  localStorage.setItem(ROOT_SEED_STORAGE_KEY, base64url.encode(Buffer.from(seed)))
 }
 
-function loadPersistedRootKey(): Uint8Array | null {
-  const raw = localStorage.getItem(ROOT_KEY_STORAGE_KEY)
+function loadPersistedRootSeed(): Uint8Array | null {
+  const raw = localStorage.getItem(ROOT_SEED_STORAGE_KEY)
   if (!raw) return null
   return new Uint8Array(base64url.decode(raw))
 }
 
-function clearPersistedRootKey() {
-  localStorage.removeItem(ROOT_KEY_STORAGE_KEY)
+function clearPersistedRootSeed() {
+  localStorage.removeItem(ROOT_SEED_STORAGE_KEY)
 }
 
 // Check whether a Supabase session has exceeded the configurable expiry
@@ -115,12 +115,12 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
         return
       }
 
-      // Derive root key and keypair for home library registration.
-      // Persist the root key so PWA restarts can re-derive the key pair
+      // Derive root seed and keypair for home library registration.
+      // Persist the root seed so PWA restarts can re-derive the key pair
       // without prompting for the password again.
-      const rootKey = await deriveStreamSeed(password, email, CONFIG.APP_ID)
-      persistRootKey(rootKey)
-      const keyPair = nacl.sign.keyPair.fromSeed(rootKey)
+      const rootSeed = await deriveStreamSeed(password, email, CONFIG.APP_ID)
+      persistRootSeed(rootSeed)
+      const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
       onDerivedKeyPair(keyPair)
     } catch (err: any) {
       setError(err.message || 'Login failed')
@@ -222,7 +222,7 @@ function App() {
 
   // Logout: sign out of Supabase, wipe local DB, and reset client state
   async function logout() {
-    clearPersistedRootKey()
+    clearPersistedRootSeed()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
@@ -359,9 +359,9 @@ function App() {
   // survives (localStorage) but PGlite's writes are lost and derivedKeyPair
   // (React state) is gone.
   //
-  // If we have a persisted root key we can re-derive the key pair and
+  // If we have a persisted root seed we can re-derive the key pair and
   // re-run registration without prompting for the password.  Only force
-  // re-authentication as a last resort when no root key is available.
+  // re-authentication as a last resort when no root seed is available.
   useEffect(() => {
     if (!client || derivedKeyPair || passwordRecovery) return
 
@@ -369,13 +369,13 @@ function App() {
 
     client.getHomeStream().then(homeStream => {
       if (!homeStream && mounted) {
-        const rootKey = loadPersistedRootKey()
-        if (rootKey) {
-          console.info('[app] No home stream — restoring key pair from persisted root key')
-          const keyPair = nacl.sign.keyPair.fromSeed(rootKey)
+        const rootSeed = loadPersistedRootSeed()
+        if (rootSeed) {
+          console.info('[app] No home stream — restoring key pair from persisted root seed')
+          const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
           setDerivedKeyPair(keyPair)
         } else {
-          console.warn('[app] No home stream and no persisted root key — forcing re-authentication')
+          console.warn('[app] No home stream and no persisted root seed — forcing re-authentication')
           logout().then(() => window.location.reload())
         }
       }
