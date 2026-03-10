@@ -87,6 +87,7 @@ export async function createLibrary(
  * - Registers the key
  * - Syncs to pull existing data (including synced tables)
  * - Runs local migrations only (synced tables arrive via sync)
+ * - Links the library into the home library so it persists across sessions
  *
  * @returns The stream, streamId, and URL prefix
  */
@@ -104,6 +105,32 @@ export async function importLibrary(
   const publicKey = new Uint8Array(privateKey.slice(32))
   const streamId = base64url.encode(Buffer.from(publicKey))
   const prefix = `pk/${streamId}`
+
+  // Link into the home library so the import survives logout/login
+  const homeStreamId = await client.getHomeStream()
+  if (homeStreamId) {
+    const homeStream = await client.get('scribe', homeStreamId)
+    if (homeStream) {
+      const rootCollection = await getLibrary(homeStream)
+      if (rootCollection) {
+        // Derive a display name from the imported library's root collection
+        let title = 'Imported Library'
+        try {
+          const lib = await getLibrary(stream)
+          if (lib?.title) title = lib.title
+        } catch { /* use default */ }
+
+        await createCollection(homeStream, {
+          title,
+          parent_collection_uuid: rootCollection.collection_uuid,
+          inserter: 'user',
+          linked_stream_id: streamId,
+          linked_stream_key: privateKeyBase64,
+        })
+        await homeStream.sync(1000)
+      }
+    }
+  }
 
   return { stream, streamId, prefix }
 }

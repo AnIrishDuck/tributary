@@ -1,6 +1,5 @@
-import { RouteObject } from 'react-router'
+import { RouteObject, redirect } from 'react-router'
 import NewLibraryPage from './pages/NewLibraryPage'
-import ImportLibraryPage from './pages/ImportLibraryPage'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
 import SlugViewPage from 'scribe-react-listing/src/pages/SlugViewPage'
 import HomePage from './pages/HomePage'
@@ -28,11 +27,11 @@ export const routes: RouteObject[] = [
       },
       {
         path: '/import',
-        Component: ImportLibraryPage,
+        loader: () => redirect('/?import'),
       },
       {
         path: '/import/write/:writeKey',
-        Component: ImportLibraryPage,
+        loader: ({ params }) => redirect(`/?import&writeKey=${params.writeKey}`),
       },
       {
         // Route for granting write access via encoded private key
