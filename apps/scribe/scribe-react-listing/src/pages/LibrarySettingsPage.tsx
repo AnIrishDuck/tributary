@@ -140,7 +140,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
           {stats && (
             <div className="px-8 py-6 border-b border-gray-100">
               <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Statistics</h2>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-gray-50 rounded-xl">
                   <p className="text-2xl font-semibold text-gray-900">{stats.editCount}</p>
                   <p className="text-sm text-gray-500 mt-1">Edits</p>
