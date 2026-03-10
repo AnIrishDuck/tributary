@@ -35,6 +35,7 @@ describe('LibrarySettingsPage', () => {
     expect(screen.getByText('Edits')).toBeInTheDocument()
     expect(screen.getByText('Notes')).toBeInTheDocument()
     expect(screen.getByText('Collections')).toBeInTheDocument()
+    expect(screen.getByText('Storage')).toBeInTheDocument()
 
     // Empty library should have 0 edits, 0 notes, 0 collections
     const zeros = screen.getAllByText('0')
@@ -84,6 +85,9 @@ describe('LibrarySettingsPage', () => {
     expect(editsContainer.querySelector('p')!.textContent).toBe('2')
     expect(notesContainer.querySelector('p')!.textContent).toBe('2')
     expect(collectionsContainer.querySelector('p')!.textContent).toBe('1')
+
+    // Storage stat should be visible
+    expect(screen.getByText('Storage')).toBeInTheDocument()
   })
 
   it('should show back link to home', async () => {
