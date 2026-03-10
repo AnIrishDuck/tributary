@@ -31,6 +31,7 @@ type PageMode =
   | { type: 'loading' }
   | { type: 'error'; message: string }
   | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; versionUuid: string; blockUuid: string }
+  | { type: 'historicalNote'; content: string; title: string; slugPath: string; versionUuid: string; blockUuid: string; ancestors: Collection[]; libraryName: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; collidingSlugs: Set<string>; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
@@ -223,6 +224,56 @@ const SlugViewPage: React.FC = () => {
           }
 
           setMode({ type: 'newCollection', parentUuid, parentSlugPath: parentSegments.join('/'), ancestors, libraryName, initialTitle: slugToTitle(slugName) })
+          return
+        }
+
+        // --- Handle @versionUuid suffix (view historical version) ---
+        if (lastSegment.includes('@')) {
+          const atIndex = lastSegment.indexOf('@')
+          const noteSlug = lastSegment.slice(0, atIndex)
+          const versionUuid = lastSegment.slice(atIndex + 1)
+
+          if (!noteSlug || !versionUuid) {
+            throw new Error('Invalid version URL')
+          }
+
+          const resolveSegments = [...segments.slice(0, -1), noteSlug]
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          const resolved = await resolveSlugPath(localDb, resolveSegments, library.collection_uuid)
+          if (!resolved || resolved.type !== 'note') {
+            throw new Error('Path does not resolve to a note')
+          }
+
+          const blockSlugInfo = resolved.entity as BlockSlugInfo
+          const note = await getNoteByVersion(localDb, blockSlugInfo.block_uuid, versionUuid)
+          if (!note) {
+            throw new Error('Version not found')
+          }
+
+          // Get parent collection ancestors for breadcrumbs
+          let noteAncestors: Collection[] = []
+          const parentSegments = segments.slice(0, -1)
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              noteAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
+            }
+          }
+
+          const fullSlugPath = resolveSegments.join('/')
+          setMode({
+            type: 'historicalNote',
+            content: note.body,
+            title: blockSlugInfo.title || '',
+            slugPath: fullSlugPath,
+            versionUuid,
+            blockUuid: blockSlugInfo.block_uuid,
+            ancestors: noteAncestors,
+            libraryName
+          })
           return
         }
 
@@ -525,6 +576,23 @@ const SlugViewPage: React.FC = () => {
         cancelPath={`/pk/${prefix}/${mode.noteSlugPath}`}
         collectionLabel={mode.collectionLabel}
         noteSlugPath={mode.noteSlugPath}
+      />
+    )
+  }
+
+  if (mode.type === 'historicalNote') {
+    return (
+      <NoteViewPage
+        content={mode.content}
+        title={mode.title}
+        slugPath={mode.slugPath}
+        prefix={prefix || ''}
+        splatPath={splatPath}
+        ancestors={mode.ancestors}
+        libraryName={mode.libraryName}
+        versionUuid={mode.versionUuid}
+        blockUuid={mode.blockUuid}
+        readOnly
       />
     )
   }

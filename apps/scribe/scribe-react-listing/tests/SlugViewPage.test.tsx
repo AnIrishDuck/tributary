@@ -68,4 +68,65 @@ describe('SlugViewPage', () => {
       expect(screen.getByText(/Multiple items match/)).toBeInTheDocument()
     }, { timeout: 5000 })
   })
+
+  it('should render a specific historical version via @versionUuid suffix', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note with initial content
+    const { block } = await saveNote(stream, '# Pasta\n\nOriginal recipe.')
+    const firstVersionUuid = block.version_uuid
+
+    // Create a second version with updated content
+    await saveNote(stream, '# Pasta\n\nUpdated recipe.', 'web-ui', block.block_uuid)
+
+    // Navigate to the first version using @versionUuid suffix
+    const slug = block.slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}@${firstVersionUuid}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show the original version content
+    await waitFor(() => {
+      expect(screen.getByText(/Original recipe/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should show the historical version badge
+    expect(screen.getByText('Viewing historical version')).toBeInTheDocument()
+
+    // Should NOT show the Edit FAB (read-only mode)
+    expect(screen.queryByLabelText('Edit')).toBeNull()
+  })
+
+  it('should show error for invalid version UUID in @suffix', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note
+    const { block } = await saveNote(stream, '# Pasta\n\nA recipe.')
+    const slug = block.slug
+
+    // Navigate with a non-existent version UUID
+    const fakeVersionUuid = '00000000-0000-0000-0000-000000000000'
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}@${fakeVersionUuid}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show an error
+    await waitFor(() => {
+      expect(screen.getByText(/Version not found|Failed to load note/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
 })
