@@ -56,7 +56,7 @@ describe('HomePage', () => {
     expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
 
     // Check for "Import Existing Library" button
-    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
   })
 
   it('should display loading state while fetching libraries', async () => {
@@ -111,7 +111,7 @@ describe('HomePage', () => {
 
     // Should show action buttons
     expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
   })
 
   it('should display list of libraries when libraries exist', async () => {
@@ -160,7 +160,7 @@ describe('HomePage', () => {
 
     // Should show action buttons at the top of "Your Libraries" section
     expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /import existing library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
   })
 
   it('should display multiple libraries when multiple exist', async () => {
