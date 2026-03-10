@@ -161,7 +161,7 @@ const NewLibraryPage: React.FC = () => {
                 <p className="text-sm text-blue-100">
                   Already have a library?{' '}
                   <Link
-                    to="/import"
+                    to="/?import"
                     className="text-white font-semibold hover:underline inline-flex items-center"
                   >
                     Import existing key

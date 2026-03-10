@@ -64,7 +64,7 @@ const Navbar: React.FC<NavbarProps> = ({
     if (currentPath === '/') {
       return [
         { name: 'New Library', href: '/new', icon: PlusIcon, description: 'Create a new encrypted note library' },
-        { name: 'Import Library', href: '/import', icon: DocumentTextIcon, description: 'Import an existing library' },
+        { name: 'Import Library', href: '/?import', icon: DocumentTextIcon, description: 'Import an existing library' },
       ];
     }
     

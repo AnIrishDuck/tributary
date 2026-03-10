@@ -29,9 +29,10 @@ function validatePrivateKey(key: string): { valid: boolean; error?: string } {
 const ImportCard: React.FC<{
   onCancel: () => void
   onImported: () => void
-}> = ({ onCancel, onImported }) => {
+  initialKey?: string
+}> = ({ onCancel, onImported, initialKey }) => {
   const { client } = useTributary()
-  const [privateKey, setPrivateKey] = useState('')
+  const [privateKey, setPrivateKey] = useState(initialKey ?? '')
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const navigate = useNavigate()
@@ -130,12 +131,17 @@ const HomePage: React.FC = () => {
   const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [showImport, setShowImport] = useState(false)
+  const [importKey, setImportKey] = useState<string | undefined>(undefined)
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Open import card if ?import is in the URL (e.g. from mobile nav)
+  // Open import card if ?import is in the URL (e.g. from mobile nav or /import/write/:writeKey redirect)
   useEffect(() => {
     if (searchParams.has('import')) {
       setShowImport(true)
+      const writeKey = searchParams.get('writeKey') ?? undefined
+      if (writeKey) {
+        setImportKey(writeKey)
+      }
       setSearchParams({}, { replace: true })
     }
   }, [searchParams, setSearchParams])
@@ -175,10 +181,12 @@ const HomePage: React.FC = () => {
 
   const handleCancelImport = useCallback(() => {
     setShowImport(false)
+    setImportKey(undefined)
   }, [])
 
   const handleImported = useCallback(() => {
     setShowImport(false)
+    setImportKey(undefined)
   }, [])
 
   const hasItems = libraries !== null && libraries.length > 0
@@ -227,6 +235,7 @@ const HomePage: React.FC = () => {
                   <ImportCard
                     onCancel={handleCancelImport}
                     onImported={handleImported}
+                    initialKey={importKey}
                   />
                 )}
                 {libraries?.map((library) => {

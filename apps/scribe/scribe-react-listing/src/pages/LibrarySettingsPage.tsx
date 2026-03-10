@@ -81,7 +81,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
         console.error('No write key found for library')
         return
       }
-      const url = `${window.location.origin}${window.location.pathname}#/import/write/${writeKey}`
+      const url = `${window.location.origin}${window.location.pathname}#/?import&writeKey=${writeKey}`
       await navigator.clipboard.writeText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)

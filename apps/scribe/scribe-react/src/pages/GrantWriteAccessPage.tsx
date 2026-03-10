@@ -99,7 +99,7 @@ const GrantWriteAccessPage: React.FC = () => {
                     Return to Home
                   </button>
                   <Link
-                    to="/import"
+                    to="/?import"
                     className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                   >
                     Try Again
