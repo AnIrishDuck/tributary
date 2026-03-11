@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
 import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache } from 'scribe-data'
 
@@ -35,17 +35,32 @@ export const SyncStatusProvider: React.FC<{
   pollInterval?: number
 }> = ({ client, children, pollInterval = 1000 }) => {
   const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
-  const [globalSyncStatus, setGlobalSyncStatus] = useState<SyncStatus>({
-    synced: false,
-    isSyncing: true,
-    currentIndex: 0,
-    finalIndex: 0,
-    lastSyncedAt: null,
-    hasError: false,
-    lastEdited: null,
-    libraryTitle: null,
-  })
+  const [initialSyncDone, setInitialSyncDone] = useState(false)
+  const [syncLoopError, setSyncLoopError] = useState(false)
   const [focusedLibraryId, setFocusedLibrary] = useState<string | null>(null)
+
+  // Derive globalSyncStatus from per-stream syncStatus so there is a single
+  // source of truth.  Before, globalSyncStatus was a separate useState that
+  // was manually kept in sync via scattered setGlobalSyncStatus calls, which
+  // caused oscillation bugs when the two fell out of step.
+  const globalSyncStatus = useMemo<SyncStatus>(() => {
+    const statuses = Object.values(syncStatus)
+    const allComplete = statuses.length === 0 || statuses.every(s => s.synced)
+    const anyError = statuses.some(s => s.hasError) || syncLoopError
+    const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
+    const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
+
+    return {
+      synced: initialSyncDone && allComplete,
+      isSyncing: !initialSyncDone || (!allComplete && !anyError),
+      currentIndex: totalCurrent,
+      finalIndex: totalFinal,
+      lastSyncedAt: initialSyncDone && allComplete ? new Date() : null,
+      hasError: anyError,
+      lastEdited: null,
+      libraryTitle: null,
+    }
+  }, [syncStatus, initialSyncDone, syncLoopError])
   const focusedLibraryRef = useRef<string | null>(null)
 
   // Keep ref in sync so the async sync loop can read the latest value
@@ -94,22 +109,11 @@ export const SyncStatusProvider: React.FC<{
     const pushStatus = () => {
       const snapshot = { ...latestPerStream }
       setSyncStatus(snapshot)
+      setInitialSyncDone(true)
+      setSyncLoopError(false)
 
       const statuses = Object.values(snapshot)
-      const allComplete = statuses.length === 0 || statuses.every(s => s.synced)
-      const anyError = statuses.some(s => s.hasError)
-      const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
-      const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
-      setGlobalSyncStatus(prev => ({
-        ...prev,
-        synced: allComplete,
-        isSyncing: !allComplete,
-        currentIndex: totalCurrent,
-        finalIndex: totalFinal,
-        lastSyncedAt: allComplete ? new Date() : prev.lastSyncedAt,
-        hasError: anyError,
-      }))
-      return allComplete
+      return statuses.length === 0 || statuses.every(s => s.synced)
     }
 
     const scheduleNext = (delay: number) => {
@@ -184,16 +188,6 @@ export const SyncStatusProvider: React.FC<{
             streamsToSync = []
             console.log('[sync] focus: Home, no libraries to sync')
           }
-        }
-
-        // Only mark as syncing when there are actually streams to sync.
-        // Setting this unconditionally before client.list() caused an
-        // oscillation on fresh logins with no libraries: each loop iteration
-        // would briefly flip isSyncing to true (showing "Syncing your
-        // libraries") before pushStatus() set it back to false (showing
-        // "No libraries yet").
-        if (streamsToSync.length > 0) {
-          setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
         }
 
         // Sync the selected library, tracking whether any data changed
@@ -314,7 +308,7 @@ export const SyncStatusProvider: React.FC<{
         }
       } catch (error) {
         console.error('Background sync error:', error)
-        setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
+        setSyncLoopError(true)
         isRunning = false
         if (pendingWakeUp) {
           pendingWakeUp = false
