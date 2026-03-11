@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
 import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache } from 'scribe-data'
 
@@ -35,32 +35,17 @@ export const SyncStatusProvider: React.FC<{
   pollInterval?: number
 }> = ({ client, children, pollInterval = 1000 }) => {
   const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
-  const [initialSyncDone, setInitialSyncDone] = useState(false)
-  const [syncLoopError, setSyncLoopError] = useState(false)
+  const [globalSyncStatus, setGlobalSyncStatus] = useState<SyncStatus>({
+    synced: false,
+    isSyncing: true,
+    currentIndex: 0,
+    finalIndex: 0,
+    lastSyncedAt: null,
+    hasError: false,
+    lastEdited: null,
+    libraryTitle: null,
+  })
   const [focusedLibraryId, setFocusedLibrary] = useState<string | null>(null)
-
-  // Derive globalSyncStatus from per-stream syncStatus so there is a single
-  // source of truth.  Before, globalSyncStatus was a separate useState that
-  // was manually kept in sync via scattered setGlobalSyncStatus calls, which
-  // caused oscillation bugs when the two fell out of step.
-  const globalSyncStatus = useMemo<SyncStatus>(() => {
-    const statuses = Object.values(syncStatus)
-    const allComplete = statuses.length === 0 || statuses.every(s => s.synced)
-    const anyError = statuses.some(s => s.hasError) || syncLoopError
-    const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
-    const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
-
-    return {
-      synced: initialSyncDone && allComplete,
-      isSyncing: !initialSyncDone || (!allComplete && !anyError),
-      currentIndex: totalCurrent,
-      finalIndex: totalFinal,
-      lastSyncedAt: initialSyncDone && allComplete ? new Date() : null,
-      hasError: anyError,
-      lastEdited: null,
-      libraryTitle: null,
-    }
-  }, [syncStatus, initialSyncDone, syncLoopError])
   const focusedLibraryRef = useRef<string | null>(null)
 
   // Keep ref in sync so the async sync loop can read the latest value
@@ -109,11 +94,22 @@ export const SyncStatusProvider: React.FC<{
     const pushStatus = () => {
       const snapshot = { ...latestPerStream }
       setSyncStatus(snapshot)
-      setInitialSyncDone(true)
-      setSyncLoopError(false)
 
       const statuses = Object.values(snapshot)
-      return statuses.length === 0 || statuses.every(s => s.synced)
+      const allComplete = statuses.length === 0 || statuses.every(s => s.synced)
+      const anyError = statuses.some(s => s.hasError)
+      const totalCurrent = statuses.reduce((sum, s) => sum + s.currentIndex, 0)
+      const totalFinal = statuses.reduce((sum, s) => sum + s.finalIndex, 0)
+      setGlobalSyncStatus(prev => ({
+        ...prev,
+        synced: allComplete,
+        isSyncing: !allComplete,
+        currentIndex: totalCurrent,
+        finalIndex: totalFinal,
+        lastSyncedAt: allComplete ? new Date() : prev.lastSyncedAt,
+        hasError: anyError,
+      }))
+      return allComplete
     }
 
     const scheduleNext = (delay: number) => {
@@ -151,6 +147,8 @@ export const SyncStatusProvider: React.FC<{
       if (isRunning) { console.log('[sync] syncLoop: already running, skipping'); return }
       isRunning = true
       pendingWakeUp = false
+
+      setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
 
       try {
         // Load all libraries into memory
@@ -308,7 +306,7 @@ export const SyncStatusProvider: React.FC<{
         }
       } catch (error) {
         console.error('Background sync error:', error)
-        setSyncLoopError(true)
+        setGlobalSyncStatus(prev => ({ ...prev, isSyncing: false, hasError: true }))
         isRunning = false
         if (pendingWakeUp) {
           pendingWakeUp = false
