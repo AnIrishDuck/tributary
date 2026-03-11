@@ -19,9 +19,10 @@ interface NoteViewPageProps {
   libraryName: string
   blockUuid: string
   versionUuid?: string
+  readOnly?: boolean
 }
 
-const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName, blockUuid, versionUuid }) => {
+const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, splatPath, ancestors, libraryName, blockUuid, versionUuid, readOnly = false }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
   const { client } = useTributary()
@@ -54,11 +55,12 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
 
   const editUrl = `/pk/${prefix}/${slugPath}&edit`
 
-  // Set Edit as the floating action button in the bottom nav
+  // Set Edit as the floating action button in the bottom nav (skip in readOnly mode)
   useEffect(() => {
+    if (readOnly) return
     setFloatingAction({ icon: PencilIcon, label: 'Edit', to: editUrl })
     return () => setFloatingAction(null)
-  }, [editUrl, setFloatingAction])
+  }, [editUrl, setFloatingAction, readOnly])
 
   const handleBack = () => {
     if (parentSlugPath) {
@@ -100,18 +102,29 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Historical version badge */}
+        {readOnly && (
+          <div className="mb-4">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+              Viewing historical version
+            </span>
+          </div>
+        )}
+
         {/* Breadcrumbs + Move button */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
             <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={slugPath.split('/').pop()} />
           </div>
-          <button
-            onClick={() => setShowMoveModal(true)}
-            className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-          >
-            <ArrowRightIcon className="w-4 h-4" />
-            <span className="hidden md:inline">Move</span>
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowMoveModal(true)}
+              className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <ArrowRightIcon className="w-4 h-4" />
+              <span className="hidden md:inline">Move</span>
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">

@@ -131,6 +131,64 @@ describe('NoteViewPage', () => {
     expect(screen.getByText(/This note has a unique slug/)).toBeInTheDocument()
   })
 
+  it('should hide the Edit button when readOnly is true (historical version)', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note with initial content
+    const { block } = await saveNote(stream, '# Historical Note\n\nOriginal content.')
+    const firstVersionUuid = block.version_uuid
+
+    // Create a second version so the first becomes historical
+    await saveNote(stream, '# Historical Note\n\nUpdated content.', 'web-ui', block.block_uuid)
+
+    // Navigate to the first version using @versionUuid suffix
+    const slug = block.slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}@${firstVersionUuid}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for content to render
+    await waitFor(() => {
+      expect(screen.getByText(/Original content/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Edit FAB should NOT be present
+    expect(screen.queryByLabelText('Edit')).toBeNull()
+  })
+
+  it('should render historical version badge when readOnly is true', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note
+    const { block } = await saveNote(stream, '# Badge Test\n\nSome content.')
+    const versionUuid = block.version_uuid
+
+    // Navigate to specific version
+    const slug = block.slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}@${versionUuid}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for page to load and check for the badge
+    await waitFor(() => {
+      expect(screen.getByText('Viewing historical version')).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
+
   it('should display version footer when version data is available', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
