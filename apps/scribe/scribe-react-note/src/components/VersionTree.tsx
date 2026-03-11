@@ -150,7 +150,7 @@ function VersionSubtree({ node, slugPath, prefix, isTopLevel }: {
       {spine.map((n, i) => {
         const versionUrl = `/pk/${prefix}/${slugPath}@${n.version_uuid}`
         const hasFork = n === oldest && isForkPoint
-        const isFirst = i === 0 && isTopLevel
+        const isFirst = i === 0 && !!isTopLevel
         const isLast = i === spine.length - 1 && !isForkPoint
 
         return (
