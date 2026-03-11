@@ -130,6 +130,13 @@ describe('VersionTree', () => {
     expect(screen.getByText('rootuuid')).toBeInTheDocument()
     expect(screen.getByText('child111')).toBeInTheDocument()
     expect(screen.getByText('child222')).toBeInTheDocument()
+
+    // Fork point should show "branched" badge
+    expect(screen.getByText('branched')).toBeInTheDocument()
+
+    // Branch labels should appear
+    expect(screen.getByText('Branch 1')).toBeInTheDocument()
+    expect(screen.getByText('Branch 2')).toBeInTheDocument()
   })
 
   it('links contain correct @version_uuid suffix', () => {
