@@ -148,8 +148,6 @@ export const SyncStatusProvider: React.FC<{
       isRunning = true
       pendingWakeUp = false
 
-      setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
-
       try {
         // Load all libraries into memory
         const streamIds = await client.list()
@@ -186,6 +184,16 @@ export const SyncStatusProvider: React.FC<{
             streamsToSync = []
             console.log('[sync] focus: Home, no libraries to sync')
           }
+        }
+
+        // Only mark as syncing when there are actually streams to sync.
+        // Setting this unconditionally before client.list() caused an
+        // oscillation on fresh logins with no libraries: each loop iteration
+        // would briefly flip isSyncing to true (showing "Syncing your
+        // libraries") before pushStatus() set it back to false (showing
+        // "No libraries yet").
+        if (streamsToSync.length > 0) {
+          setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
         }
 
         // Sync the selected library, tracking whether any data changed

@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import nacl from 'tweetnacl'
+import React from 'react'
 import HomePage from '../src/pages/HomePage'
-import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
+import { createTestTributaryClient, TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
+import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
 import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { routes } from '../src/route'
 import { getLibraries } from '../src/actions/getLibraries'
@@ -225,6 +227,63 @@ describe('HomePage', () => {
       expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
 
+    expect(screen.getByRole('heading', { name: /no libraries yet/i })).toBeInTheDocument()
+  })
+
+  it('should not oscillate between "no libraries" and "syncing" on fresh login', async () => {
+    const { client } = createTestTributaryClient()
+
+    // Wrap client.list() to add a small delay, simulating realistic async behavior.
+    // Without this, the in-memory client resolves instantly and React batches
+    // the isSyncing=true and isSyncing=false updates together, hiding the bug.
+    const originalList = client.list.bind(client)
+    client.list = async () => {
+      await new Promise(resolve => setTimeout(resolve, 5))
+      return originalList()
+    }
+
+    // Use a fast poll interval so the sync loop repeats multiple times
+    function FastProviders({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        SyncStatusProvider,
+        { client, pollInterval: 10 },
+        React.createElement(
+          TributaryProvider,
+          { client },
+          children
+        )
+      )
+    }
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/']
+    })
+
+    render(
+      <FastProviders>
+        <RouterProvider router={router} />
+      </FastProviders>
+    )
+
+    // Wait for the initial sync to complete and "No libraries yet" to appear
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /no libraries yet/i })).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Sample the UI across multiple sync loop iterations to detect oscillation.
+    // The bug causes "Syncing your libraries" to flash between renders because
+    // the sync loop sets isSyncing=true at the start of every iteration, even
+    // when there are no streams.
+    let sawSyncing = false
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      if (screen.queryByText(/syncing your libraries/i)) {
+        sawSyncing = true
+        break
+      }
+    }
+
+    expect(sawSyncing).toBe(false)
     expect(screen.getByRole('heading', { name: /no libraries yet/i })).toBeInTheDocument()
   })
 })
