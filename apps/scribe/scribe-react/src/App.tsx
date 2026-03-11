@@ -220,13 +220,19 @@ function App() {
   const [derivedKeyPair, setDerivedKeyPair] = useState<DerivedKeyPair | null>(null)
   const [setupStep, setSetupStep] = useState<string | null>(null)
 
-  // Logout: sign out of Supabase, wipe local DB, and reset client state
+  // Logout: sign out of Supabase, wipe local DB, and reset client state.
+  // Always reset in-memory state even if the PGlite wipe fails, so the
+  // user is never stuck with a stale client on next login.
   async function logout() {
     clearPersistedRootSeed()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
-    await wipePGlite()
+    try {
+      await wipePGlite()
+    } catch (err) {
+      console.error('wipePGlite failed during logout:', err)
+    }
     clientPromise = null
     setClient(null)
     setSession(null)
@@ -312,10 +318,13 @@ function App() {
 
   // Post-login home stream registration: re-derive and register the home key.
   // Updates setupStep so the UI can show progress during the multi-step process.
+  // Includes a timeout to detect when the local database is stuck (e.g.
+  // corrupted IndexedDB) so the user can recover instead of spinning forever.
   useEffect(() => {
     if (!client || !derivedKeyPair || !session) return
 
     let mounted = true
+    let timedOut = false
 
     async function registerHomeKey() {
       try {
@@ -339,16 +348,30 @@ function App() {
         console.error('Failed to register home key:', err)
       }
 
-      if (mounted) {
+      if (mounted && !timedOut) {
         setSetupStep(null)
         setDerivedKeyPair(null)
       }
     }
 
+    const timeoutId = setTimeout(() => {
+      if (mounted) {
+        timedOut = true
+        console.error('[app] registerHomeKey timed out — local database may be stuck')
+        setError(
+          'Setup timed out. Your browser\'s local database may be corrupted. ' +
+          'Try clearing site data for this origin, or close other tabs that may have this site open.'
+        )
+        setSetupStep(null)
+        setDerivedKeyPair(null)
+      }
+    }, 15_000)
+
     registerHomeKey()
 
     return () => {
       mounted = false
+      clearTimeout(timeoutId)
       setSetupStep(null)
     }
   }, [client, derivedKeyPair, session])
@@ -434,15 +457,26 @@ function App() {
               <p className="text-xs text-gray-500 font-semibold mb-1">Server URL</p>
               <p className="text-sm font-mono text-gray-700 break-all">{CONFIG.API_URL}</p>
             </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Try Again
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Try Again
+              </button>
+              <button
+                onClick={async () => {
+                  await logout()
+                  window.location.reload()
+                }}
+                className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Clear Local Data &amp; Retry
+              </button>
+            </div>
           </div>
         </div>
       </div>
