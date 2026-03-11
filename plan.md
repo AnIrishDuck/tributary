@@ -56,6 +56,35 @@ reconstruct any version. The first version of a note is always a full snapshot.
   Realistically, all clients will be updated together.
 - The migration SQL is itself a synced blob, so it replays on all clients
 
+### Query compatibility across migration boundary
+
+A key concern: do we need separate pre-migration and post-migration versions of
+queries? **No.** Here's why:
+
+1. **Blob ordering guarantees safety.** Every write goes through
+   `ensureServerPersistence()` which assigns a monotonic `sequenceNumber`. On
+   sync, blobs replay in sequence order. The `ALTER TABLE` blob always has a
+   lower sequence number than any `INSERT` that includes `body_type`, so the
+   column always exists before any code tries to use it.
+
+2. **`SELECT *` handles missing columns gracefully.** All read functions use
+   `SELECT * FROM block` and cast to `Note`. Before the migration syncs, the
+   result simply won't include `body_type` — it will be `undefined` in
+   TypeScript. Read code should treat `undefined` the same as `'full'`
+   (one null-coalesce: `note.body_type ?? 'full'`).
+
+3. **Old `INSERT`s work after migration.** Existing `INSERT` statements that
+   don't name `body_type` rely on the `DEFAULT 'full'` — PostgreSQL fills it
+   in automatically. No query changes needed for existing write paths.
+
+4. **New `INSERT`s never run before migration.** Code that writes
+   `body_type: 'delta'` is only deployed alongside the migration. Since the
+   migration blob has a lower sequence number, it's always applied first.
+
+**The only real risk** is an old client reading a delta row — it would see
+patch text as the body. This is a deployment coordination issue (ship read
+support before write support), not a query duplication issue.
+
 ## PR Breakdown
 
 ### PR 1: Add diff-match-patch utilities (~200 LOC)
