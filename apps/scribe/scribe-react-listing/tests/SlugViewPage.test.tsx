@@ -104,6 +104,36 @@ describe('SlugViewPage', () => {
     expect(screen.queryByLabelText('Edit')).toBeNull()
   })
 
+  it('should render history page when navigating to slug&history', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note with two versions
+    const { block } = await saveNote(stream, '# Pasta\n\nVersion 1.')
+    await saveNote(stream, '# Pasta\n\nVersion 2.', 'web-ui', block.block_uuid)
+
+    const slug = block.slug
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/${slug}&history`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show the history page header
+    await waitFor(() => {
+      expect(screen.getByText('Version History')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should show version entries with "current" badge for authoritative version
+    await waitFor(() => {
+      expect(screen.getByText('current')).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
+
   it('should show error for invalid version UUID in @suffix', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]

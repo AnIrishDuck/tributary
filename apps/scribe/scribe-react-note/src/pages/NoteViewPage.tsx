@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { PencilIcon, ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, ArrowLeftIcon, ArrowRightIcon, ClockIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
+import { Link } from 'react-router'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
@@ -97,6 +98,15 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
                 })()}
               </h1>
             </div>
+            {!readOnly && (
+              <Link
+                to={`/pk/${prefix}/${slugPath}&history`}
+                className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 font-medium"
+              >
+                <ClockIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">History</span>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -140,6 +150,8 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
               versionUuid={versionUuid}
               position={versionPosition.position}
               total={versionPosition.total}
+              slugPath={slugPath}
+              prefix={prefix}
             />
           </div>
         )}
