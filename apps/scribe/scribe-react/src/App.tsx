@@ -327,25 +327,33 @@ function App() {
     let timedOut = false
 
     async function registerHomeKey() {
+      const t0 = performance.now()
+      const elapsed = () => `${(performance.now() - t0).toFixed(0)}ms`
       try {
+        console.log(`[registerHomeKey] start`)
         if (mounted) setSetupStep('Registering encryption keys...')
         await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
+        console.log(`[registerHomeKey] addWriteKey done at ${elapsed()}`)
 
         const existingHome = await client!.getHomeStream()
+        console.log(`[registerHomeKey] getHomeStream done at ${elapsed()}, exists=${!!existingHome}`)
         if (!existingHome) {
           if (mounted) setSetupStep('Setting up your library...')
           const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
           await client!.setHomeStream(publicKeyBase64)
+          console.log(`[registerHomeKey] setHomeStream done at ${elapsed()}`)
         }
 
         if (mounted) setSetupStep('Syncing your library...')
         const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
         const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
+        console.log(`[registerHomeKey] get stream done at ${elapsed()}, found=${!!stream}`)
         if (stream) {
           await stream.sync(1000)
+          console.log(`[registerHomeKey] initial sync done at ${elapsed()}`)
         }
       } catch (err) {
-        console.error('Failed to register home key:', err)
+        console.error(`[registerHomeKey] failed at ${elapsed()}:`, err)
       }
 
       if (mounted && !timedOut) {

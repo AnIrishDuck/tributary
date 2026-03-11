@@ -80,34 +80,38 @@ export class TributaryClient {
    * @returns A schema ID that is a valid SQL identifier
    */
   private async generateSchemaId(publicKey: Uint8Array): Promise<string> {
+    const t0 = performance.now();
+    info('[generateSchemaId] start');
+
     // Import computeHash function
     const { computeHash } = await import('./hashUtils.js');
-    
+
     // First check if we already have a stream with this exact public key
     try {
       const result: any = await this.pglite.query(
         `SELECT schema_id FROM tributary.streams WHERE read_key = $1`,
         [publicKey]
       );
-      
+
       if (result.rows.length > 0) {
         // Found existing stream with same public key, return its schema ID
+        info(`[generateSchemaId] found existing schema_id in ${(performance.now() - t0).toFixed(0)}ms`);
         return result.rows[0].schema_id;
       }
     } catch (err) {
       // If there's an error querying, continue with generated schema ID
       warn('Error checking for existing stream with same public key:', err as Error);
     }
-    
+
     // Generate initial schema ID from public key
     const fullHash = await computeHash(publicKey);
     let schemaId = fullHash.substring(0, 16);
-    
+
     // Check if this schema ID already exists in the database (handle potential hash collisions)
     let currentSchemaId = schemaId;
     let counter = 0;
     const MAX_ATTEMPTS = 10000; // Limit to prevent infinite loops
-    
+
     // Limit iterations to prevent infinite loops
     while (counter < MAX_ATTEMPTS) {
       try {
@@ -115,32 +119,42 @@ export class TributaryClient {
           `SELECT COUNT(*) as count FROM tributary.streams WHERE schema_id = $1`,
           [currentSchemaId]
         );
-        
-        if (Number(result.rows[0].count) === 0) {
+
+        const rawCount = result.rows[0].count;
+        if (counter === 0) {
+          info(`[generateSchemaId] COUNT(*) returned type=${typeof rawCount} value=${rawCount}`);
+        }
+
+        if (Number(rawCount) === 0) {
           break; // Found a unique schema ID
         }
       } catch (err) {
         // If there's an error querying, assume the schema ID is free
+        warn('[generateSchemaId] query error, assuming schema_id is free:', err as Error);
         break;
       }
-      
+
       // Increment counter and generate a new schema ID to avoid collisions
       counter++;
+      if (counter % 100 === 0) {
+        warn(`[generateSchemaId] collision loop at iteration ${counter} — this should not happen`);
+      }
       const counterBuffer = new Uint8Array(publicKey.length + 4);
       counterBuffer.set(publicKey);
       const counterBytes = new Uint8Array(4);
       new DataView(counterBytes.buffer).setUint32(0, counter, false);
       counterBuffer.set(counterBytes, publicKey.length);
-      
+
       const counterHash = await computeHash(counterBuffer);
       currentSchemaId = counterHash.substring(0, 16);
     }
-    
+
     // If we've exhausted our attempts, throw an error
     if (counter >= MAX_ATTEMPTS) {
       throw new Error(`Unable to generate unique schema ID after ${MAX_ATTEMPTS} attempts`);
     }
-    
+
+    info(`[generateSchemaId] done in ${(performance.now() - t0).toFixed(0)}ms (${counter} collisions)`);
     return currentSchemaId;
   }
 
@@ -151,9 +165,13 @@ export class TributaryClient {
    * @returns The associated TributaryStream
    */
   async addWriteKey(appId: string, key: string | Uint8Array): Promise<TributaryStream> {
+    const t0 = performance.now();
+    info('[addWriteKey] start');
+
     // Wait for initialization to complete
     await this.initialized;
-    
+    info(`[addWriteKey] initialized wait done at ${(performance.now() - t0).toFixed(0)}ms`);
+
     // Handle private key
     let privateKey: Uint8Array;
     if (typeof key === 'string') {
@@ -161,21 +179,22 @@ export class TributaryClient {
     } else {
       privateKey = new Uint8Array(key);
     }
-    
+
     // Derive public key from private key
     // In Ed25519, the public key is the last 32 bytes of the expanded private key
     const publicKey = new Uint8Array(privateKey.slice(32));
     const streamIdStr = base64url.encode(Buffer.from(publicKey));
-    
+
     // Check if we already have this stream
     if (this.streams.has(streamIdStr)) {
+      info(`[addWriteKey] stream already cached, returning at ${(performance.now() - t0).toFixed(0)}ms`);
       return this.streams.get(streamIdStr)!;
     }
 
     // Generate schema ID from the public key
     const schemaId = await this.generateSchemaId(publicKey);
-    info('Generated schema id', schemaId);
-    
+    info(`[addWriteKey] generateSchemaId done at ${(performance.now() - t0).toFixed(0)}ms, schemaId=${schemaId}`);
+
     // Create a new TributaryStream
     const stream = new TributaryStream({
       server: this.server,
@@ -184,16 +203,15 @@ export class TributaryClient {
       appId: appId,
       schemaId: schemaId
     });
-    
-    info('Created TributaryStream, about to initialize schema');
-    
+
     // Initialize the stream
     await stream.initializeSchema();
+    info(`[addWriteKey] initializeSchema done at ${(performance.now() - t0).toFixed(0)}ms`);
+
     // Initialize sync state to ensure stream is saved to database
     // @ts-ignore - accessing private method for initialization
     await stream.initializeSyncState();
-    
-    info('Schema initialized');
+    info(`[addWriteKey] initializeSyncState done at ${(performance.now() - t0).toFixed(0)}ms`);
     
     // Store the stream
     this.streams.set(streamIdStr, stream);
