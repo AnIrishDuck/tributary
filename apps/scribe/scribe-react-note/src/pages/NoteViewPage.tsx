@@ -98,15 +98,6 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
                 })()}
               </h1>
             </div>
-            {!readOnly && (
-              <Link
-                to={`/pk/${prefix}/${slugPath}&history`}
-                className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 font-medium"
-              >
-                <ClockIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">History</span>
-              </Link>
-            )}
           </div>
         </div>
       </div>
@@ -127,13 +118,20 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
             <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={slugPath.split('/').pop()} />
           </div>
           {!readOnly && (
-            <button
-              onClick={() => setShowMoveModal(true)}
-              className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-            >
-              <ArrowRightIcon className="w-4 h-4" />
-              <span className="hidden md:inline">Move</span>
-            </button>
+            <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
+              <Link
+                to={`/pk/${prefix}/${slugPath}&history`}
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+              >
+                <ClockIcon className="w-4 h-4" />
+              </Link>
+              <button
+                onClick={() => setShowMoveModal(true)}
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+              >
+                <ArrowRightIcon className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
 
