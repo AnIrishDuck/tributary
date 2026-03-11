@@ -148,8 +148,6 @@ export const SyncStatusProvider: React.FC<{
       isRunning = true
       pendingWakeUp = false
 
-      setGlobalSyncStatus(prev => ({ ...prev, isSyncing: true, hasError: false }))
-
       try {
         // Load all libraries into memory
         const streamIds = await client.list()
