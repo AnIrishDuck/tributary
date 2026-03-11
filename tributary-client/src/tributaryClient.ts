@@ -116,7 +116,7 @@ export class TributaryClient {
           [currentSchemaId]
         );
         
-        if (result.rows[0].count === 0) {
+        if (Number(result.rows[0].count) === 0) {
           break; // Found a unique schema ID
         }
       } catch (err) {

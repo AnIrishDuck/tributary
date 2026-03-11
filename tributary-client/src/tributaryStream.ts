@@ -137,7 +137,7 @@ export class TributaryStream {
       );
       debug('Check result:', checkResult.rows[0].count);
       
-      if (checkResult.rows[0].count === 0) {
+      if (Number(checkResult.rows[0].count) === 0) {
         info('Inserting new stream into database');
         // Insert stream info if it doesn't exist
         // We need to provide actual values for the NOT NULL columns
