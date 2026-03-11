@@ -60,7 +60,7 @@ describe('VersionTree', () => {
     expect(screen.getByText('current')).toBeInTheDocument()
   })
 
-  it('renders a linear chain of 3 nodes', () => {
+  it('renders a linear chain of 3 nodes in reverse chronological order', () => {
     const leaf: TreeNode = {
       version_uuid: 'cccccccc-0000-0000-0000-000000000000',
       prior_version_uuid: 'bbbbbbbb-0000-0000-0000-000000000000',
@@ -90,9 +90,11 @@ describe('VersionTree', () => {
       <VersionTree node={root} slugPath="cooking/pasta" prefix="test-prefix" />
     )
 
-    expect(screen.getByText('aaaaaaaa')).toBeInTheDocument()
-    expect(screen.getByText('bbbbbbbb')).toBeInTheDocument()
-    expect(screen.getByText('cccccccc')).toBeInTheDocument()
+    const links = screen.getAllByRole('link')
+    // Newest first: cccccccc, then bbbbbbbb, then aaaaaaaa
+    expect(links[0]).toHaveTextContent('cccccccc')
+    expect(links[1]).toHaveTextContent('bbbbbbbb')
+    expect(links[2]).toHaveTextContent('aaaaaaaa')
   })
 
   it('renders a branch with two children', () => {
