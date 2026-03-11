@@ -1,7 +1,7 @@
 import { TributaryLocal } from 'tributary-client'
 import { CollectionSlug, NoteSlug } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
-import { getNotesBySlugInCollection } from './indexing.js'
+import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
 
 export interface ResolveResult {
   type: 'note' | 'collection' | 'collision'
@@ -184,4 +184,122 @@ export async function resolveSlugPathPartial(
     parentExists: true,
     parentUuid: currentParentUuid
   }
+}
+
+/**
+ * A single slug suggestion returned by `suggestSlugs`.
+ */
+export interface SlugSuggestion {
+  /** The full slug path, e.g. 'cooking/italian/pasta' */
+  slug_path: string
+  /** The display title of the entity */
+  title: string
+  /** Whether this is a 'note' or 'collection' */
+  type: 'note' | 'collection'
+}
+
+/**
+ * Options for `suggestSlugs`.
+ */
+export interface SuggestSlugsOptions {
+  /** Maximum number of suggestions to return. Defaults to 5. */
+  limit?: number
+  /** Filter to only notes or only collections. Defaults to undefined (both). */
+  slug_type?: 'note' | 'collection'
+}
+
+/**
+ * Suggest slugs matching a prefix, for typeahead/autocomplete.
+ *
+ * All segments except the last are resolved as collections (via
+ * `resolveSlugPathPartial`) to find the parent scope. The final segment is
+ * used as a prefix filter on slugs within that parent collection.
+ *
+ * For example, given segments ['cooking', 'ital']:
+ * 1. Resolve 'cooking' as a collection under the library root.
+ * 2. Find all notes and collections under 'cooking' whose slug starts with 'ital'.
+ *
+ * @param db The TributaryLocal database instance
+ * @param segments Array of slug segments, e.g. ['cooking', 'ital']
+ * @param libraryUuid The UUID of the library (root collection)
+ * @param options Limit and type filter options
+ * @returns Array of matching slug suggestions, up to `limit`
+ */
+export async function suggestSlugs(
+  db: TributaryLocal,
+  segments: string[],
+  libraryUuid: string,
+  options: SuggestSlugsOptions = {}
+): Promise<SlugSuggestion[]> {
+  const limit = options.limit ?? 5
+  const slugType = options.slug_type
+
+  // The last segment is the prefix to match against; all prior segments
+  // are parent collections to resolve.
+  const parentSegments = segments.slice(0, -1)
+  const searchPrefix = segments.length > 0 ? segments[segments.length - 1] : ''
+
+  // Resolve parent path using existing partial resolution
+  const partial = await resolveSlugPathPartial(db, parentSegments, libraryUuid)
+  if (partial.missingSegments.length > 0) {
+    // Parent path doesn't fully exist — no suggestions
+    return []
+  }
+
+  const parentUuid = partial.parentUuid
+  const pathPrefix = partial.resolvedSegments.length > 0
+    ? partial.resolvedSegments.join('/') + '/'
+    : ''
+  const suggestions: SlugSuggestion[] = []
+
+  // Query matching collections
+  if (slugType !== 'note') {
+    const likePattern = searchPrefix + '%'
+    const collResult = await db.query(
+      `SELECT collection_uuid, slug, title, parent_collection_uuid
+       FROM collection
+       WHERE parent_collection_uuid = $1 AND slug LIKE $2
+       ORDER BY slug
+       LIMIT $3`,
+      [parentUuid, likePattern, limit]
+    )
+
+    for (const row of (collResult.rows || []) as CollectionSlug[]) {
+      suggestions.push({
+        slug_path: pathPrefix + row.slug,
+        title: row.title,
+        type: 'collection'
+      })
+    }
+  }
+
+  // Query matching notes
+  if (slugType !== 'collection') {
+    const remaining = limit - suggestions.length
+    if (remaining > 0) {
+      const likePattern = searchPrefix + '%'
+      const noteResult = await db.query(
+        `SELECT b.block_uuid, b.slug, b.body
+         FROM block b
+         INNER JOIN authoritative_version av
+           ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.collection_id = $1 AND b.slug LIKE $2
+         ORDER BY b.slug
+         LIMIT $3`,
+        [parentUuid, likePattern, remaining]
+      )
+
+      for (const row of (noteResult.rows || []) as any[]) {
+        suggestions.push({
+          slug_path: pathPrefix + row.slug,
+          title: extractTitleFromMarkdown(row.body) || '',
+          type: 'note'
+        })
+      }
+    }
+  }
+
+  // Sort by slug_path and enforce overall limit
+  suggestions.sort((a, b) => a.slug_path.localeCompare(b.slug_path))
+  return suggestions.slice(0, limit)
 }
