@@ -19,6 +19,8 @@
     "paths": {
       "@/*": ["src/*"],
       "tributary-client/*": ["../../../tributary-client/dist/*"],
+      "scribe-react-listing/*": ["../scribe-react-listing/*"],
+      "scribe-react-common/*": ["../scribe-react-common/*"],
       "@electric-sql/pglite/worker": ["../../../node_modules/@electric-sql/pglite/dist/worker/index"]
     }
   },

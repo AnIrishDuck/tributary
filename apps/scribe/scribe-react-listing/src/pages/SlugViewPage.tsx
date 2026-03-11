@@ -9,6 +9,7 @@ import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
 import SlugCollision from './SlugCollision'
 import EditorPage from 'scribe-react-note/src/pages/EditorPage'
+import HistoryPage from 'scribe-react-note/src/pages/HistoryPage'
 import NewCollectionPage from './NewCollectionPage'
 import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
@@ -42,6 +43,7 @@ type PageMode =
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
   | { type: 'librarySettings' }
+  | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
 
 const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
@@ -274,6 +276,37 @@ const SlugViewPage: React.FC = () => {
             ancestors: noteAncestors,
             libraryName
           })
+          return
+        }
+
+        // --- Handle &history suffix (view version history) ---
+        if (lastSegment.endsWith('&history')) {
+          const noteSlug = lastSegment.slice(0, -'&history'.length)
+          if (!noteSlug) throw new Error('Invalid history path')
+
+          const resolveSegments = [...segments.slice(0, -1), noteSlug]
+
+          const library = await getLibrary(localDb)
+          if (!library) throw new Error('Library not found')
+
+          const resolved = await resolveSlugPath(localDb, resolveSegments, library.collection_uuid)
+          if (!resolved || resolved.type !== 'note') {
+            throw new Error('Path does not resolve to a note')
+          }
+
+          const blockSlugInfo = resolved.entity as BlockSlugInfo
+          const fullSlugPath = resolveSegments.join('/')
+
+          let noteAncestors: Collection[] = []
+          const parentSegments = segments.slice(0, -1)
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              noteAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
+            }
+          }
+
+          setMode({ type: 'history', blockUuid: blockSlugInfo.block_uuid, slugPath: fullSlugPath, ancestors: noteAncestors, libraryName })
           return
         }
 
@@ -564,6 +597,18 @@ const SlugViewPage: React.FC = () => {
         slugPath={mode.slugPath}
         resolvedSegments={mode.resolvedSegments}
         missingSegments={mode.missingSegments}
+      />
+    )
+  }
+
+  if (mode.type === 'history') {
+    return (
+      <HistoryPage
+        prefix={prefix || ''}
+        blockUuid={mode.blockUuid}
+        slugPath={mode.slugPath}
+        ancestors={mode.ancestors}
+        libraryName={mode.libraryName}
       />
     )
   }
