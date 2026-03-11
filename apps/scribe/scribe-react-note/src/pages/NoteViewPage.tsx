@@ -127,6 +127,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
               </Link>
               <button
                 onClick={() => setShowMoveModal(true)}
+                aria-label="Move"
                 className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
               >
                 <ArrowRightIcon className="w-4 h-4" />
