@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -259,9 +259,23 @@ export const SyncStatusProvider: React.FC<{
               // When the home stream finishes syncing, seed the linked_libraries
               // cache from its collection table so the home page can render
               // immediately on next load without initializing every stream.
+              // Also register linked library streams so the sync loop can
+              // discover and sync them on subsequent ticks (critical for
+              // direct-link navigation that skips the home page).
               if (id === homeStreamId && homeLocal) {
                 try {
                   await seedLinkedLibrariesCache(stream, homeLocal)
+                  // Register linked streams so client.list() includes them
+                  const linkedLibraries = await getLinkedLibraries(stream)
+                  for (const col of linkedLibraries) {
+                    if (col.linked_stream_key) {
+                      try {
+                        await client.addWriteKey('scribe', col.linked_stream_key)
+                      } catch (err) {
+                        console.error(`[sync] Error registering linked library ${col.linked_stream_id}:`, err)
+                      }
+                    }
+                  }
                 } catch (err) {
                   console.error('[sync] Error seeding linked libraries cache:', err)
                 }

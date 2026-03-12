@@ -49,12 +49,15 @@ const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, setFocusedLibrary } = useSyncStatus()
 
   // Extract the library prefix and splat path from params
   const params = useParams()
   const prefix = params.prefix
   const splatPath = params['*'] || ''
+
+  // Track whether this specific library has been synced at least once
+  const librarySynced = prefix ? (syncStatus[prefix]?.synced ?? false) : false
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -82,6 +85,13 @@ const SlugViewPage: React.FC = () => {
         const stream = await client.get('scribe', streamId)
 
         if (!stream) {
+          // Library not in local DB yet — if sync hasn't completed for this
+          // library, stay in loading state so the effect retries once
+          // librarySynced flips to true (it's in the dependency array).
+          if (!librarySynced) {
+            setMode({ type: 'loading' })
+            return
+          }
           throw new Error('Failed to get library')
         }
 
@@ -489,10 +499,12 @@ const SlugViewPage: React.FC = () => {
     }
 
     loadContent()
-  }, [client, prefix, splatPath])
+  }, [client, prefix, splatPath, librarySynced])
 
   if (mode.type === 'loading') {
-    return <SlugLoadingPage />
+    const libStatus = prefix ? syncStatus[prefix] : undefined
+    const syncProgress = libStatus ? { currentIndex: libStatus.currentIndex, finalIndex: libStatus.finalIndex } : null
+    return <SlugLoadingPage syncProgress={syncProgress} />
   }
 
   if (mode.type === 'error') {
