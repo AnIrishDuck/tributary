@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
-import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection } from 'scribe-data'
+import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, schemaReady } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
 const NoteListPage: React.FC = () => {
@@ -47,6 +47,16 @@ const NoteListPage: React.FC = () => {
             return
           }
           throw new Error('Could not get local database')
+        }
+
+        // Check if the synced schema tables exist before attempting queries.
+        if (!await schemaReady(localDb)) {
+          const libStatus = syncStatus[prefix]
+          if (!libStatus || !libStatus.synced) {
+            // Still syncing — stay in loading state, effect will re-run
+            return
+          }
+          throw new Error('Library schema could not be loaded. The library data may be corrupt or incompatible.')
         }
 
         // Get library root collection

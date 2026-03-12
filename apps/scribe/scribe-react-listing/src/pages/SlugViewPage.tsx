@@ -30,6 +30,8 @@ interface AuthoritativeVersion {
 
 type PageMode =
   | { type: 'loading' }
+  | { type: 'schemaLoading' }
+  | { type: 'schemaError' }
   | { type: 'error'; message: string }
   | { type: 'note'; content: string; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; versionUuid: string; blockUuid: string }
   | { type: 'historicalNote'; content: string; title: string; slugPath: string; versionUuid: string; blockUuid: string; ancestors: Collection[]; libraryName: string }
@@ -101,11 +103,25 @@ const SlugViewPage: React.FC = () => {
         const localDb = stream.local()
 
         const {
+          schemaReady,
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
           getCollectionAncestors, getNotesInCollectionWithSlugs, getCollidingSlugs, slugToTitle,
           resolveSlugPath, getSlugPath, getNoteSlugByUuid
         } = await import('scribe-data')
+
+        // Check if the synced schema tables exist before attempting queries.
+        // If the library is still syncing, the schema may not have arrived yet
+        // — show a loading spinner. If it's fully synced and still missing,
+        // that's an error.
+        if (!await schemaReady(localDb)) {
+          if (!librarySynced) {
+            setMode({ type: 'schemaLoading' })
+          } else {
+            setMode({ type: 'schemaError' })
+          }
+          return
+        }
 
         // Fetch library display name once for breadcrumbs
         const libraryName = await getLibraryDisplayName(localDb) || 'Library'
@@ -504,10 +520,14 @@ const SlugViewPage: React.FC = () => {
     loadContent()
   }, [client, prefix, splatPath, librarySynced, globalSyncStatus.synced])
 
-  if (mode.type === 'loading') {
+  if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined
     const syncProgress = libStatus ? { currentIndex: libStatus.currentIndex, finalIndex: libStatus.finalIndex } : null
     return <SlugLoadingPage syncProgress={syncProgress} />
+  }
+
+  if (mode.type === 'schemaError') {
+    return <SlugErrorPage message="Library schema could not be loaded. The library data may be corrupt or incompatible." prefix={prefix} />
   }
 
   if (mode.type === 'error') {
