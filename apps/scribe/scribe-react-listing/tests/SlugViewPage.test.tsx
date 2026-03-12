@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
-import { createTestClientWithStream, WithProviders } from './test-utils'
+import { createTestClientWithStream, WithProviders, WithFastSyncProviders, createFreshLoginClient } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
@@ -158,5 +158,32 @@ describe('SlugViewPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Version not found|Failed to load note/)).toBeInTheDocument()
     }, { timeout: 5000 })
+  })
+
+  it('should load a note via direct link on fresh login (sync discovers linked library)', async () => {
+    const { clientA, clientB, linkedStream, linkedStreamId } = await createFreshLoginClient('Shared Notes')
+
+    // Create a note in the linked library via Client A
+    await saveNote(linkedStream, '# Direct Link Note\n\nThis note was reached via a direct link.')
+    await clientA.sync(1000)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/direct-link-note`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // The sync loop should discover the linked library, register it, sync it,
+    // and then SlugViewPage should render the note content.
+    await waitFor(() => {
+      expect(screen.getByText(/This note was reached via a direct link/)).toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Should NOT show any error
+    expect(screen.queryByText(/Failed to load note/)).toBeNull()
   })
 })

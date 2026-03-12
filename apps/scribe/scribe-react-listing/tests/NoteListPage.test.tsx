@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
+import { WithFastSyncProviders, createFreshLoginClient } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
 import * as scribeData from 'scribe-data'
 
@@ -331,5 +332,30 @@ describe('NoteListPage', () => {
 
     // Collection should appear
     expect(screen.getByText('Recipes')).toBeInTheDocument()
+  })
+
+  it('should load library root via direct link on fresh login (sync discovers linked library)', async () => {
+    // Simulate: User A creates a library with a note, User B logs in fresh
+    // and navigates directly to the library root URL.
+    const { clientB, linkedStreamId } = await createFreshLoginClient('Shared Library')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // The sync loop should discover the linked library, register it, sync it,
+    // and then NoteListPage should render instead of showing an error.
+    await waitFor(() => {
+      expect(screen.getByText('Shared Library')).toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Should NOT show "Could not get local database" error
+    expect(screen.queryByText(/Could not get local database/)).toBeNull()
   })
 })

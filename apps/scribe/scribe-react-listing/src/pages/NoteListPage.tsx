@@ -8,7 +8,7 @@ import NoteListView from './SlugNoteListPage'
 const NoteListPage: React.FC = () => {
   const { prefix } = useParams<{ prefix: string }>()
   const { client } = useTributary()
-  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   const [notes, setNotes] = useState<NoteSlugRow[]>([])
   const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>([])
   const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
@@ -39,6 +39,13 @@ const NoteListPage: React.FC = () => {
         // Get the local database for this library
         const localDb = await client.getLocal('scribe', prefix)
         if (!localDb) {
+          // Library not in local DB yet. If sync hasn't finished discovering
+          // all linked libraries, stay in loading state — the effect will
+          // re-run when librarySyncStatusDep or globalSyncStatus.synced changes.
+          const libStatus = syncStatus[prefix]
+          if ((!libStatus || !libStatus.synced) && !globalSyncStatus.synced) {
+            return
+          }
           throw new Error('Could not get local database')
         }
 
@@ -82,7 +89,7 @@ const NoteListPage: React.FC = () => {
     }
 
     loadNotes()
-  }, [client, prefix, librarySyncStatusDep])
+  }, [client, prefix, librarySyncStatusDep, globalSyncStatus.synced])
 
   if (loading) {
     return (
