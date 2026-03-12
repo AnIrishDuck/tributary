@@ -77,9 +77,23 @@ export async function wipePGlite(): Promise<void> {
         .filter((db): db is IDBDatabaseInfo & { name: string } => db.name != null)
         .map((db) => new Promise<void>((resolve) => {
           const req = indexedDB.deleteDatabase(db.name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => resolve()
-          req.onblocked = () => resolve()
+          req.onsuccess = () => {
+            console.log(`[wipePGlite] deleteDatabase("${db.name}") succeeded`)
+            resolve()
+          }
+          req.onerror = () => {
+            console.error(`[wipePGlite] deleteDatabase("${db.name}") failed:`, req.error)
+            resolve()
+          }
+          // onblocked fires when other connections are still open.
+          // Wait up to 2s for connections to close (onsuccess/onerror will
+          // resolve normally if they do).  If still blocked, resolve anyway
+          // so the page reload can proceed — the reload itself will close
+          // the lingering connections.
+          req.onblocked = () => {
+            console.warn(`[wipePGlite] deleteDatabase("${db.name}") blocked — waiting up to 2s`)
+            setTimeout(resolve, 2000)
+          }
         }))
     )
   }

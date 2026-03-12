@@ -344,6 +344,11 @@ function App() {
           console.log(`[registerHomeKey] setHomeStream done at ${elapsed()}`)
         }
 
+        // Database setup completed — clear the stuck-database timeout before
+        // starting sync, which can legitimately take a long time for large
+        // streams without indicating a problem.
+        clearTimeout(timeoutId)
+
         if (mounted) setSetupStep('Syncing your library...')
         const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
         const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
