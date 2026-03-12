@@ -49,7 +49,7 @@ const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
 
   // Extract the library prefix and splat path from params
   const params = useParams()
@@ -85,10 +85,13 @@ const SlugViewPage: React.FC = () => {
         const stream = await client.get('scribe', streamId)
 
         if (!stream) {
-          // Library not in local DB yet — if sync hasn't completed for this
-          // library, stay in loading state so the effect retries once
-          // librarySynced flips to true (it's in the dependency array).
-          if (!librarySynced) {
+          // Library not in local DB yet. If the sync loop hasn't finished
+          // discovering all linked libraries, stay in loading state — the
+          // effect will re-run once librarySynced or globalSyncStatus.synced
+          // changes. Once the global sync has completed a full cycle (home
+          // stream processed, linked libraries registered) and the library
+          // still doesn't exist, surface the error.
+          if (!librarySynced && !globalSyncStatus.synced) {
             setMode({ type: 'loading' })
             return
           }
@@ -499,7 +502,7 @@ const SlugViewPage: React.FC = () => {
     }
 
     loadContent()
-  }, [client, prefix, splatPath, librarySynced])
+  }, [client, prefix, splatPath, librarySynced, globalSyncStatus.synced])
 
   if (mode.type === 'loading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined
