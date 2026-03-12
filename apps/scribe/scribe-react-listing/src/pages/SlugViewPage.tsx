@@ -49,12 +49,15 @@ const SlugViewPage: React.FC = () => {
   const [mode, setMode] = useState<PageMode>({ type: 'loading' })
   const navigate = useNavigate()
   const { client } = useTributary()
-  const { setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
 
   // Extract the library prefix and splat path from params
   const params = useParams()
   const prefix = params.prefix
   const splatPath = params['*'] || ''
+
+  // Track whether this specific library has been synced at least once
+  const librarySynced = prefix ? (syncStatus[prefix]?.synced ?? false) : false
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -82,6 +85,16 @@ const SlugViewPage: React.FC = () => {
         const stream = await client.get('scribe', streamId)
 
         if (!stream) {
+          // Library not in local DB yet. If the sync loop hasn't finished
+          // discovering all linked libraries, stay in loading state — the
+          // effect will re-run once librarySynced or globalSyncStatus.synced
+          // changes. Once the global sync has completed a full cycle (home
+          // stream processed, linked libraries registered) and the library
+          // still doesn't exist, surface the error.
+          if (!librarySynced && !globalSyncStatus.synced) {
+            setMode({ type: 'loading' })
+            return
+          }
           throw new Error('Failed to get library')
         }
 
@@ -489,10 +502,12 @@ const SlugViewPage: React.FC = () => {
     }
 
     loadContent()
-  }, [client, prefix, splatPath])
+  }, [client, prefix, splatPath, librarySynced, globalSyncStatus.synced])
 
   if (mode.type === 'loading') {
-    return <SlugLoadingPage />
+    const libStatus = prefix ? syncStatus[prefix] : undefined
+    const syncProgress = libStatus ? { currentIndex: libStatus.currentIndex, finalIndex: libStatus.finalIndex } : null
+    return <SlugLoadingPage syncProgress={syncProgress} />
   }
 
   if (mode.type === 'error') {

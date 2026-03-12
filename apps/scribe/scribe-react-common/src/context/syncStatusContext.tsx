@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -170,7 +170,20 @@ export const SyncStatusProvider: React.FC<{
         let streamsToSync: Array<{ id: string; stream: TributaryStream }>
         if (syncFocus.type === 'library') {
           streamsToSync = streams.filter(s => s.id === syncFocus.id)
-          console.log(`[sync] focus: library ${syncFocus.id}`)
+          // If the focused library isn't registered yet (e.g. direct-link to
+          // a linked library on fresh login), also sync the home stream so the
+          // linked library can be discovered and registered.
+          if (streamsToSync.length === 0 && homeStreamId) {
+            const homeEntry = streams.find(s => s.id === homeStreamId)
+            if (homeEntry) {
+              streamsToSync = [homeEntry]
+              console.log(`[sync] focus: library ${syncFocus.id} (not found, syncing home to discover)`)
+            } else {
+              console.log(`[sync] focus: library ${syncFocus.id} (not found, no home stream)`)
+            }
+          } else {
+            console.log(`[sync] focus: library ${syncFocus.id}`)
+          }
         } else {
           // Round-robin: sync one library per tick
           if (streams.length > 0) {
@@ -259,9 +272,39 @@ export const SyncStatusProvider: React.FC<{
               // When the home stream finishes syncing, seed the linked_libraries
               // cache from its collection table so the home page can render
               // immediately on next load without initializing every stream.
+              // Also register linked library streams so the sync loop can
+              // discover and sync them on subsequent ticks (critical for
+              // direct-link navigation that skips the home page).
               if (id === homeStreamId && homeLocal) {
                 try {
                   await seedLinkedLibrariesCache(stream, homeLocal)
+                  // Register linked streams so client.list() includes them.
+                  // Also add placeholder sync entries so pages waiting for a
+                  // linked library see it as "syncing" rather than "not found".
+                  const linkedLibraries = await getLinkedLibraries(stream)
+                  for (const col of linkedLibraries) {
+                    if (col.linked_stream_key) {
+                      try {
+                        await client.addWriteKey('scribe', col.linked_stream_key)
+                        // Mark as syncing so UI components know this library exists
+                        if (col.linked_stream_id && !latestPerStream[col.linked_stream_id]) {
+                          latestPerStream[col.linked_stream_id] = {
+                            synced: false,
+                            isSyncing: true,
+                            currentIndex: 0,
+                            finalIndex: 0,
+                            lastSyncedAt: null,
+                            hasError: false,
+                            lastEdited: null,
+                            libraryTitle: col.title || null,
+                          }
+                        }
+                      } catch (err) {
+                        console.error(`[sync] Error registering linked library ${col.linked_stream_id}:`, err)
+                      }
+                    }
+                  }
+                  pushStatus()
                 } catch (err) {
                   console.error('[sync] Error seeding linked libraries cache:', err)
                 }
