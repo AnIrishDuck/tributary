@@ -21,7 +21,7 @@ describe('schemaReady', () => {
     expect(ready).toBe(false)
   })
 
-  it('returns true after syncedMigrations have been applied', async () => {
+  it('returns false after only syncedMigrations (local tables missing)', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const stream = await client.addWriteKey('scribe', keyPair.secretKey)
@@ -29,7 +29,7 @@ describe('schemaReady', () => {
     await syncedMigrations(stream)
 
     const ready = await schemaReady(stream)
-    expect(ready).toBe(true)
+    expect(ready).toBe(false)
   })
 
   it('returns true after full migrations (synced + local)', async () => {
@@ -64,12 +64,16 @@ describe('schemaReady', () => {
     const localDb = stream.local()
     expect(await schemaReady(localDb)).toBe(false)
 
-    // After synced migrations — local DB shares the same PGlite schema
+    // After only synced migrations — local tables still missing
     await syncedMigrations(stream)
+    expect(await schemaReady(localDb)).toBe(false)
+
+    // After both synced + local migrations — all tables present
+    await localMigrations(localDb)
     expect(await schemaReady(localDb)).toBe(true)
   })
 
-  it('returns true on a fresh client after syncing a library with schema', async () => {
+  it('returns true on a fresh client after syncing and running local migrations', async () => {
     const server = new FakeServer()
 
     // Client 1: create library with full migrations
@@ -86,8 +90,12 @@ describe('schemaReady', () => {
     // Before sync, schema should not be ready
     expect(await schemaReady(stream2)).toBe(false)
 
-    // After sync, schema should be ready (synced migrations arrive via sync)
+    // After sync only — synced tables arrive but local tables are missing
     await stream2.sync(1000)
+    expect(await schemaReady(stream2)).toBe(false)
+
+    // After local migrations — all tables present
+    await localMigrations(stream2.local())
     expect(await schemaReady(stream2)).toBe(true)
   })
 })
