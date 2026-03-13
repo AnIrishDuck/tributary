@@ -50,6 +50,9 @@ const NoteListPage: React.FC = () => {
         }
 
         // Check if the synced schema tables exist before attempting queries.
+        // The sync loop only marks a library as `synced` after running
+        // localMigrations + indexAll, so if synced is true the local tables
+        // (authoritative_version, indexed_block, etc.) are guaranteed to exist.
         if (!await schemaReady(localDb)) {
           const libStatus = syncStatus[prefix]
           if (!libStatus || !libStatus.synced) {
@@ -90,10 +93,10 @@ const NoteListPage: React.FC = () => {
         setLibraryName(name)
 
         setError(null)
+        setLoading(false)
       } catch (err) {
         console.error('Error loading notes:', err)
         setError(`Failed to load notes: ${(err as Error).message}`)
-      } finally {
         setLoading(false)
       }
     }
