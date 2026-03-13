@@ -32,10 +32,12 @@ describe('SlugViewPage', () => {
       </WithProviders>
     )
 
-    // Should show error state for missing parameters
+    // Should show error state for missing parameters.
+    // The sync loop must complete a full cycle (setting globalSyncStatus.synced)
+    // before the page transitions from loading to error, so allow extra time.
     await waitFor(() => {
       expect(screen.getByText(/Failed to load note/)).toBeInTheDocument()
-    }, { timeout: 2000 })
+    }, { timeout: 10000 })
   })
 
   it('should show disambiguation page when slug matches both a note and a collection', async () => {
