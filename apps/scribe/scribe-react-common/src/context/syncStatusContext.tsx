@@ -45,8 +45,17 @@ export const SyncStatusProvider: React.FC<{
     lastEdited: null,
     libraryTitle: null,
   })
-  const [focusedLibraryId, setFocusedLibrary] = useState<string | null>(null)
+  const [focusedLibraryId, setFocusedLibraryRaw] = useState<string | null>(null)
   const focusedLibraryRef = useRef<string | null>(null)
+
+  // Wrap setFocusedLibrary to also wake up the sync loop immediately
+  const setFocusedLibrary = useCallback((id: string | null) => {
+    setFocusedLibraryRaw(id)
+    focusedLibraryRef.current = id
+    if (id && wakeUpRef.current) {
+      wakeUpRef.current()
+    }
+  }, [])
 
   // Keep ref in sync so the async sync loop can read the latest value
   useEffect(() => {
