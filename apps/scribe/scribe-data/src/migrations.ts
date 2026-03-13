@@ -139,11 +139,12 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
 }
 
 /**
- * Check whether all synced schema tables required for queries exist.
- * Returns true when both the `block` and `collection` tables are present
- * in the stream's schema. This is useful for distinguishing "still syncing
- * schema" from "table genuinely missing" — the former should show a loading
- * spinner while the latter (on a fully-synced library) is an error.
+ * Check whether all schema tables required for queries exist.
+ * Returns true when the synced tables (`block`, `collection`) AND the
+ * local tables (`authoritative_version`, `slug_collision`) are all present.
+ * Pages join on these local tables, so schemaReady must gate on them too —
+ * otherwise a progress-triggered re-render can attempt queries before
+ * localMigrations has run.
  */
 export async function schemaReady(
   db: TributaryStream | TributaryLocal
@@ -151,6 +152,8 @@ export async function schemaReady(
   try {
     await db.query('SELECT 1 FROM block LIMIT 0', [])
     await db.query('SELECT 1 FROM collection LIMIT 0', [])
+    await db.query('SELECT 1 FROM authoritative_version LIMIT 0', [])
+    await db.query('SELECT 1 FROM slug_collision LIMIT 0', [])
     return true
   } catch {
     return false
