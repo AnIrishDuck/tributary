@@ -402,21 +402,10 @@ export class TributaryStream {
 
   /**
    * Start fetching the next batch of blobs from the server without applying them.
-   * The result is cached so that the next call to sync() with matching parameters
-   * can reuse it, pipelining the network request with local DB work.
-   * @param max Maximum number of blobs to prefetch
+   * Called internally by sync() after committing to the DB, so the network request
+   * overlaps with the caller's work between sync() calls.
    */
-  async prefetch(max: number): Promise<void> {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
-
-    // Reload the last sync index to ensure we prefetch from the right position
-    await this.loadLastSyncIndex();
-
+  private startPrefetch(max: number): void {
     const startSequence = this.lastSyncIndex;
     const promise = this.server.getBlobsArrow(
       this.getPublicKeyBase64(),
@@ -584,6 +573,13 @@ export class TributaryStream {
       finalIndex: result.totalCount,
       complete: () => this.lastSyncIndex >= result.totalCount
     };
+
+    // Auto-prefetch the next batch so the network request overlaps with
+    // whatever the caller does between sync() calls (indexing, local
+    // migrations, sleep, etc.).
+    if (!syncStatus.complete()) {
+      this.startPrefetch(max);
+    }
 
     info(`SYNC COMPLETE: currentIndex=${syncStatus.currentIndex}, finalIndex=${syncStatus.finalIndex}, complete=${syncStatus.complete()} (fetched ${result.blobs.length})`);
     return syncStatus;

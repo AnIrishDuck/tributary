@@ -65,8 +65,6 @@ export async function syncAndIndex(
     console.log('Syncing with server...');
     let syncStatus = await stream.sync(1000);
     while (!syncStatus.complete()) {
-      // Prefetch next batch while logging progress
-      stream.prefetch(1000);
       console.log(`Server sync progress: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
       syncStatus = await stream.sync(1000);
     }
