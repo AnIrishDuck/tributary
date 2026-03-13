@@ -362,6 +362,15 @@ export const SyncStatusProvider: React.FC<{
           }
         }
 
+        // Prefetch the next batch for streams that are still syncing,
+        // so the network request runs in parallel with the sleep/wait.
+        for (const { id, stream } of streamsToSync) {
+          const s = latestPerStream[id]
+          if (s && !s.synced && !s.hasError) {
+            stream.prefetch(10)
+          }
+        }
+
         const allComplete = pushStatus()
         hasRunOnce = true
         isRunning = false

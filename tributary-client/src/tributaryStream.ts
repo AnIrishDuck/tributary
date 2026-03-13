@@ -44,6 +44,14 @@ export class TributaryStream {
   private schemaId: string;
   private schemaName: string;
   private searchPathSQL: string;
+  private prefetchCache: {
+    promise: Promise<{
+      blobs: Array<{ sequenceNumber: number; hash: string; data: Uint8Array }>;
+      totalCount: number;
+    }>;
+    startSequence: number;
+    max: number;
+  } | null = null;
 
   constructor(options: {
     server: Server;
@@ -393,6 +401,33 @@ export class TributaryStream {
   }
 
   /**
+   * Start fetching the next batch of blobs from the server without applying them.
+   * The result is cached so that the next call to sync() with matching parameters
+   * can reuse it, pipelining the network request with local DB work.
+   * @param max Maximum number of blobs to prefetch
+   */
+  async prefetch(max: number): Promise<void> {
+    // Initialize sync state if not already done
+    if (!this.syncStateInitialized) {
+      await this.initializeSchema();
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+
+    // Reload the last sync index to ensure we prefetch from the right position
+    await this.loadLastSyncIndex();
+
+    const startSequence = this.lastSyncIndex;
+    const promise = this.server.getBlobsArrow(
+      this.getPublicKeyBase64(),
+      startSequence,
+      max
+    );
+
+    this.prefetchCache = { promise, startSequence, max };
+  }
+
+  /**
    * Sync with server - retrieve and apply remote changes
    * @param max Maximum number of blobs to fetch in this sync
    * @returns SyncStatus containing current and final index
@@ -412,13 +447,27 @@ export class TributaryStream {
     const initialLastSyncIndex = this.lastSyncIndex;
     info(`SYNC START: Last sync index = ${initialLastSyncIndex}, max blobs = ${max}`);
     
-    // Use the new Arrow endpoint to fetch blobs with data in a single request
-    // This is more efficient than the old approach of fetching metadata then individual blobs
-    const result = await this.server.getBlobsArrow(
-      this.getPublicKeyBase64(),
-      this.lastSyncIndex,
-      max
-    );
+    // Check if we have a valid prefetch that matches the request sync would make
+    let result;
+    if (
+      this.prefetchCache &&
+      this.prefetchCache.startSequence === this.lastSyncIndex &&
+      this.prefetchCache.max === max
+    ) {
+      info('SYNC: Using prefetched result');
+      result = await this.prefetchCache.promise;
+      this.prefetchCache = null;
+    } else {
+      // Invalidate any stale prefetch
+      this.prefetchCache = null;
+      // Use the new Arrow endpoint to fetch blobs with data in a single request
+      // This is more efficient than the old approach of fetching metadata then individual blobs
+      result = await this.server.getBlobsArrow(
+        this.getPublicKeyBase64(),
+        this.lastSyncIndex,
+        max
+      );
+    }
     
     info(`SYNC START: Server returned ${result.blobs.length} blobs via Arrow, total_count = ${result.totalCount}`);
     
