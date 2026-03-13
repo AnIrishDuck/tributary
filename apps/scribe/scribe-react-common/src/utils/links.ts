@@ -98,7 +98,7 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
   if (!isSlugLink(link)) {
     return link;
   }
-  
+
   // Relative link (no protocol) - treat as slug reference
   // Handle links like "./other" or "../other" by resolving relative to current slug
   if (link.startsWith('.')) {
@@ -106,14 +106,14 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
       // If we don't have current slug, just use as-is (will fail gracefully)
       return link;
     }
-    
+
     // Resolve relative path
     const currentPath = currentSlug.split('/');
     const linkPath = link.split('/');
-    
+
     // Determine the base path based on first segment
     let basePath: string[] = [];
-    
+
     if (linkPath[0] === '.') {
       // . means replace current slug with what follows
       basePath = currentPath.slice(0, -1); // Remove last element (current slug)
@@ -123,7 +123,7 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
       basePath = currentPath.slice(0, -1); // Remove last element
       linkPath.shift(); // Remove the '..' from linkPath
     }
-    
+
     // Now append the remaining segments from linkPath
     for (const segment of linkPath) {
       if (segment === '.') {
@@ -134,7 +134,7 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
         basePath.push(segment);
       }
     }
-    
+
     const resolvedSlug = basePath.filter(s => s).join('/');
     return resolveSlugLink(resolvedSlug, streamPrefix, routeBase);
   }

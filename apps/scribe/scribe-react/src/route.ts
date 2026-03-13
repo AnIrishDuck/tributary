@@ -7,6 +7,7 @@ import NoteListPage from 'scribe-react-listing/src/pages/NoteListPage'
 import SearchPage from 'scribe-react-listing/src/pages/SearchPage'
 import Layout from 'scribe-react-common/src/components/Layout'
 import PkRouteWrapper from './components/PkRouteWrapper'
+import NamedRouteResolver from './components/NamedRouteResolver'
 import React from 'react'
 
 // Error components for routes
@@ -68,6 +69,12 @@ export const routes: RouteObject[] = [
       {
         path: '/pk/:prefix',
         Component: PkRouteWrapper,
+        children: libraryRoutes,
+      },
+      // Named routes: #n/:librarySlug/...
+      {
+        path: '/n/:librarySlug',
+        Component: NamedRouteResolver,
         children: libraryRoutes,
       },
     ]
