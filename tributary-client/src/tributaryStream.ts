@@ -401,22 +401,6 @@ export class TributaryStream {
   }
 
   /**
-   * Start fetching the next batch of blobs from the server without applying them.
-   * Called internally by sync() after committing to the DB, so the network request
-   * overlaps with the caller's work between sync() calls.
-   */
-  private startPrefetch(max: number): void {
-    const startSequence = this.lastSyncIndex;
-    const promise = this.server.getBlobsArrow(
-      this.getPublicKeyBase64(),
-      startSequence,
-      max
-    );
-
-    this.prefetchCache = { promise, startSequence, max };
-  }
-
-  /**
    * Sync with server - retrieve and apply remote changes
    * @param max Maximum number of blobs to fetch in this sync
    * @returns SyncStatus containing current and final index
@@ -525,7 +509,22 @@ export class TributaryStream {
     // Phase 2: Apply all write blobs in a single transaction (1 DB round-trip).
     // PGliteWorker batches the entire transaction callback into one postMessage
     // exchange, so this is dramatically faster than one transaction per blob.
+    //
+    // Before starting the DB work, fire off a prefetch for the next batch so
+    // the network request runs concurrently with the transaction.
     const cryptoMs = Math.round(performance.now() - cryptoStart);
+    const moreToFetch = finalSyncIndex < result.totalCount;
+    if (moreToFetch) {
+      this.prefetchCache = {
+        promise: this.server.getBlobsArrow(
+          this.getPublicKeyBase64(),
+          finalSyncIndex,
+          max
+        ),
+        startSequence: finalSyncIndex,
+        max,
+      };
+    }
     const dbStart = performance.now();
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
       await this.pglite.transaction(async (tx) => {
@@ -573,13 +572,6 @@ export class TributaryStream {
       finalIndex: result.totalCount,
       complete: () => this.lastSyncIndex >= result.totalCount
     };
-
-    // Auto-prefetch the next batch so the network request overlaps with
-    // whatever the caller does between sync() calls (indexing, local
-    // migrations, sleep, etc.).
-    if (!syncStatus.complete()) {
-      this.startPrefetch(max);
-    }
 
     info(`SYNC COMPLETE: currentIndex=${syncStatus.currentIndex}, finalIndex=${syncStatus.finalIndex}, complete=${syncStatus.complete()} (fetched ${result.blobs.length})`);
     return syncStatus;
