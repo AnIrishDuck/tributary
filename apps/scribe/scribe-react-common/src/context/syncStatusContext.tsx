@@ -122,7 +122,7 @@ export const SyncStatusProvider: React.FC<{
     // permanently stall sync.
     const nextDelay = (allComplete: boolean) => {
       if (document.hidden) return pollInterval * 30 // ~30s background
-      return allComplete ? pollInterval : 10
+      return allComplete ? pollInterval * 15 : 10 // 15s idle, 10ms when syncing
     }
 
     const syncLoop = async () => {
