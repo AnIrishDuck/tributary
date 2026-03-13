@@ -3,9 +3,15 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
+import { TributaryClient } from 'tributary-client'
+import { PGlite } from '@electric-sql/pglite'
+import nacl from 'tweetnacl'
+import * as base64url from 'urlsafe-base64'
+import { TestFakeServer } from 'scribe-react-common/tests/test-server'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { WithFastSyncProviders, createFreshLoginClient } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
+import { createHomeLibrary, createLibrary } from 'scribe-data'
 import * as scribeData from 'scribe-data'
 
 describe('NoteListPage', () => {
@@ -357,5 +363,98 @@ describe('NoteListPage', () => {
 
     // Should NOT show "Could not get local database" error
     expect(screen.queryByText(/Could not get local database/)).toBeNull()
+  })
+
+  it('should show loading state when library schema is not yet synced', async () => {
+    const server = new TestFakeServer()
+
+    // Client A: create a library with content
+    const clientA = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairA = nacl.sign.keyPair()
+    const { stream: homeStreamA } = await createHomeLibrary(clientA, 'Home A', homeKeyPairA)
+    const { streamId: linkedStreamId, privateKeyBase64 } = await createLibrary(clientA, 'Schema Test', homeStreamA)
+    await clientA.sync(1000)
+
+    // Client B: register the linked key WITHOUT syncing — schema not ready
+    const clientB = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairB = nacl.sign.keyPair()
+    await createHomeLibrary(clientB, 'Home B', homeKeyPairB)
+    const privateKeyBytes = base64url.decode(privateKeyBase64)
+    await clientB.addWriteKey('scribe', privateKeyBytes)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/`]
+    })
+
+    render(
+      <WithProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show loading spinner (not an error) because the library hasn't synced yet
+    await waitFor(() => {
+      expect(screen.getByText('Loading notes...')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should NOT show any schema or load error
+    expect(screen.queryByText(/Error/)).toBeNull()
+    expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
+  })
+
+  it('should show schema error when library is fully synced but schema is missing', async () => {
+    const server = new TestFakeServer()
+
+    // Create a completely empty stream (no syncedMigrations, no content)
+    const clientA = new TributaryClient({ server, db: new PGlite('memory://') })
+    const emptyKeyPair = nacl.sign.keyPair()
+    await clientA.addWriteKey('scribe', emptyKeyPair.secretKey)
+
+    // Client B: register the same key and let sync loop run
+    const clientB = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairB = nacl.sign.keyPair()
+    await createHomeLibrary(clientB, 'Home B', homeKeyPairB)
+    await clientB.addWriteKey('scribe', emptyKeyPair.secretKey)
+
+    const streamId = base64url.encode(Buffer.from(emptyKeyPair.publicKey))
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${streamId}/`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // The sync loop will sync the empty stream (completes immediately since no blobs),
+    // marking it as synced. But schema tables don't exist → should show schema error.
+    await waitFor(() => {
+      expect(screen.getByText(/schema could not be loaded/)).toBeInTheDocument()
+    }, { timeout: 15000 })
+  })
+
+  it('should transition from loading to library view once sync completes', async () => {
+    const { clientB, linkedStreamId } = await createFreshLoginClient('Sync Library')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // After sync completes, should show the library name (schema arrived via sync)
+    await waitFor(() => {
+      expect(screen.getByText('Sync Library')).toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Should NOT show any error
+    expect(screen.queryByText(/Error/)).toBeNull()
+    expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
   })
 })

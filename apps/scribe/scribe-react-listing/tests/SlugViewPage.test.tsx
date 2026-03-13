@@ -3,9 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
+import { TributaryClient } from 'tributary-client'
+import { PGlite } from '@electric-sql/pglite'
+import nacl from 'tweetnacl'
+import * as base64url from 'urlsafe-base64'
+import { TestFakeServer } from 'scribe-react-common/tests/test-server'
 import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { createTestClientWithStream, WithProviders, WithFastSyncProviders, createFreshLoginClient } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
+import { createHomeLibrary, createLibrary } from 'scribe-data'
 import * as scribeData from 'scribe-data'
 
 describe('SlugViewPage', () => {
@@ -26,10 +32,12 @@ describe('SlugViewPage', () => {
       </WithProviders>
     )
 
-    // Should show error state for missing parameters
+    // Should show error state for missing parameters.
+    // The sync loop must complete a full cycle (setting globalSyncStatus.synced)
+    // before the page transitions from loading to error, so allow extra time.
     await waitFor(() => {
       expect(screen.getByText(/Failed to load note/)).toBeInTheDocument()
-    }, { timeout: 2000 })
+    }, { timeout: 10000 })
   })
 
   it('should show disambiguation page when slug matches both a note and a collection', async () => {
@@ -185,5 +193,111 @@ describe('SlugViewPage', () => {
 
     // Should NOT show any error
     expect(screen.queryByText(/Failed to load note/)).toBeNull()
+  })
+
+  it('should show loading state when library schema is not yet synced', async () => {
+    const server = new TestFakeServer()
+
+    // Client A: create a library with content
+    const clientA = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairA = nacl.sign.keyPair()
+    const { stream: homeStreamA } = await createHomeLibrary(clientA, 'Home A', homeKeyPairA)
+    const { stream: linkedStream, streamId: linkedStreamId, privateKeyBase64 } = await createLibrary(clientA, 'Schema Test', homeStreamA)
+    await saveNote(linkedStream, '# Test Note\n\nContent.')
+    await clientA.sync(1000)
+
+    // Client B: register the linked key WITHOUT syncing — schema not ready
+    const clientB = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairB = nacl.sign.keyPair()
+    await createHomeLibrary(clientB, 'Home B', homeKeyPairB)
+    const privateKeyBytes = base64url.decode(privateKeyBase64)
+    await clientB.addWriteKey('scribe', privateKeyBytes)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/test-note`]
+    })
+
+    render(
+      <WithProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show loading spinner (not an error) because the library hasn't synced yet
+    await waitFor(() => {
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should NOT show any schema or load error
+    expect(screen.queryByText(/Failed to load note/)).toBeNull()
+    expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
+  })
+
+  it('should show schema error when library is fully synced but schema is missing', async () => {
+    const server = new TestFakeServer()
+
+    // Create a completely empty stream (no syncedMigrations, no content)
+    const clientA = new TributaryClient({ server, db: new PGlite('memory://') })
+    const emptyKeyPair = nacl.sign.keyPair()
+    // Just register the key, DON'T run syncedMigrations
+    await clientA.addWriteKey('scribe', emptyKeyPair.secretKey)
+
+    // Client B: register the same key and let sync loop run
+    const clientB = new TributaryClient({ server, db: new PGlite('memory://') })
+    const homeKeyPairB = nacl.sign.keyPair()
+    await createHomeLibrary(clientB, 'Home B', homeKeyPairB)
+    await clientB.addWriteKey('scribe', emptyKeyPair.secretKey)
+
+    const streamId = base64url.encode(Buffer.from(emptyKeyPair.publicKey))
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${streamId}/some-note`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // The sync loop will sync the empty stream (completes immediately since no blobs),
+    // marking it as synced. But schema tables don't exist → should show schema error.
+    await waitFor(() => {
+      expect(screen.getByText(/schema could not be loaded/)).toBeInTheDocument()
+    }, { timeout: 15000 })
+  })
+
+  it('should transition from schema loading to content once sync completes', async () => {
+    const { clientA, clientB, linkedStream, linkedStreamId } = await createFreshLoginClient('Sync Library')
+
+    // Create a note in the linked library
+    await saveNote(linkedStream, '# Synced Note\n\nThis appears after schema syncs.')
+    await clientA.sync(1000)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${linkedStreamId}/synced-note`]
+    })
+
+    render(
+      <WithFastSyncProviders client={clientB}>
+        <RouterProvider router={router} />
+      </WithFastSyncProviders>
+    )
+
+    // Initially should be in a loading state (either generic or schema loading)
+    await waitFor(() => {
+      const loading = screen.queryByText('Loading...')
+      const syncing = screen.queryByText('Syncing library...')
+      expect(loading || syncing).toBeTruthy()
+    }, { timeout: 3000 })
+
+    // After sync completes, should show the note content
+    await waitFor(() => {
+      expect(screen.getByText(/This appears after schema syncs/)).toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Should NOT show any error
+    expect(screen.queryByText(/Failed to load note/)).toBeNull()
+    expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
   })
 })

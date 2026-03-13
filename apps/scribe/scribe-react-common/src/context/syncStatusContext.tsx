@@ -199,8 +199,13 @@ export const SyncStatusProvider: React.FC<{
           }
         }
 
-        // Sync the selected library, tracking whether any data changed
+        // Sync the selected library, tracking whether any data changed.
+        // Don't mark streams as `synced` yet — wait until localMigrations
+        // and indexAll have run so pages that depend on local tables
+        // (authoritative_version, indexed_block, etc.) don't see
+        // synced=true before those tables exist.
         let hadChanges = false
+        const completedStreams = new Set<string>()
         for (const { id, stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
 
@@ -216,9 +221,12 @@ export const SyncStatusProvider: React.FC<{
               hadChanges = true
             }
 
+            if (isComplete) completedStreams.add(id)
+
             latestPerStream[id] = {
               ...latestPerStream[id],
-              synced: isComplete,
+              // Preserve previous synced state — only promote to true after
+              // localMigrations + indexAll finish (below).
               isSyncing: !isComplete,
               currentIndex: tributaryStatus.currentIndex,
               finalIndex: tributaryStatus.finalIndex,
@@ -254,8 +262,21 @@ export const SyncStatusProvider: React.FC<{
             if (!isMounted) { isRunning = false; return }
             try {
               // Ensure local-only tables exist (idempotent; needed for streams
-              // loaded via sync that never went through initializeLibrary)
+              // loaded via sync that never went through initializeLibrary).
+              // This must complete before marking synced so pages that query
+              // local tables (authoritative_version, indexed_block, etc.)
+              // never see synced=true before those tables exist.
               await localMigrations(stream.local())
+
+              // Mark as synced now that local tables are ready. indexAll and
+              // metadata queries below may fail (e.g. empty streams without
+              // synced schema) but the page should still see synced=true so
+              // it can show a schema error instead of loading forever.
+              latestPerStream[id] = {
+                ...latestPerStream[id],
+                synced: completedStreams.has(id) || (latestPerStream[id]?.synced ?? false),
+              }
+
               await indexAll(stream.local())
 
               // Compute library metadata alongside indexing so the home page
