@@ -1,4 +1,4 @@
-import type { SyncItem, SyncOperation } from '@tributary/scribe-data';
+import type { SyncItem, SyncOperation } from 'scribe-data';
 
 /**
  * Determine the source of truth (where the change originates) for a sync operation.

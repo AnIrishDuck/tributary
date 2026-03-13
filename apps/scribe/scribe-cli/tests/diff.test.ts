@@ -11,8 +11,8 @@ import {
   createCollection,
   createNote,
   indexAll,
-} from '@tributary/scribe-data'
-import type { SyncOperation, SyncItem } from '@tributary/scribe-data'
+} from 'scribe-data'
+import type { SyncOperation, SyncItem } from 'scribe-data'
 import {
   sync,
   syncAndIndex,
