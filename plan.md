@@ -85,7 +85,145 @@ queries? **No.** Here's why:
 patch text as the body. This is a deployment coordination issue (ship read
 support before write support), not a query duplication issue.
 
+## Testing Strategy: Two Schema Worlds
+
+A critical testing concern: our code must work correctly against both the old
+schema (no `body_type` column) and the new schema (with `body_type` column).
+We need test infrastructure that makes it easy to verify both.
+
+### The problem with current test setup
+
+Today, `syncedMigrations()` is a single function that runs everything.
+`createTestDB()` + `up()` always produces the latest schema. There's no way
+to get a DB in the "old" state to verify that reads handle a missing
+`body_type` gracefully.
+
+### Solution: versioned migration steps
+
+Refactor `syncedMigrations()` into an ordered list of migration steps. Each
+step is a named function. The production `syncedMigrations()` runs all steps.
+Tests can run a subset.
+
+```typescript
+// migrations.ts
+
+/** Individual migration steps, ordered. Each is idempotent. */
+export const syncedMigrationSteps = [
+  /** V1: Initial schema */
+  async function createBlockTable(stream: TributaryStream) {
+    await stream.exec(`CREATE TABLE IF NOT EXISTS block (...)`)
+    await stream.exec(`ALTER TABLE block ADD CONSTRAINT ...`)
+    await stream.exec(`CREATE INDEX IF NOT EXISTS ...`)
+  },
+  async function createCollectionTable(stream: TributaryStream) {
+    await stream.exec(`CREATE TABLE IF NOT EXISTS collection (...)`)
+    // ...
+  },
+  /** V2: Add body_type for delta support */
+  async function addBodyType(stream: TributaryStream) {
+    await stream.exec(`
+      ALTER TABLE block ADD COLUMN IF NOT EXISTS body_type
+      TEXT NOT NULL DEFAULT 'full'
+    `)
+  },
+]
+
+/** Run all synced migrations (production path). */
+export async function syncedMigrations(stream: TributaryStream) {
+  for (const step of syncedMigrationSteps) {
+    await step(stream)
+  }
+}
+```
+
+### Test helper: `createTestDBAtMigration()`
+
+```typescript
+// test-utils.ts
+
+/**
+ * Create a test DB that has only run migrations up to (but not including)
+ * the given step index. Omit the parameter to run all migrations.
+ */
+export async function createTestDBAtMigration(
+  upToStep?: number
+): Promise<TestDB> {
+  const result = await createTestDB()
+  const steps = upToStep !== undefined
+    ? syncedMigrationSteps.slice(0, upToStep)
+    : syncedMigrationSteps
+  for (const step of steps) {
+    await step(result.syncedDb)
+  }
+  await localMigrations(result.localDb)
+  return result
+}
+```
+
+### What to test in each world
+
+**Pre-migration (old schema, no `body_type` column):**
+- `createNote()` works (INSERT doesn't mention `body_type`)
+- `getNoteByUuid()` returns a `Note` where `body_type` is `undefined`
+- Read code treats `undefined` body_type as `'full'` — `note.body_type ?? 'full'`
+- `createNoteVersion()` works (no delta logic triggered)
+
+**Post-migration (new schema, `body_type` column exists):**
+- Old-style `INSERT`s (without `body_type`) still work — `DEFAULT 'full'`
+- New `INSERT`s with `body_type: 'delta'` work
+- Read functions return correct body for both full and delta rows
+- `reconstructBody()` walks the version chain correctly
+
+**Cross-migration (data created before migration, read after):**
+- Create notes in pre-migration schema
+- Run the `addBodyType` migration step
+- Verify existing notes now have `body_type = 'full'`
+- Create new delta versions alongside old full versions
+- Read functions return correct content for all versions
+
+### Example test structure
+
+```typescript
+describe('cross-schema compatibility', () => {
+  test('notes created before migration readable after', async () => {
+    // Set up old schema (all steps except addBodyType)
+    const db = await createTestDBAtMigration(2) // stops before addBodyType
+
+    // Create notes in old world
+    const note = await createNote(db.syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Old Note\n\nCreated before body_type existed.',
+      inserter: 'test-user'
+    })
+
+    // Run the migration
+    await syncedMigrationSteps[2](db.syncedDb) // addBodyType
+
+    // Read the old note — should work fine
+    const retrieved = await getNoteByUuid(db.syncedDb, note.block_uuid)
+    expect(retrieved!.body).toBe(note.body)
+    expect(retrieved!.body_type).toBe('full')  // DEFAULT filled it in
+  })
+})
+```
+
 ## PR Breakdown
+
+### PR 0: Refactor migrations into versioned steps (~150 LOC)
+
+**Goal**: Make it possible to test against old and new schema states without
+duplicating queries.
+
+**Changes**:
+- Refactor `syncedMigrations()` into `syncedMigrationSteps[]` array
+- `syncedMigrations()` becomes a loop over all steps (no behavior change)
+- Add `createTestDBAtMigration(upToStep?)` test helper
+- Verify all existing tests still pass (they call `up()` which calls
+  `syncedMigrations()` which now runs all steps)
+
+**Pure refactor. No new migrations. No new features.**
+
+---
 
 ### PR 1: Add diff-match-patch utilities (~200 LOC)
 
@@ -108,18 +246,23 @@ support before write support), not a query duplication issue.
 
 ---
 
-### PR 2: Schema migration + type changes (~200 LOC)
+### PR 2: Schema migration + type changes (~300 LOC)
 
 **Goal**: Add the `body_type` column to `block` and update TypeScript types.
 
 **Changes**:
-- `migrations.ts`: add `ALTER TABLE block ADD COLUMN IF NOT EXISTS body_type
-  TEXT NOT NULL DEFAULT 'full'` to `syncedMigrations()`
+- Add `addBodyType` step to `syncedMigrationSteps[]`:
+  `ALTER TABLE block ADD COLUMN IF NOT EXISTS body_type TEXT NOT NULL DEFAULT 'full'`
 - `types.ts`: add `body_type: 'full' | 'delta'` to the `Note` interface
 - Update `createNote()` in `note.ts` to include `body_type` in the INSERT
   (always `'full'` for now — no behavioral change)
-- Tests verifying the migration runs cleanly on fresh DB and on DB with
-  existing data
+- Read functions: add `note.body_type ?? 'full'` coalesce for pre-migration
+  compatibility
+- **Cross-schema tests** using `createTestDBAtMigration()`:
+  - Pre-migration: create note, verify `body_type` is undefined, reads work
+  - Post-migration on fresh DB: create note, verify `body_type` is `'full'`
+  - Cross-migration: create note before, run migration, verify `body_type`
+    backfilled to `'full'`, reads still work
 
 **All behavior stays identical. Delta support is not wired in yet.**
 
