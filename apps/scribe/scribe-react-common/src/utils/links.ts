@@ -1,14 +1,25 @@
 /**
  * Link Utilities for Scribe
- * 
+ *
  * Handles link resolution for note slugs (hashtag-style links without protocol)
  * vs. external/absolute links.
  */
 
 /**
+ * Determines if a link is an absolute internal link.
+ *
+ * Links that start with `#` and contain a `/` are "absolute" internal links
+ * pointing directly at a route (e.g. `#pk/abc123/note` or `#n/my-lib/note`).
+ * They should be resolved to `/#/{path}` without applying the current paradigm.
+ */
+export const isAbsoluteInternalLink = (link: string): boolean => {
+  return link.startsWith('#') && link.includes('/');
+};
+
+/**
  * Determines if a link is a slug link (internal, no protocol)
  * vs. an absolute/external link (has protocol like http://, https://, mailto:, etc.)
- * 
+ *
  * @param link - The link URL to check
  * @returns true if the link is a slug link (no protocol), false if it has a protocol
  */
@@ -17,7 +28,10 @@ export const isSlugLink = (link: string): boolean => {
   // or if it's a protocol-relative URL (//example.com)
   // Also consider links that already start with #/ or /# as resolved
   const protocolRegex = /^[a-zA-Z][a-zA-Z0-9+.-]*:|^\/\//;
-  return !protocolRegex.test(link) && !link.startsWith('#/') && !link.startsWith('/#');
+  if (protocolRegex.test(link) || link.startsWith('#/') || link.startsWith('/#')) return false;
+  // Absolute internal links (#pk/..., #n/...) are not slug links
+  if (isAbsoluteInternalLink(link)) return false;
+  return true;
 };
 
 /**
@@ -35,24 +49,31 @@ export const isResolvedBlockUrl = (link: string): boolean => {
  * Resolves a slug link to a note URL
  *
  * Takes a slug link (like "link-target" or "#some-slug") and resolves it
- * to the proper note URL format using the current library prefix.
+ * to the proper note URL format using the current route base.
  *
  * @param link - The link to resolve
  * @param streamPrefix - The base64url-encoded library prefix (e.g., "_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0")
+ * @param routeBase - Optional route base override (e.g. "/n/my-library"). Defaults to "/pk/{streamPrefix}".
  * @returns The fully resolved URL
  */
-export const resolveSlugLink = (link: string, streamPrefix: string): string => {
-  // Remove leading hash if present for internal links
-  const cleanLink = link.startsWith('#') ? link.slice(1) : link;
-  
+export const resolveSlugLink = (link: string, streamPrefix: string, routeBase?: string): string => {
+  // Remove leading hash if present for internal links (single # without /)
+  const cleanLink = link.startsWith('#') && !link.includes('/') ? link.slice(1) : link;
+
+  // Absolute internal links → resolve to /#/{path}
+  if (isAbsoluteInternalLink(link)) {
+    return `/#/${link.slice(1)}`;
+  }
+
   // If it's already an absolute link, return as-is
   if (!isSlugLink(link)) {
     return link;
   }
-  
-  // Build the note URL: /#/pk/{streamPrefix}/{slug}
+
+  const base = routeBase || `/pk/${streamPrefix}`;
+  // Build the note URL: /#/{routeBase}/{slug}
   // Note: We use #/ to maintain client-side routing
-  return `/#/pk/${streamPrefix}/${cleanLink}`;
+  return `/#${base}/${cleanLink}`;
 };
 
 /**
@@ -64,9 +85,15 @@ export const resolveSlugLink = (link: string, streamPrefix: string): string => {
  * @param link - The link to resolve
  * @param streamPrefix - The base64url-encoded library prefix
  * @param currentSlug - The current note's slug (for relative link resolution)
+ * @param routeBase - Optional route base override (e.g. "/n/my-library"). Defaults to "/pk/{streamPrefix}".
  * @returns The fully resolved URL
  */
-export const resolveLink = (link: string, streamPrefix: string, currentSlug?: string): string => {
+export const resolveLink = (link: string, streamPrefix: string, currentSlug?: string, routeBase?: string): string => {
+  // Absolute internal links (#.../...) → resolve directly
+  if (isAbsoluteInternalLink(link)) {
+    return resolveSlugLink(link, streamPrefix, routeBase);
+  }
+
   // Absolute links with protocol - return as-is
   if (!isSlugLink(link)) {
     return link;
@@ -109,11 +136,11 @@ export const resolveLink = (link: string, streamPrefix: string, currentSlug?: st
     }
     
     const resolvedSlug = basePath.filter(s => s).join('/');
-    return resolveSlugLink(resolvedSlug, streamPrefix);
+    return resolveSlugLink(resolvedSlug, streamPrefix, routeBase);
   }
-  
+
   // Simple slug link (no . or ..)
-  return resolveSlugLink(link, streamPrefix);
+  return resolveSlugLink(link, streamPrefix, routeBase);
 };
 
 /**

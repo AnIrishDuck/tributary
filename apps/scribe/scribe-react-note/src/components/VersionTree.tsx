@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router'
 import { VersionTreeNode } from 'scribe-data'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 export interface TreeNode extends VersionTreeNode {
   children: TreeNode[]
@@ -129,13 +130,15 @@ function collectLinearSpine(node: TreeNode): TreeNode[] {
 }
 
 const VersionTree: React.FC<VersionTreeProps> = ({ node, slugPath, prefix }) => {
-  return <VersionSubtree node={node} slugPath={slugPath} prefix={prefix} isTopLevel />
+  const routeCtx = useRouteContext()
+  return <VersionSubtree node={node} slugPath={slugPath} prefix={prefix} routeCtx={routeCtx} isTopLevel />
 }
 
-function VersionSubtree({ node, slugPath, prefix, isTopLevel }: {
+function VersionSubtree({ node, slugPath, prefix, routeCtx, isTopLevel }: {
   node: TreeNode
   slugPath: string
   prefix: string
+  routeCtx: { buildPath: (slugPath?: string) => string }
   isTopLevel?: boolean
 }) {
   // Collect the linear spine from this node downward
@@ -148,7 +151,7 @@ function VersionSubtree({ node, slugPath, prefix, isTopLevel }: {
     <div>
       {/* Render the linear spine (newest first) */}
       {spine.map((n, i) => {
-        const versionUrl = `/pk/${prefix}/${slugPath}@${n.version_uuid}`
+        const versionUrl = routeCtx.buildPath(`${slugPath}@${n.version_uuid}`)
         const hasFork = n === oldest && isForkPoint
         const isFirst = i === 0 && !!isTopLevel
         const isLast = i === spine.length - 1 && !isForkPoint
@@ -178,7 +181,7 @@ function VersionSubtree({ node, slugPath, prefix, isTopLevel }: {
                   </svg>
                   Branch {branchIndex + 1}
                 </div>
-                <VersionSubtree node={child} slugPath={slugPath} prefix={prefix} />
+                <VersionSubtree node={child} slugPath={slugPath} prefix={prefix} routeCtx={routeCtx} />
               </div>
             ))}
         </div>

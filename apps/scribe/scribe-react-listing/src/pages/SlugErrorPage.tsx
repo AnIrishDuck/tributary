@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { useRouteContextOptional } from 'scribe-react-common/src/context/routeContext'
 
 interface SlugErrorPageProps {
   message: string
@@ -9,9 +10,12 @@ interface SlugErrorPageProps {
 
 const SlugErrorPage: React.FC<SlugErrorPageProps> = ({ message, prefix }) => {
   const navigate = useNavigate()
+  const routeCtx = useRouteContextOptional()
 
   const handleBack = () => {
-    if (prefix) {
+    if (routeCtx) {
+      navigate(routeCtx.buildPath())
+    } else if (prefix) {
       navigate(`/pk/${prefix}/`)
     } else {
       navigate('/')

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { 
-  isSlugLink, 
-  resolveSlugLink, 
+import {
+  isSlugLink,
+  isAbsoluteInternalLink,
+  resolveSlugLink,
   resolveLink,
   extractStreamPrefixFromUrl,
   extractSlugFromUrl,
@@ -50,8 +51,36 @@ describe('Link Utilities', () => {
     it('should return false for already resolved URLs starting with /#', () => {
       expect(isSlugLink('/#/pk/some-key/link')).toBe(false)
     })
+
+    it('should return false for absolute internal links', () => {
+      expect(isSlugLink('#pk/some-key/link')).toBe(false)
+      expect(isSlugLink('#n/my-library/note')).toBe(false)
+    })
   })
-  
+
+  describe('isAbsoluteInternalLink', () => {
+    it('should return true for #pk/ style links', () => {
+      expect(isAbsoluteInternalLink('#pk/some-key/link')).toBe(true)
+      expect(isAbsoluteInternalLink('#pk/abc123/my-note')).toBe(true)
+    })
+
+    it('should return true for #n/ style links', () => {
+      expect(isAbsoluteInternalLink('#n/my-library/note')).toBe(true)
+      expect(isAbsoluteInternalLink('#n/recipes/soup')).toBe(true)
+    })
+
+    it('should return false for simple hash anchors (no slash)', () => {
+      expect(isAbsoluteInternalLink('#section')).toBe(false)
+      expect(isAbsoluteInternalLink('#heading-1')).toBe(false)
+    })
+
+    it('should return false for non-hash links', () => {
+      expect(isAbsoluteInternalLink('https://example.com')).toBe(false)
+      expect(isAbsoluteInternalLink('my-note')).toBe(false)
+      expect(isAbsoluteInternalLink('./relative')).toBe(false)
+    })
+  })
+
   describe('isResolvedBlockUrl', () => {
     it('should return true for already resolved URLs', () => {
       expect(isResolvedBlockUrl('#/pk/some-key/link')).toBe(true)
@@ -85,8 +114,28 @@ describe('Link Utilities', () => {
       const result = resolveSlugLink('my-special-link_123', testStreamPrefix)
       expect(result).toBe(`/#/pk/${testStreamPrefix}/my-special-link_123`)
     })
+
+    it('should use routeBase when provided', () => {
+      const result = resolveSlugLink('my-note', testStreamPrefix, '/n/my-library')
+      expect(result).toBe('/#/n/my-library/my-note')
+    })
+
+    it('should fall back to pk route when routeBase is not provided', () => {
+      const result = resolveSlugLink('my-note', testStreamPrefix)
+      expect(result).toBe(`/#/pk/${testStreamPrefix}/my-note`)
+    })
+
+    it('should resolve absolute internal links regardless of routeBase', () => {
+      const result = resolveSlugLink('#pk/other-key/some-note', testStreamPrefix, '/n/my-library')
+      expect(result).toBe('/#/pk/other-key/some-note')
+    })
+
+    it('should resolve #n/ absolute internal links', () => {
+      const result = resolveSlugLink('#n/other-lib/some-note', testStreamPrefix)
+      expect(result).toBe('/#/n/other-lib/some-note')
+    })
   })
-  
+
   describe('resolveLink', () => {
     const testSlug = 'current-document'
     
@@ -137,8 +186,33 @@ describe('Link Utilities', () => {
       const secondResolve = resolveLink(firstResolve, testStreamPrefix, testSlug)
       expect(secondResolve).toBe(firstResolve)
     })
+
+    it('should use routeBase when provided', () => {
+      const result = resolveLink('other-doc', testStreamPrefix, testSlug, '/n/my-library')
+      expect(result).toBe('/#/n/my-library/other-doc')
+    })
+
+    it('should resolve relative links with routeBase', () => {
+      const result = resolveLink('./sibling', testStreamPrefix, 'parent/child', '/n/recipes')
+      expect(result).toBe('/#/n/recipes/parent/sibling')
+    })
+
+    it('should resolve ../ relative links with routeBase', () => {
+      const result = resolveLink('../uncle', testStreamPrefix, 'parent/child', '/n/recipes')
+      expect(result).toBe('/#/n/recipes/parent/uncle')
+    })
+
+    it('should resolve absolute internal links ignoring routeBase', () => {
+      const result = resolveLink('#pk/other-key/note', testStreamPrefix, testSlug, '/n/my-library')
+      expect(result).toBe('/#/pk/other-key/note')
+    })
+
+    it('should resolve #n/ absolute internal links', () => {
+      const result = resolveLink('#n/other-lib/note', testStreamPrefix, testSlug)
+      expect(result).toBe('/#/n/other-lib/note')
+    })
   })
-  
+
   describe('extractStreamPrefixFromUrl', () => {
     it('should extract stream prefix from a block URL', () => {
       const url = `/#/pk/${testStreamPrefix}/document-slug`

@@ -2,6 +2,7 @@ import React from 'react'
 import { Link } from 'react-router'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 import { SearchResult, slugToTitle } from 'scribe-data'
+import { useRouteContext } from '../context/routeContext'
 
 interface SearchResultCardProps {
   /**
@@ -25,11 +26,12 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   prefix,
   onClick
 }) => {
+  const routeCtx = useRouteContext()
   // Generate the link to the note
   // If no slug, use the block UUID as fallback
-  const notePath = result.slug 
-    ? `/pk/${prefix}/${result.slug}`
-    : `/pk/${prefix}/block/${result.block_uuid}`
+  const notePath = result.slug
+    ? routeCtx.buildPath(result.slug)
+    : routeCtx.buildPath(`block/${result.block_uuid}`)
 
   return (
     <Link

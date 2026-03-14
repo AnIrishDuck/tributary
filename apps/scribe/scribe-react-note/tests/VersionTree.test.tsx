@@ -4,9 +4,16 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import VersionTree, { buildTree, TreeNode } from '../src/components/VersionTree'
 import { VersionTreeNode } from 'scribe-data'
+import { RouteContextProvider } from 'scribe-react-common/src/context/routeContext'
 
-function renderWithRouter(ui: React.ReactElement) {
-  return render(<MemoryRouter>{ui}</MemoryRouter>)
+function renderWithRouter(ui: React.ReactElement, prefix: string = 'test-prefix') {
+  return render(
+    <MemoryRouter>
+      <RouteContextProvider paradigm="pk" prefix={prefix}>
+        {ui}
+      </RouteContextProvider>
+    </MemoryRouter>
+  )
 }
 
 describe('buildTree', () => {

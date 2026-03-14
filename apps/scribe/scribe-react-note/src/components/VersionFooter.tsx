@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router'
+import { useRouteContextOptional } from 'scribe-react-common/src/context/routeContext'
 
 export interface VersionFooterProps {
   versionUuid: string
@@ -10,8 +11,11 @@ export interface VersionFooterProps {
 }
 
 const VersionFooter: React.FC<VersionFooterProps> = ({ versionUuid, position, total, slugPath, prefix }) => {
+  const routeCtx = useRouteContextOptional()
   const truncatedUuid = versionUuid.slice(0, 8)
-  const historyUrl = slugPath && prefix ? `/pk/${prefix}/${slugPath}&history` : null
+  const historyUrl = slugPath && (routeCtx || prefix)
+    ? (routeCtx ? routeCtx.buildPath(`${slugPath}&history`) : `/pk/${prefix}/${slugPath}&history`)
+    : null
 
   const content = (
     <>

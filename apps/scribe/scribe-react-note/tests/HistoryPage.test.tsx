@@ -5,19 +5,22 @@ import { describe, expect, it } from 'vitest'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveNote } from '../src/actions/saveNote'
 import HistoryPage from '../src/pages/HistoryPage'
+import { RouteContextProvider } from 'scribe-react-common/src/context/routeContext'
 
 function renderHistoryPage(client: any, prefix: string, blockUuid: string, slugPath: string) {
   const routes = [
     {
       path: '/history',
       element: (
-        <HistoryPage
-          prefix={prefix}
-          blockUuid={blockUuid}
-          slugPath={slugPath}
-          ancestors={[]}
-          libraryName="Test Library"
-        />
+        <RouteContextProvider paradigm="pk" prefix={prefix}>
+          <HistoryPage
+            prefix={prefix}
+            blockUuid={blockUuid}
+            slugPath={slugPath}
+            ancestors={[]}
+            libraryName="Test Library"
+          />
+        </RouteContextProvider>
       ),
     },
     {

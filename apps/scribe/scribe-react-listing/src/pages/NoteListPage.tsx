@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, schemaReady } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
 const NoteListPage: React.FC = () => {
-  const { prefix } = useParams<{ prefix: string }>()
+  const routeCtx = useRouteContext()
+  const prefix = routeCtx.prefix
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
   const [notes, setNotes] = useState<NoteSlugRow[]>([])

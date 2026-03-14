@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import VersionTree, { buildTree } from '../components/VersionTree'
 import type { TreeNode } from '../components/VersionTree'
 
@@ -18,6 +19,7 @@ interface HistoryPageProps {
 const HistoryPage: React.FC<HistoryPageProps> = ({ prefix, blockUuid, slugPath, ancestors, libraryName }) => {
   const navigate = useNavigate()
   const { client } = useTributary()
+  const routeCtx = useRouteContext()
   const [roots, setRoots] = useState<TreeNode[] | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -40,7 +42,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ prefix, blockUuid, slugPath, 
     load()
   }, [client, prefix, blockUuid])
 
-  const noteUrl = `/pk/${prefix}/${slugPath}`
+  const noteUrl = routeCtx.buildPath(slugPath)
 
   const handleBack = () => {
     navigate(noteUrl)

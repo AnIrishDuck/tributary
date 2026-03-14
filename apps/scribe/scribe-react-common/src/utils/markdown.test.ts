@@ -54,6 +54,31 @@ describe('resolveSlugLinksInHtml', () => {
     const result = resolveSlugLinksInHtml(html, testPrefix)
     expect(result).toBe(html)
   })
+
+  it('should use routeBase when provided', () => {
+    const html = '<p><a href="my-note">My Note</a></p>'
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, '/n/my-library')
+    expect(result).toBe('<p><a href="/#/n/my-library/my-note">My Note</a></p>')
+  })
+
+  it('should resolve absolute internal links to /#/ paths', () => {
+    const html = '<p><a href="#pk/other-key/note">Cross-lib Note</a></p>'
+    const result = resolveSlugLinksInHtml(html, testPrefix)
+    expect(result).toBe('<p><a href="/#/pk/other-key/note">Cross-lib Note</a></p>')
+  })
+
+  it('should resolve #n/ absolute internal links', () => {
+    const html = '<p><a href="#n/recipes/soup">Soup Recipe</a></p>'
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, '/n/my-library')
+    expect(result).toBe('<p><a href="/#/n/recipes/soup">Soup Recipe</a></p>')
+  })
+
+  it('should resolve absolute internal links even when routeBase is set', () => {
+    const html = '<p><a href="#pk/abc123/note">Note</a> and <a href="local">Local</a></p>'
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, '/n/my-library')
+    expect(result).toContain('href="/#/pk/abc123/note"')
+    expect(result).toContain('href="/#/n/my-library/local"')
+  })
 })
 
 describe('renderMarkdown', () => {
@@ -101,5 +126,22 @@ describe('renderMarkdown', () => {
     const md = '| Link |\n| - |\n| [Note](my-note) |'
     const result = renderMarkdown(md, testPrefix)
     expect(result).toContain(`href="/#/pk/${testPrefix}/my-note"`)
+  })
+
+  it('should use routeBase for slug link resolution', () => {
+    const result = renderMarkdown('[My Note](my-note)', testPrefix, undefined, '/n/recipes')
+    expect(result).toContain('href="/#/n/recipes/my-note"')
+    expect(result).toContain('>My Note</a>')
+  })
+
+  it('should preserve already-resolved /#pk/ links in markdown', () => {
+    const result = renderMarkdown('[Cross-lib](/#pk/other-key/note)', testPrefix)
+    // Already-resolved links (starting with /#) should pass through unchanged
+    expect(result).toContain('href="/#pk/other-key/note"')
+  })
+
+  it('should preserve already-resolved /#n/ links in markdown', () => {
+    const result = renderMarkdown('[Recipes](/#n/recipes/soup)', testPrefix, undefined, '/n/my-library')
+    expect(result).toContain('href="/#n/recipes/soup"')
   })
 })

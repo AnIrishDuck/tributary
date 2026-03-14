@@ -8,6 +8,7 @@ import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import VersionFooter from '../components/VersionFooter'
 
 interface NoteViewPageProps {
@@ -27,6 +28,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
   const { client } = useTributary()
+  const routeCtx = useRouteContext()
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
 
@@ -54,7 +56,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   // Compute parent collection path from slugPath (remove last segment which is the note)
   const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
 
-  const editUrl = `/pk/${prefix}/${slugPath}&edit`
+  const editUrl = routeCtx.buildPath(`${slugPath}&edit`)
 
   // Set Edit as the floating action button in the bottom nav (skip in readOnly mode)
   useEffect(() => {
@@ -65,15 +67,15 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
 
   const handleBack = () => {
     if (parentSlugPath) {
-      navigate(`/pk/${prefix}/${parentSlugPath}`)
+      navigate(routeCtx.buildPath(parentSlugPath))
     } else {
-      navigate(`/pk/${prefix}/`)
+      navigate(routeCtx.buildPath())
     }
   }
 
   const handleMoved = (newSlugPath: string) => {
     setShowMoveModal(false)
-    navigate(`/pk/${prefix}/${newSlugPath}`)
+    navigate(routeCtx.buildPath(newSlugPath))
   }
 
   return (
@@ -120,7 +122,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
           {!readOnly && (
             <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
               <Link
-                to={`/pk/${prefix}/${slugPath}&history`}
+                to={routeCtx.buildPath(`${slugPath}&history`)}
                 className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
               >
                 <ClockIcon className="w-4 h-4" />
@@ -139,7 +141,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
             className="prose prose-lg max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, '')) }}
           />
         </div>
 

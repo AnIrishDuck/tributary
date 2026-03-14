@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeftIcon, FolderIcon } from '@heroicons/react/24/outline'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 export interface MissingParentPageProps {
   prefix: string
@@ -13,12 +14,13 @@ const MissingParentPage: React.FC<MissingParentPageProps> = ({
   prefix, slugPath, resolvedSegments, missingSegments
 }) => {
   const navigate = useNavigate()
+  const routeCtx = useRouteContext()
 
   const handleBack = () => {
     if (resolvedSegments.length > 0) {
-      navigate(`/pk/${prefix}/${resolvedSegments.join('/')}`)
+      navigate(routeCtx.buildPath(resolvedSegments.join('/')))
     } else {
-      navigate(`/pk/${prefix}/`)
+      navigate(routeCtx.buildPath())
     }
   }
 

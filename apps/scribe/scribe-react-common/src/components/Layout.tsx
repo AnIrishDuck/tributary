@@ -4,6 +4,7 @@ import { HomeIcon, PlusIcon, MagnifyingGlassIcon, ArrowRightStartOnRectangleIcon
 import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
 import { useTributary } from '../context/tributaryContext'
+import { useRouteContextOptional } from '../context/routeContext'
 import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
@@ -22,9 +23,10 @@ const Layout: React.FC = () => {
     await logout()
   }
 
-  // Extract prefix from current path if in library context
+  // Extract prefix from route context or from current path
+  const routeCtx = useRouteContextOptional()
   const prefixMatch = location.pathname.match(/^\/pk\/([^/]+)/)
-  const prefix = prefixMatch ? prefixMatch[1] : null
+  const prefix = routeCtx?.prefix || (prefixMatch ? prefixMatch[1] : null)
 
   // Determine which bottom nav item is active
   const isHome = location.pathname === '/'
@@ -99,7 +101,7 @@ const Layout: React.FC = () => {
 
             {prefix ? (
               <Link
-                to={`/pk/${prefix}/search`}
+                to={routeCtx ? routeCtx.buildPath('search') : `/pk/${prefix}/search`}
                 className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
                   isSearch ? 'text-blue-600' : 'text-gray-500'
                 }`}

@@ -14,6 +14,7 @@ import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 export interface EditorPageProps {
   prefix: string
@@ -33,6 +34,7 @@ export interface EditorPageProps {
 }
 
 const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel, noteSlugPath, ancestors }) => {
+  const routeCtx = useRouteContext()
   const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -313,16 +315,16 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           const localDb = stream.local()
           const slugPathSegments = await getNoteSlugPath(localDb, block.block_uuid)
           if (slugPathSegments.length > 0) {
-            navigate(`/pk/${prefix}/${slugPathSegments.join('/')}`)
+            navigate(routeCtx.buildPath(slugPathSegments.join('/')))
           } else {
-            navigate(`/pk/${prefix}/`)
+            navigate(routeCtx.buildPath())
           }
         } catch {
           // Fallback to flat slug if path resolution fails
           if (blockSlugResult?.slug) {
-            navigate(`/pk/${prefix}/${blockSlugResult.slug}`)
+            navigate(routeCtx.buildPath(blockSlugResult.slug))
           } else {
-            navigate(`/pk/${prefix}/`)
+            navigate(routeCtx.buildPath())
           }
         }
       } else {
@@ -375,7 +377,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
         )}
         {noteSlugPath && (
           <nav className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
-            <Link to={`/pk/${prefix}/`} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
+            <Link to={routeCtx.buildPath()} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
             {noteSlugPath.split('/').filter(Boolean).map((segment, i, arr) => {
               const path = arr.slice(0, i + 1).join('/')
               const isLast = i === arr.length - 1
@@ -389,7 +391,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                   {isLast ? (
                     <span className="text-gray-900 font-medium flex-shrink-0">{segment}</span>
                   ) : (
-                    <Link to={`/pk/${prefix}/${path}`} className="hover:text-blue-600 transition-colors flex-shrink-0">{segment}</Link>
+                    <Link to={routeCtx.buildPath(path)} className="hover:text-blue-600 transition-colors flex-shrink-0">{segment}</Link>
                   )}
                 </React.Fragment>
               )

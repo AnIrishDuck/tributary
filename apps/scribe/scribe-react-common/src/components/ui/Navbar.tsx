@@ -9,6 +9,7 @@ import {
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { useSyncStatus } from '../../context/syncStatusContext';
+import { useRouteContextOptional } from '../../context/routeContext';
 
 interface NavItem {
   name: string;
@@ -34,9 +35,11 @@ const Navbar: React.FC<NavbarProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
   const { syncStatus, globalSyncStatus } = useSyncStatus();
+  const routeCtx = useRouteContextOptional();
 
-  // Extract prefix from current path if in library context
+  // Extract prefix from route context or current path
   const getPrefix = (): string | null => {
+    if (routeCtx) return routeCtx.prefix;
     const match = location.pathname.match(/^\/pk\/([^/]+)/);
     return match ? match[1] : null;
   };
@@ -68,8 +71,8 @@ const Navbar: React.FC<NavbarProps> = ({
       ];
     }
     
-    // Check if we're in a library context (starts with /pk/)
-    if (currentPath.startsWith('/pk/')) {
+    // Check if we're in a library context (starts with /pk/ or /n/)
+    if (currentPath.startsWith('/pk/') || currentPath.startsWith('/n/') || routeCtx) {
       return [
         { name: 'Back to Home', href: '/', icon: ArrowLeftIcon, isBack: true },
       ];
@@ -142,7 +145,7 @@ const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center space-x-1">
               {prefix && (
                 <button
-                  onClick={() => navigate(`/pk/${prefix}/search`)}
+                  onClick={() => navigate(routeCtx ? routeCtx.buildPath('search') : `/pk/${prefix}/search`)}
                   className="p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"
                   title="Search notes"
                   aria-label="Search notes"
