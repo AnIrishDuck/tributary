@@ -44,6 +44,14 @@ export class TributaryStream {
   private schemaId: string;
   private schemaName: string;
   private searchPathSQL: string;
+  private prefetchCache: {
+    promise: Promise<{
+      blobs: Array<{ sequenceNumber: number; hash: string; data: Uint8Array }>;
+      totalCount: number;
+    }>;
+    startSequence: number;
+    max: number;
+  } | null = null;
 
   constructor(options: {
     server: Server;
@@ -412,13 +420,27 @@ export class TributaryStream {
     const initialLastSyncIndex = this.lastSyncIndex;
     info(`SYNC START: Last sync index = ${initialLastSyncIndex}, max blobs = ${max}`);
     
-    // Use the new Arrow endpoint to fetch blobs with data in a single request
-    // This is more efficient than the old approach of fetching metadata then individual blobs
-    const result = await this.server.getBlobsArrow(
-      this.getPublicKeyBase64(),
-      this.lastSyncIndex,
-      max
-    );
+    // Check if we have a valid prefetch that matches the request sync would make
+    let result;
+    if (
+      this.prefetchCache &&
+      this.prefetchCache.startSequence === this.lastSyncIndex &&
+      this.prefetchCache.max === max
+    ) {
+      info('SYNC: Using prefetched result');
+      result = await this.prefetchCache.promise;
+      this.prefetchCache = null;
+    } else {
+      // Invalidate any stale prefetch
+      this.prefetchCache = null;
+      // Use the new Arrow endpoint to fetch blobs with data in a single request
+      // This is more efficient than the old approach of fetching metadata then individual blobs
+      result = await this.server.getBlobsArrow(
+        this.getPublicKeyBase64(),
+        this.lastSyncIndex,
+        max
+      );
+    }
     
     info(`SYNC START: Server returned ${result.blobs.length} blobs via Arrow, total_count = ${result.totalCount}`);
     
@@ -487,7 +509,22 @@ export class TributaryStream {
     // Phase 2: Apply all write blobs in a single transaction (1 DB round-trip).
     // PGliteWorker batches the entire transaction callback into one postMessage
     // exchange, so this is dramatically faster than one transaction per blob.
+    //
+    // Before starting the DB work, fire off a prefetch for the next batch so
+    // the network request runs concurrently with the transaction.
     const cryptoMs = Math.round(performance.now() - cryptoStart);
+    const moreToFetch = finalSyncIndex < result.totalCount;
+    if (moreToFetch) {
+      this.prefetchCache = {
+        promise: this.server.getBlobsArrow(
+          this.getPublicKeyBase64(),
+          finalSyncIndex,
+          max
+        ),
+        startSequence: finalSyncIndex,
+        max,
+      };
+    }
     const dbStart = performance.now();
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
       await this.pglite.transaction(async (tx) => {

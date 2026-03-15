@@ -63,7 +63,11 @@ export async function syncAndIndex(
 
   if (!dryRun) {
     console.log('Syncing with server...');
-    const syncStatus = await stream.sync(1000);
+    let syncStatus = await stream.sync(1000);
+    while (!syncStatus.complete()) {
+      console.log(`Server sync progress: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
+      syncStatus = await stream.sync(1000);
+    }
     console.log(`Server sync completed: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
   }
 
