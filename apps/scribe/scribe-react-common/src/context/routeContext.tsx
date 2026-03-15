@@ -51,7 +51,7 @@ interface ProviderProps {
   prefix: string
   /** For named routes: the route base, e.g. `/n/my-library` */
   namedBase?: string
-  children: React.ReactNode
+  children?: React.ReactNode
 }
 
 export const RouteContextProvider: React.FC<ProviderProps> = ({
