@@ -1,21 +1,4 @@
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-]
-
-function formatDate(d: Date): string {
-  const day = d.getUTCDate()
-  const month = MONTHS[d.getUTCMonth()]
-  const year = d.getUTCFullYear()
-  return `${day} ${month} ${year}`
-}
-
-function formatTime(d: Date): string {
-  const h = String(d.getUTCHours()).padStart(2, '0')
-  const m = String(d.getUTCMinutes()).padStart(2, '0')
-  const s = String(d.getUTCSeconds()).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
+import { format, isSameDay } from 'date-fns'
 
 /**
  * Render the difference between two dates as a human-readable string.
@@ -24,14 +7,9 @@ function formatTime(d: Date): string {
  * - Same date: "11 Feb 2026; 23:04:12 => 23:46:12"
  */
 export function dateDiff(from: Date, to: Date): string {
-  const sameDate =
-    from.getUTCFullYear() === to.getUTCFullYear() &&
-    from.getUTCMonth() === to.getUTCMonth() &&
-    from.getUTCDate() === to.getUTCDate()
-
-  if (sameDate) {
-    return `${formatDate(from)}; ${formatTime(from)} => ${formatTime(to)}`
+  if (isSameDay(from, to)) {
+    return `${format(from, 'd MMM yyyy')}; ${format(from, 'HH:mm:ss')} => ${format(to, 'HH:mm:ss')}`
   }
 
-  return `${formatDate(from)} => ${formatDate(to)}`
+  return `${format(from, 'd MMM yyyy')} => ${format(to, 'd MMM yyyy')}`
 }
