@@ -6,6 +6,7 @@ import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 interface NoteListViewProps {
   collections: { collection: Collection; slug: string | null }[]
@@ -32,17 +33,16 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
+  const routeCtx = useRouteContext()
   const isRoot = !collection
   const [showMoveModal, setShowMoveModal] = useState(false)
 
   // Set the floating action button to "New Note" for this collection
   useEffect(() => {
-    const newNoteUrl = slugPath
-      ? `/pk/${prefix}/${slugPath}/+note`
-      : `/pk/${prefix}/+note`
+    const newNoteUrl = routeCtx.buildPath(slugPath ? `${slugPath}/+note` : '+note')
     setFloatingAction({ icon: PlusIcon, label: 'New Note', to: newNoteUrl })
     return () => setFloatingAction(null)
-  }, [prefix, slugPath, setFloatingAction])
+  }, [routeCtx, slugPath, setFloatingAction])
 
   const showSyncProgress = syncProgress && !syncProgress.synced
 
@@ -68,30 +68,22 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   }, [notes, draftBlockUuids])
 
   const handleNewNote = () => {
-    if (slugPath) {
-      navigate(`/pk/${prefix}/${slugPath}/+note`)
-    } else {
-      navigate(`/pk/${prefix}/+note`)
-    }
+    navigate(routeCtx.buildPath(slugPath ? `${slugPath}/+note` : '+note'))
   }
 
   const handleNewCollection = () => {
-    if (slugPath) {
-      navigate(`/pk/${prefix}/${slugPath}/+collection`)
-    } else {
-      navigate(`/pk/${prefix}/+collection`)
-    }
+    navigate(routeCtx.buildPath(slugPath ? `${slugPath}/+collection` : '+collection'))
   }
 
   const handleBack = () => {
     if (isRoot) {
       navigate('/')
     } else {
-      navigate(`/pk/${prefix}/`)
+      navigate(routeCtx.buildPath())
     }
   }
 
-  const linkPrefix = slugPath ? `/pk/${prefix}/${slugPath}` : `/pk/${prefix}`
+  const linkPrefix = routeCtx.buildPath(slugPath || undefined).replace(/\/$/, '')
 
   const totalItems = notes.length + collections.length + newNoteDrafts.length
 
@@ -130,7 +122,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             <div className="flex items-center gap-2">
               {isRoot && (
                 <button
-                  onClick={() => navigate(`/pk/${prefix}/search`)}
+                  onClick={() => navigate(routeCtx.buildPath('search'))}
                   className="hidden md:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
                 >
                   <MagnifyingGlassIcon className="w-4 h-4 mr-1.5" />
@@ -210,7 +202,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                     return (
                       <Link
                         key={col.collection_uuid}
-                        to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : `/pk/${prefix}/`}
+                        to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : routeCtx.buildPath()}
                         className="group block"
                       >
                         <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
@@ -247,7 +239,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                   key={`draft-${draft.draftId}`}
                   to={slugPath
                     ? `${linkPrefix}/+draft/${draft.draftId}`
-                    : `/pk/${prefix}/+draft/${draft.draftId}`}
+                    : routeCtx.buildPath(`+draft/${draft.draftId}`)}
                   className="group block"
                 >
                   <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-amber-200 hover:border-amber-300 transform hover:-translate-y-1">
@@ -371,7 +363,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           prefix={prefix}
           onMoved={(newSlugPath) => {
             setShowMoveModal(false)
-            navigate(`/pk/${prefix}/${newSlugPath}`)
+            navigate(routeCtx.buildPath(newSlugPath))
           }}
         />
       )}

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { searchNotes, SearchResult } from 'scribe-data'
 import { SearchBar } from 'scribe-react-common/src/components/SearchBar'
 import { SearchResultCard } from 'scribe-react-common/src/components/SearchResultCard'
@@ -10,7 +11,8 @@ import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon, ArrowLeftIcon } from '
 const RESULTS_PER_PAGE = 20
 
 const SearchPage: React.FC = () => {
-  const { prefix } = useParams<{ prefix: string }>()
+  const routeCtx = useRouteContext()
+  const prefix = routeCtx.prefix
   const navigate = useNavigate()
   const { client } = useTributary()
   const { setFocusedLibrary } = useSyncStatus()
@@ -96,7 +98,7 @@ const SearchPage: React.FC = () => {
   
   const handleNewNote = () => {
     if (prefix) {
-      navigate(`/pk/${prefix}/+note`)
+      navigate(routeCtx.buildPath('+note'))
     }
   }
 
@@ -107,7 +109,7 @@ const SearchPage: React.FC = () => {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4 mb-4">
             <button
-              onClick={() => navigate(`/pk/${prefix}/`)}
+              onClick={() => navigate(routeCtx.buildPath())}
               className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               <ArrowLeftIcon className="w-4 h-4 mr-1" />

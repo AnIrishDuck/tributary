@@ -1,6 +1,7 @@
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
 import { Collection } from 'scribe-data'
+import { useRouteContext } from '../context/routeContext'
 
 interface BreadcrumbsProps {
   ancestors: Collection[]
@@ -12,6 +13,7 @@ interface BreadcrumbsProps {
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, allLinks, trailingSlug }) => {
+  const routeCtx = useRouteContext()
   // Build cumulative slug paths for each non-root ancestor
   const nonRootAncestors = ancestors.filter(a => a.parent_collection_uuid !== null)
 
@@ -55,7 +57,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
   return (
     <nav ref={navRef} className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
       <Link
-        to={`/pk/${prefix}/`}
+        to={routeCtx.buildPath()}
         className="hover:text-blue-600 transition-colors flex-shrink-0"
       >
         /
@@ -88,7 +90,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ ancestors, prefix, all
               <span className="text-gray-900 font-medium flex-shrink-0">{slug}</span>
             ) : (
               <Link
-                to={`/pk/${prefix}/${cumulativePath}`}
+                to={routeCtx.buildPath(cumulativePath)}
                 className="hover:text-blue-600 transition-colors flex-shrink-0"
               >
                 {slug}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { createCollection, getLibrary, indexAll, titleToSlug, getSlugPath, Collection } from 'scribe-data'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
@@ -23,6 +24,7 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
   const navigate = useNavigate()
   const { client } = useTributary()
   const { setFocusedLibrary } = useSyncStatus()
+  const routeCtx = useRouteContext()
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -70,9 +72,9 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
       // Navigate to the new collection via its full slug path
       const slugPathSegments = await getSlugPath(localDb, newCollection.collection_uuid)
       if (slugPathSegments.length > 0) {
-        navigate(`/pk/${prefix}/${slugPathSegments.join('/')}`)
+        navigate(routeCtx.buildPath(slugPathSegments.join('/')))
       } else {
-        navigate(`/pk/${prefix}/`)
+        navigate(routeCtx.buildPath())
       }
     } catch (err: any) {
       setError('Failed to create collection: ' + (err.message || 'Unknown error'))

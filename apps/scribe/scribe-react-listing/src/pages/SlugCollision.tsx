@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate, Link } from 'react-router'
 import { ArrowLeftIcon, DocumentTextIcon, FolderIcon } from '@heroicons/react/24/outline'
 import { CollectionSlug } from 'scribe-data'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -19,9 +20,10 @@ interface SlugCollisionProps {
 
 const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugPath, splatPath, prefix }) => {
   const navigate = useNavigate()
+  const routeCtx = useRouteContext()
 
   const handleBack = () => {
-    navigate(`/pk/${prefix}/`)
+    navigate(routeCtx.buildPath())
   }
 
   const hasCollisions = collections.length > 0
@@ -62,7 +64,7 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
                 {collections.map((col) => (
                   <Link
                     key={col.collection_uuid}
-                    to={`/pk/${prefix}/${slugPath}`}
+                    to={routeCtx.buildPath(slugPath)}
                     className="block bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-lg p-4 transition-colors"
                   >
                     <div className="flex items-center gap-3">
@@ -87,7 +89,7 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
                 {notes.map((note) => (
                   <Link
                     key={note.block_uuid}
-                    to={`/pk/${prefix}/${slugPath}/${note.block_uuid}`}
+                    to={routeCtx.buildPath(`${slugPath}/${note.block_uuid}`)}
                     className="block bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-lg p-4 transition-colors"
                   >
                     <div className="flex items-center gap-3">

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
-import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { Collection, CollectionSlug, NoteSlugRow, schemaReady } from 'scribe-data'
 import SlugLoadingPage from './SlugLoadingPage'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
@@ -52,10 +53,11 @@ const SlugViewPage: React.FC = () => {
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
+  const routeCtx = useRouteContext()
 
   // Extract the library prefix and splat path from params
   const params = useParams()
-  const prefix = params.prefix
+  const prefix = routeCtx.prefix || params.prefix
   const splatPath = params['*'] || ''
 
   // Track whether this specific library has been synced at least once
@@ -103,7 +105,6 @@ const SlugViewPage: React.FC = () => {
         const localDb = stream.local()
 
         const {
-          schemaReady,
           getAuthoritativeVersionByNoteUuid, getNoteByVersion,
           getLibrary, getLibraryDisplayName, getCollectionByUuid, getChildCollections,
           getCollectionAncestors, getNotesInCollectionWithSlugs, getCollidingSlugs, slugToTitle,
@@ -578,7 +579,7 @@ const SlugViewPage: React.FC = () => {
       <EditorPage
         prefix={prefix || ''}
         collectionId={mode.collectionId}
-        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         initialTitle={mode.initialTitle}
         collectionLabel={mode.collectionLabel}
         ancestors={mode.ancestors}
@@ -592,7 +593,7 @@ const SlugViewPage: React.FC = () => {
         prefix={prefix || ''}
         collectionId={mode.collectionId}
         draftId={mode.draftId}
-        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         collectionLabel={mode.collectionLabel}
         ancestors={mode.ancestors}
       />
@@ -605,7 +606,7 @@ const SlugViewPage: React.FC = () => {
         prefix={prefix || ''}
         parentUuid={mode.parentUuid}
         ancestors={mode.ancestors}
-        cancelPath={mode.parentSlugPath ? `/pk/${prefix}/${mode.parentSlugPath}` : `/pk/${prefix}/`}
+        cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         libraryName={mode.libraryName}
         initialTitle={mode.initialTitle}
       />
@@ -653,7 +654,7 @@ const SlugViewPage: React.FC = () => {
       <EditorPage
         prefix={prefix || ''}
         editBlockUuid={mode.editBlockUuid}
-        cancelPath={`/pk/${prefix}/${mode.noteSlugPath}`}
+        cancelPath={routeCtx.buildPath(mode.noteSlugPath)}
         collectionLabel={mode.collectionLabel}
         noteSlugPath={mode.noteSlugPath}
       />

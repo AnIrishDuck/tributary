@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeftIcon, DocumentTextIcon, FolderPlusIcon } from '@heroicons/react/24/outline'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
 export interface MissingSlugPageProps {
   prefix: string
@@ -9,13 +10,14 @@ export interface MissingSlugPageProps {
 
 const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath }) => {
   const navigate = useNavigate()
+  const routeCtx = useRouteContext()
 
   const handleBack = () => {
     const segments = slugPath.split('/').filter(Boolean)
     if (segments.length > 1) {
-      navigate(`/pk/${prefix}/${segments.slice(0, -1).join('/')}`)
+      navigate(routeCtx.buildPath(segments.slice(0, -1).join('/')))
     } else {
-      navigate(`/pk/${prefix}/`)
+      navigate(routeCtx.buildPath())
     }
   }
 
@@ -48,7 +50,7 @@ const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath }) =
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
-              onClick={() => navigate(`/pk/${prefix}/${slugPath}+note`)}
+              onClick={() => navigate(routeCtx.buildPath(`${slugPath}+note`))}
               className="group flex flex-col items-center gap-3 px-6 py-8 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all"
             >
               <div className="h-14 w-14 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
@@ -65,7 +67,7 @@ const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath }) =
             </button>
 
             <button
-              onClick={() => navigate(`/pk/${prefix}/${slugPath}+collection`)}
+              onClick={() => navigate(routeCtx.buildPath(`${slugPath}+collection`))}
               className="group flex flex-col items-center gap-3 px-6 py-8 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-50 transition-all"
             >
               <div className="h-14 w-14 rounded-full bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
