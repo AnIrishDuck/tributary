@@ -164,10 +164,10 @@ describe('HomePage', () => {
     const displayId = `pk/${streamId.substring(0, 16)}...`
     expect(screen.getByText(displayId)).toBeInTheDocument()
 
-    // Should have the link to the library
+    // Should have the link to the library (uses named route by default)
     const libraryLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 16)}`) })
     expect(libraryLink).toBeInTheDocument()
-    expect(libraryLink).toHaveAttribute('href', `/pk/${streamId}/`)
+    expect(libraryLink).toHaveAttribute('href', '/n/test-stream/')
 
     // Should show action buttons at the top of "Your Libraries" section
     expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()

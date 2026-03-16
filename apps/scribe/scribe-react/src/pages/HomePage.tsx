@@ -5,7 +5,7 @@ import { getLibraries, LibraryInfo } from '../actions/getLibraries'
 import { getHomeCollections } from '../actions/getHomeCollections'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
-import { importLibrary } from 'scribe-data'
+import { importLibrary, titleToSlug } from 'scribe-data'
 import * as base64url from 'urlsafe-base64'
 
 /**
@@ -238,13 +238,27 @@ const HomePage: React.FC = () => {
                     initialKey={importKey}
                   />
                 )}
-                {libraries?.map((library) => {
-                    // Merge per-library metadata from the sync loop
+                {(() => {
+                  // Pre-compute slugs and detect collisions so we can prefer /n/ routes
+                  const slugCounts = new Map<string, number>()
+                  const libraryDisplayNames = (libraries ?? []).map((library) => {
                     const libStatus = syncStatus[library.libraryId]
                     const displayName = libStatus?.libraryTitle || library.libraryTitle || 'Notes'
+                    const slug = titleToSlug(displayName)
+                    slugCounts.set(slug, (slugCounts.get(slug) ?? 0) + 1)
+                    return { library, displayName, slug }
+                  })
+
+                  return libraryDisplayNames.map(({ library, displayName, slug }) => {
+                    const libStatus = syncStatus[library.libraryId]
                     const displayId = `pk/${library.libraryId.substring(0, 16)}...`
                     const isSyncing = libStatus != null && !libStatus.synced
                     const hasSynced = libStatus?.lastSyncedAt != null
+
+                    // Use named route when the slug is unique, otherwise fall back to pk route
+                    const hasUniqueSlug = slug.length > 0 && (slugCounts.get(slug) ?? 0) === 1
+                    const libraryPath = hasUniqueSlug ? `/n/${slug}/` : `/pk/${library.libraryId}/`
+                    const settingsPath = hasUniqueSlug ? `/n/${slug}/&library` : `/pk/${library.libraryId}/&library`
 
                     const lastEdited = libStatus?.lastEdited ?? library.lastEdited
                     const lastEditedText = isSyncing
@@ -262,7 +276,7 @@ const HomePage: React.FC = () => {
                     return (
                       <Link
                         key={library.libraryId}
-                        to={`/pk/${library.libraryId}/`}
+                        to={libraryPath}
                         className="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 group"
                       >
                         <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-purple-100 text-purple-600 group-hover:bg-purple-200">
@@ -285,7 +299,7 @@ const HomePage: React.FC = () => {
                           </div>
                         </div>
                         <Link
-                          to={`/pk/${library.libraryId}/&library`}
+                          to={settingsPath}
                           onClick={(e) => e.stopPropagation()}
                           className="flex-shrink-0 mr-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           aria-label="Library settings"
@@ -300,7 +314,8 @@ const HomePage: React.FC = () => {
                         </div>
                       </Link>
                     )
-                  })}
+                  })
+                })()}
               </div>
             </div>
           </div>
