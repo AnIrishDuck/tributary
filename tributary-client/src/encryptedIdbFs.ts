@@ -2,27 +2,31 @@
  * EncryptedIdbFs — a PGlite Filesystem that encrypts all data at rest in IndexedDB.
  *
  * Architecture:
- *   This wraps PGlite's stock IdbFs (Emscripten IDBFS). IDBFS already handles
- *   the sync between its in-memory FS and IndexedDB — we don't reimplement that.
- *   We intercept the IDBFS IndexedDB operations to encrypt file contents on write
- *   and decrypt on read, by patching the objectStore put/get methods on the
- *   database connection that IDBFS opens.
+ *   Emscripten's FS is synchronous; IndexedDB is async. Every PGlite storage
+ *   backend (IdbFs, OpfsAhpFS) therefore keeps files in memory and syncs to
+ *   persistent storage at defined points. This is not a "shadow" — the in-memory
+ *   FS IS the real filesystem Postgres reads and writes.
  *
- *   The in-memory Emscripten FS is inherent to how IDBFS works (Emscripten FS
- *   ops are synchronous; IndexedDB is async). That's not our layer — it's theirs.
+ *   We implement PGlite's Filesystem interface directly:
+ *     - init():          no-op (default MEMFS is fine)
+ *     - initialSyncFs(): EncryptedFileStore.loadAll() → decrypt → FS.writeFile()
+ *     - syncToFs():      walk FS → encrypt changed files → EncryptedFileStore.put()
+ *     - closeFs():       close the store
+ *
+ *   EncryptedFileStore is a clean wrapper around IndexedDB that handles
+ *   encrypt-on-write and decrypt-on-read using nacl.secretbox. No monkey-patching.
  *
  * Encryption:
- *   Each file blob is stored as:  nonce (24 bytes) || nacl.secretbox(data, nonce, key)
- *   Key is a 32-byte nacl.secretbox key derived via HKDF from the user's login.
+ *   Each file blob:  nonce (24 bytes) || nacl.secretbox(plaintext, nonce, key)
+ *   Key: 32-byte nacl.secretbox key from deriveStorageKey().
  */
 
 import nacl from 'tweetnacl'
 
-// ── Crypto helpers (pure, testable) ─────────────────────────────────────
+// ── Crypto (pure, testable) ─────────────────────────────────────────────
 
 /**
- * Encrypt a file blob.
- * Returns nonce (24 bytes) || nacl.secretbox(plaintext, nonce, key).
+ * Encrypt a blob: nonce (24 B) || nacl.secretbox(plaintext, nonce, key).
  */
 export function encryptBlob(plaintext: Uint8Array, key: Uint8Array): Uint8Array {
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
@@ -34,8 +38,7 @@ export function encryptBlob(plaintext: Uint8Array, key: Uint8Array): Uint8Array 
 }
 
 /**
- * Decrypt a blob produced by encryptBlob.
- * Throws if the auth tag is invalid (wrong key or tampered data).
+ * Decrypt a blob produced by encryptBlob. Throws on wrong key or tampering.
  */
 export function decryptBlob(encrypted: Uint8Array, key: Uint8Array): Uint8Array {
   if (encrypted.length < nacl.secretbox.nonceLength) {
@@ -50,304 +53,276 @@ export function decryptBlob(encrypted: Uint8Array, key: Uint8Array): Uint8Array 
   return plaintext
 }
 
-// ── IDBFS interception ──────────────────────────────────────────────────
+// ── EncryptedFileStore ──────────────────────────────────────────────────
+//
+// Clean wrapper around IndexedDB. Encrypts `contents` on put, decrypts on
+// load. Uses the same store name and record shape as Emscripten's IDBFS
+// ("FILE_DATA", records keyed by path) so the database is structurally
+// compatible — just with encrypted contents.
 
-/**
- * Patch the global indexedDB.open so that when Emscripten's IDBFS opens its
- * database, we intercept put() and get()/getAll() on the FILE_DATA object store
- * to encrypt contents on write and decrypt on read.
- *
- * This is scoped: only databases whose name matches `targetDbPath` are patched.
- * The patch is installed before PGlite init and removed after IDBFS connects.
- */
-function installIdbInterceptor(targetDbPath: string, key: Uint8Array): () => void {
-  const originalOpen = indexedDB.open.bind(indexedDB)
-
-  indexedDB.open = function patchedOpen(name: string, version?: number): IDBOpenDBRequest {
-    const req = version !== undefined ? originalOpen(name, version) : originalOpen(name)
-
-    // Only intercept the IDBFS database for our dataDir
-    if (typeof name === 'string' && name.includes(targetDbPath)) {
-      req.addEventListener('success', () => {
-        const db = req.result
-        patchDatabase(db, key)
-      })
-    }
-
-    return req
-  } as typeof indexedDB.open
-
-  // Return cleanup function
-  return () => {
-    indexedDB.open = originalOpen
-  }
-}
-
-/**
- * Patch an IDBDatabase so all transactions on FILE_DATA encrypt on put
- * and decrypt on get/getAll/openCursor.
- *
- * IDBFS stores records as: { timestamp, mode, contents: Uint8Array }
- * We encrypt the `contents` field only, leaving metadata intact for IDBFS
- * to do its change-detection diff.
- */
-function patchDatabase(db: IDBDatabase, key: Uint8Array): void {
-  const originalTransaction = db.transaction.bind(db)
-
-  db.transaction = function patchedTransaction(
-    storeNames: string | string[],
-    mode?: IDBTransactionMode,
-    options?: IDBTransactionOptions
-  ): IDBTransaction {
-    const tx = originalTransaction(storeNames, mode, options)
-    const originalObjectStore = tx.objectStore.bind(tx)
-
-    tx.objectStore = function patchedObjectStore(name: string): IDBObjectStore {
-      const store = originalObjectStore(name)
-
-      // Only patch the FILE_DATA store (where IDBFS keeps file contents)
-      if (name === 'FILE_DATA') {
-        patchObjectStore(store, key)
-      }
-
-      return store
-    }
-
-    return tx
-  } as typeof db.transaction
-}
-
-/** IDBFS file record shape */
-interface IdbfsRecord {
-  timestamp: Date
+/** IDBFS-compatible file record. */
+export interface FileRecord {
+  /** Unix timestamp (epoch seconds) */
+  timestamp: number
+  /** Emscripten FS mode bits */
   mode: number
+  /** File contents (plaintext when in memory, encrypted when in IndexedDB) */
   contents?: Uint8Array
 }
 
-function patchObjectStore(store: IDBObjectStore, key: Uint8Array): void {
-  // ── Encrypt on put ──
-  const originalPut = store.put.bind(store)
-  store.put = function encryptingPut(value: IdbfsRecord, key_?: IDBValidKey): IDBRequest {
-    if (value && value.contents instanceof Uint8Array && value.contents.length > 0) {
-      value = { ...value, contents: encryptBlob(value.contents, key) }
-    }
-    return key_ !== undefined ? originalPut(value, key_) : originalPut(value)
-  } as typeof store.put
+const DB_STORE_NAME = 'FILE_DATA'
+const DB_VERSION = 21 // match IDBFS version for forward-compat
 
-  // ── Decrypt on get ──
-  const originalGet = store.get.bind(store)
-  store.get = function decryptingGet(query: IDBValidKey | IDBKeyRange): IDBRequest {
-    const req = originalGet(query)
-    wrapRequestResult(req, key)
-    return req
-  } as typeof store.get
+export class EncryptedFileStore {
+  private db: IDBDatabase | null = null
 
-  // ── Decrypt on getAll ──
-  const originalGetAll = store.getAll.bind(store)
-  store.getAll = function decryptingGetAll(
-    query?: IDBValidKey | IDBKeyRange | null,
-    count?: number
-  ): IDBRequest<IdbfsRecord[]> {
-    const req = originalGetAll(query, count) as IDBRequest<IdbfsRecord[]>
-    const resultDescriptor = Object.getOwnPropertyDescriptor(
-      IDBRequest.prototype, 'result'
-    )
-    let cachedResult: IdbfsRecord[] | undefined
+  constructor(
+    private dbName: string,
+    private key: Uint8Array,
+  ) {}
 
-    Object.defineProperty(req, 'result', {
-      get() {
-        if (cachedResult !== undefined) return cachedResult
-        const raw = resultDescriptor!.get!.call(req)
-        if (!Array.isArray(raw)) return raw
-        cachedResult = raw.map(r => decryptRecord(r, key))
-        return cachedResult
-      },
-      configurable: true,
+  async open(): Promise<void> {
+    this.db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(this.dbName, DB_VERSION)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        if (!db.objectStoreNames.contains(DB_STORE_NAME)) {
+          db.createObjectStore(DB_STORE_NAME)
+        }
+      }
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
     })
-    return req
-  } as typeof store.getAll
+  }
 
-  // ── Decrypt on openCursor ──
-  const originalOpenCursor = store.openCursor.bind(store)
-  store.openCursor = function decryptingOpenCursor(
-    query?: IDBValidKey | IDBKeyRange | null,
-    direction?: IDBCursorDirection
-  ): IDBRequest<IDBCursorWithValue | null> {
-    const req = originalOpenCursor(query, direction)
-    patchCursorRequest(req, key)
-    return req
-  } as typeof store.openCursor
-}
+  /** Load all records, decrypting contents. */
+  async loadAll(): Promise<Map<string, FileRecord>> {
+    const db = this.db!
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE_NAME, 'readonly')
+      const store = tx.objectStore(DB_STORE_NAME)
+      const entries = new Map<string, FileRecord>()
 
-/** Wrap a single-record IDBRequest to decrypt its result. */
-function wrapRequestResult(req: IDBRequest, key: Uint8Array): void {
-  const resultDescriptor = Object.getOwnPropertyDescriptor(
-    IDBRequest.prototype, 'result'
-  )
-  let cachedResult: IdbfsRecord | undefined
-
-  Object.defineProperty(req, 'result', {
-    get() {
-      if (cachedResult !== undefined) return cachedResult
-      const raw = resultDescriptor!.get!.call(req) as IdbfsRecord | undefined
-      if (!raw) return raw
-      cachedResult = decryptRecord(raw, key)
-      return cachedResult
-    },
-    configurable: true,
-  })
-}
-
-/** Patch a cursor request so each cursor.value is decrypted. */
-function patchCursorRequest(req: IDBRequest<IDBCursorWithValue | null>, key: Uint8Array): void {
-  const originalOnSuccess = Object.getOwnPropertyDescriptor(req, 'onsuccess')
-  const addEventOriginal = req.addEventListener.bind(req)
-
-  req.addEventListener = function patchedAddEvent(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions
-  ): void {
-    if (type === 'success' && typeof listener === 'function') {
-      const originalListener = listener
-      listener = function wrappedListener(this: IDBRequest, event: Event) {
+      const req = store.openCursor()
+      req.onsuccess = () => {
         const cursor = req.result
-        if (cursor && cursor.value) {
-          const decrypted = decryptRecord(cursor.value, key)
-          Object.defineProperty(cursor, 'value', { value: decrypted, configurable: true })
+        if (!cursor) {
+          resolve(entries)
+          return
         }
-        return originalListener.call(this, event)
-      } as EventListener
-    }
-    return addEventOriginal(type, listener, options)
-  } as typeof req.addEventListener
+        const path = cursor.key as string
+        const record = cursor.value as FileRecord
+        if (record.contents instanceof Uint8Array && record.contents.length > 0) {
+          entries.set(path, { ...record, contents: decryptBlob(record.contents, this.key) })
+        } else {
+          entries.set(path, record)
+        }
+        cursor.continue()
+      }
+      req.onerror = () => reject(req.error)
+    })
+  }
 
-  // Also handle direct onsuccess assignment
-  Object.defineProperty(req, 'onsuccess', {
-    set(handler: ((this: IDBRequest, ev: Event) => void) | null) {
-      if (handler) {
-        const originalHandler = handler
-        handler = function wrappedHandler(this: IDBRequest, event: Event) {
-          const cursor = (this as IDBRequest<IDBCursorWithValue | null>).result
-          if (cursor && cursor.value) {
-            const decrypted = decryptRecord(cursor.value, key)
-            Object.defineProperty(cursor, 'value', { value: decrypted, configurable: true })
-          }
-          return originalHandler.call(this, event)
+  /** Store records, encrypting contents. */
+  async put(records: Map<string, FileRecord>): Promise<void> {
+    const db = this.db!
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(DB_STORE_NAME)
+      for (const [path, record] of records) {
+        if (record.contents instanceof Uint8Array && record.contents.length > 0) {
+          store.put({ ...record, contents: encryptBlob(record.contents, this.key) }, path)
+        } else {
+          store.put(record, path)
         }
       }
-      if (originalOnSuccess?.set) {
-        originalOnSuccess.set.call(req, handler)
-      }
-    },
-    get() {
-      return originalOnSuccess?.get?.call(req)
-    },
-    configurable: true,
-  })
-}
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
 
-function decryptRecord(record: IdbfsRecord, key: Uint8Array): IdbfsRecord {
-  if (record && record.contents instanceof Uint8Array && record.contents.length > 0) {
-    try {
-      return { ...record, contents: decryptBlob(record.contents, key) }
-    } catch {
-      // If decryption fails, return as-is (may be an unencrypted legacy record)
-      return record
+  /** Remove entries by path. */
+  async remove(paths: string[]): Promise<void> {
+    const db = this.db!
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(DB_STORE_NAME)
+      for (const path of paths) store.delete(path)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close()
+      this.db = null
     }
   }
-  return record
 }
 
-// ── EncryptedIdbFs (implements PGlite Filesystem interface) ─────────────
+// ── Emscripten FS helpers ───────────────────────────────────────────────
 
-/** Minimal interface for the PGlite instance we receive in init() */
+/** Minimal Emscripten FS interface we rely on. */
+interface EmscriptenFS {
+  readdir(path: string): string[]
+  readFile(path: string): Uint8Array
+  writeFile(path: string, data: Uint8Array, opts?: { canOwn?: boolean }): void
+  mkdir(path: string): void
+  mkdirTree(path: string): void
+  stat(path: string): { mtime: Date; mode: number }
+  isDir(mode: number): boolean
+  isFile(mode: number): boolean
+  chmod(path: string, mode: number): void
+  utime(path: string, atime: number, mtime: number): void
+  lookupPath(path: string): { node: { contents: Uint8Array } }
+  quit(): void
+}
+
 interface PGliteRef {
-  Module: {
-    FS: {
-      filesystems: { IDBFS: Record<string, unknown> }
-      mkdir(path: string): void
-      mount(fs: Record<string, unknown>, opts: Record<string, unknown>, path: string): void
-      symlink(target: string, link: string): void
-      syncfs(populate: boolean, callback: (err: Error | null) => void): void
-      quit(): void
+  Module: { FS: EmscriptenFS }
+}
+
+/**
+ * PGlite's data directory inside the Emscripten FS.
+ * This matches the constant exported from @electric-sql/pglite internals.
+ */
+const PGDATA = '/tmp/pglite/base'
+
+/** Recursively collect all file entries under `dir`. */
+function walkFs(FS: EmscriptenFS, dir: string, out: Map<string, FileRecord>): void {
+  let entries: string[]
+  try {
+    entries = FS.readdir(dir)
+  } catch {
+    return
+  }
+  for (const name of entries) {
+    if (name === '.' || name === '..') continue
+    const fullPath = `${dir}/${name}`
+    try {
+      const st = FS.stat(fullPath)
+      if (FS.isDir(st.mode)) {
+        out.set(fullPath, { timestamp: epochSeconds(st.mtime), mode: st.mode })
+        walkFs(FS, fullPath, out)
+      } else if (FS.isFile(st.mode)) {
+        out.set(fullPath, {
+          timestamp: epochSeconds(st.mtime),
+          mode: st.mode,
+          contents: FS.readFile(fullPath),
+        })
+      }
+    } catch {
+      // file vanished between readdir and stat
     }
   }
 }
 
-const PGDATA = '/pgdata'
+function epochSeconds(d: Date | number): number {
+  return typeof d === 'number' ? d : Math.floor(d.getTime() / 1000)
+}
+
+// ── EncryptedIdbFs (PGlite Filesystem) ──────────────────────────────────
 
 export class EncryptedIdbFs {
-  private dataDir: string
-  private key: Uint8Array
+  private store: EncryptedFileStore
   private pg: PGliteRef | null = null
-  private removeInterceptor: (() => void) | null = null
+  /** Snapshot of timestamps from the last sync, for change detection. */
+  private lastTimestamps: Map<string, number> = new Map()
 
   /**
-   * @param dataDir  Storage name, e.g. "scribe-db". Used as the IDBFS mount path.
-   * @param encryptionKey  32-byte nacl.secretbox key (from deriveStorageKey)
+   * @param dataDir   Storage name (e.g. "scribe-db")
+   * @param encryptionKey  32-byte nacl.secretbox key
    */
   constructor(dataDir: string, encryptionKey: Uint8Array) {
     if (encryptionKey.length !== nacl.secretbox.keyLength) {
       throw new Error(`EncryptedIdbFs: key must be ${nacl.secretbox.keyLength} bytes, got ${encryptionKey.length}`)
     }
-    this.dataDir = dataDir
-    this.key = encryptionKey
+    this.store = new EncryptedFileStore(`/pglite/${dataDir}`, encryptionKey)
   }
 
-  /**
-   * Called by PGlite during construction. Sets up IDBFS mount (same as stock
-   * IdbFs) but installs our IndexedDB interceptor first so all file contents
-   * are encrypted/decrypted transparently.
-   */
+  /** Called by PGlite during construction. Default MEMFS is fine. */
   async init(pg: PGliteRef, emscriptenOptions: Record<string, unknown>): Promise<{ emscriptenOpts: Record<string, unknown> }> {
     this.pg = pg
-    const dataDir = this.dataDir
-    const key = this.key
-
-    // Install interceptor before IDBFS opens its database
-    this.removeInterceptor = installIdbInterceptor(dataDir, key)
-
-    // Set up the IDBFS mount exactly like stock IdbFs does
-    const existingPreRun = (emscriptenOptions.preRun ?? []) as Array<(mod: PGliteRef['Module']) => void>
-    emscriptenOptions.preRun = [
-      ...existingPreRun,
-      (mod: PGliteRef['Module']) => {
-        const FS = mod.FS
-        try { FS.mkdir('/pglite') } catch { /* already exists */ }
-        FS.mkdir(`/pglite/${dataDir}`)
-        FS.mount(FS.filesystems.IDBFS, {}, `/pglite/${dataDir}`)
-        try { FS.symlink(`/pglite/${dataDir}`, PGDATA) } catch { /* already exists */ }
-      },
-    ]
-
     return { emscriptenOpts: emscriptenOptions }
   }
 
   /**
-   * Pull encrypted data from IndexedDB into the in-memory FS, decrypting
-   * transparently via our interceptor.
+   * Load encrypted records from IndexedDB, decrypt, and populate the FS.
+   * Mirrors what Emscripten IDBFS.storeLocalEntry does.
    */
   async initialSyncFs(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.pg!.Module.FS.syncfs(true, (err: Error | null) => {
-        if (err) reject(err)
-        else resolve()
-      })
-    })
+    await this.store.open()
+    const records = await this.store.loadAll()
+    if (records.size === 0) return
+
+    const FS = this.pg!.Module.FS
+
+    for (const [path, entry] of records) {
+      if (FS.isDir(entry.mode)) {
+        try {
+          FS.mkdirTree(path)
+        } catch {
+          // already exists
+        }
+        FS.chmod(path, entry.mode)
+      } else if (entry.contents) {
+        // Ensure parent directories exist
+        const parent = path.substring(0, path.lastIndexOf('/'))
+        try {
+          FS.mkdirTree(parent)
+        } catch {
+          // already exists
+        }
+        FS.writeFile(path, entry.contents, { canOwn: true })
+        FS.chmod(path, entry.mode)
+      }
+
+      const ts = entry.timestamp
+      try {
+        FS.utime(path, ts, ts)
+      } catch {
+        // utime may fail on some node types
+      }
+      this.lastTimestamps.set(path, ts)
+    }
   }
 
   /**
-   * Push in-memory FS changes to IndexedDB, encrypting transparently
-   * via our interceptor.
+   * Walk the FS, find entries that changed since last sync, encrypt, and
+   * write to IndexedDB. Entries that disappeared are removed.
    */
   async syncToFs(_relaxedDurability?: boolean): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.pg!.Module.FS.syncfs(false, (err: Error | null) => {
-        if (err) reject(err)
-        else resolve()
-      })
-    })
+    const FS = this.pg!.Module.FS
+    const current = new Map<string, FileRecord>()
+    walkFs(FS, PGDATA, current)
+
+    // Diff: find new/changed entries
+    const toWrite = new Map<string, FileRecord>()
+    for (const [path, entry] of current) {
+      const prev = this.lastTimestamps.get(path)
+      if (prev === undefined || prev !== entry.timestamp) {
+        toWrite.set(path, entry)
+      }
+    }
+
+    // Diff: find removed entries
+    const toRemove: string[] = []
+    for (const path of this.lastTimestamps.keys()) {
+      if (!current.has(path)) {
+        toRemove.push(path)
+      }
+    }
+
+    // Persist
+    if (toWrite.size > 0) await this.store.put(toWrite)
+    if (toRemove.length > 0) await this.store.remove(toRemove)
+
+    // Update snapshot
+    this.lastTimestamps = new Map()
+    for (const [path, entry] of current) {
+      this.lastTimestamps.set(path, entry.timestamp)
+    }
   }
 
   async dumpTar(_dbname: string): Promise<Blob> {
@@ -355,22 +330,11 @@ export class EncryptedIdbFs {
   }
 
   async closeFs(): Promise<void> {
-    if (this.removeInterceptor) {
-      this.removeInterceptor()
-      this.removeInterceptor = null
-    }
-    // Close the IDBFS database connection
-    try {
-      const idbfsDbs = this.pg?.Module.FS.filesystems.IDBFS as { dbs?: Record<string, IDBDatabase> }
-      const db = idbfsDbs?.dbs?.[`/pglite/${this.dataDir}`]
-      if (db) db.close()
-    } catch {
-      // already closed
-    }
+    this.store.close()
     try {
       this.pg?.Module.FS.quit()
     } catch {
-      // FS.quit may throw if already shut down
+      // already shut down
     }
   }
 }
