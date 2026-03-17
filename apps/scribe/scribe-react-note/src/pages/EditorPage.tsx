@@ -9,7 +9,8 @@ import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
 import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
-import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
@@ -43,6 +44,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const [versionUuid, setVersionUuid] = useState<string | undefined>(undefined)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
   const [showConflictWarning, setShowConflictWarning] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const loadedVersionUuidRef = useRef<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
@@ -358,6 +360,20 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => {
+                  if (!showPreview) saveNow()
+                  setShowPreview(p => !p)
+                }}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                aria-label={showPreview ? 'Edit' : 'Preview'}
+              >
+                {showPreview ? (
+                  <><PencilSquareIcon className="w-4 h-4 mr-1.5" />Edit</>
+                ) : (
+                  <><EyeIcon className="w-4 h-4 mr-1.5" />Preview</>
+                )}
+              </button>
+              <button
+                onClick={() => {
                   clearDraft()
                   navigate(cancelPath)
                 }}
@@ -414,19 +430,35 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
         <div className="card shadow-lg overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-hidden">
-            <CodeMirror
-              value={content}
-              className="border-0 rounded-b-xl !bg-white w-full h-full [&_.cm-editor]:!h-full [&_.cm-scroller]:!overflow-auto"
-              style={{
-                fontSize: '14px',
-                fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace'
-              }}
-              extensions={[
-                markdown({ base: markdownLanguage, codeLanguages: languages }),
-                EditorView.lineWrapping,
-              ]}
-              onChange={(value) => setContent(value)}
-            />
+            {showPreview ? (
+              <div className="bg-white p-6 md:p-8 overflow-auto h-full">
+                <div
+                  className="prose prose-lg max-w-none"
+                  dangerouslySetInnerHTML={{
+                    __html: renderMarkdown(
+                      content,
+                      prefix,
+                      noteSlugPath,
+                      routeCtx.buildPath().replace(/\/$/, '')
+                    ),
+                  }}
+                />
+              </div>
+            ) : (
+              <CodeMirror
+                value={content}
+                className="border-0 rounded-b-xl !bg-white w-full h-full [&_.cm-editor]:!h-full [&_.cm-scroller]:!overflow-auto"
+                style={{
+                  fontSize: '14px',
+                  fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace'
+                }}
+                extensions={[
+                  markdown({ base: markdownLanguage, codeLanguages: languages }),
+                  EditorView.lineWrapping,
+                ]}
+                onChange={(value) => setContent(value)}
+              />
+            )}
           </div>
 
           <div className="px-4 py-2 md:px-6 md:py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between pb-safe">
