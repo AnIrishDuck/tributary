@@ -6,27 +6,16 @@ import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, schemaReady } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
-// Cache loaded library data so remounting the component renders the previously
-// loaded content instantly instead of flashing a loading spinner.
-interface NoteListCacheEntry {
-  notes: NoteSlugRow[]
-  collections: { collection: Collection; slug: string | null }[]
-  collidingSlugsSet: Set<string>
-  libraryName: string | null
-}
-const noteListCache = new Map<string, NoteListCacheEntry>()
-
 const NoteListPage: React.FC = () => {
   const routeCtx = useRouteContext()
   const prefix = routeCtx.prefix
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
-  const cached = prefix ? noteListCache.get(prefix) : undefined
-  const [notes, setNotes] = useState<NoteSlugRow[]>(() => cached?.notes ?? [])
-  const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>(() => cached?.collections ?? [])
-  const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(() => cached?.collidingSlugsSet ?? new Set())
-  const [libraryName, setLibraryName] = useState<string | null>(() => cached?.libraryName ?? null)
-  const [loading, setLoading] = useState(() => !cached)
+  const [notes, setNotes] = useState<NoteSlugRow[]>([])
+  const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>([])
+  const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
+  const [libraryName, setLibraryName] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Focus sync on this library while the page is mounted
@@ -112,15 +101,6 @@ const NoteListPage: React.FC = () => {
         setLibraryName(loadedName)
         setError(null)
         setLoading(false)
-
-        if (prefix) {
-          noteListCache.set(prefix, {
-            notes: loadedNotes,
-            collections: loadedCollections,
-            collidingSlugsSet: loadedCollisions,
-            libraryName: loadedName
-          })
-        }
       } catch (err) {
         console.error('Error loading notes:', err)
         const libStatus = syncStatus[prefix]
