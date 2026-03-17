@@ -48,8 +48,12 @@ type PageMode =
   | { type: 'librarySettings' }
   | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
 
+// Cache resolved page modes so remounting the component (e.g. navigating back
+// from the library root) renders the previously loaded content instantly instead
+// of flashing a loading spinner while the async DB queries re-run.
+const slugViewModeCache = new Map<string, PageMode>()
+
 const SlugViewPage: React.FC = () => {
-  const [mode, setMode] = useState<PageMode | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
@@ -59,6 +63,12 @@ const SlugViewPage: React.FC = () => {
   const params = useParams()
   const prefix = routeCtx.prefix || params.prefix
   const splatPath = params['*'] || ''
+
+  // Initialise from cache when available so the page renders content instantly
+  // on remount. Falls back to loading state on the very first visit.
+  const [mode, setMode] = useState<PageMode>(() =>
+    slugViewModeCache.get(`${prefix}/${splatPath}`) ?? { type: 'loading' }
+  )
 
   // Track whether this specific library has been synced at least once
   const librarySyncStatusDep = prefix ? syncStatus[prefix] : undefined
@@ -537,9 +547,13 @@ const SlugViewPage: React.FC = () => {
     loadContent()
   }, [client, prefix, splatPath, librarySyncStatusDep, globalSyncStatus.synced])
 
-  // No mode yet — async loadContent hasn't resolved. Render nothing briefly
-  // rather than flashing a loading spinner when data is available locally.
-  if (!mode) return null
+  // Persist content modes so subsequent mounts skip the loading state.
+  useEffect(() => {
+    const nonCacheable = ['loading', 'schemaLoading', 'schemaError', 'error']
+    if (!nonCacheable.includes(mode.type)) {
+      slugViewModeCache.set(`${prefix}/${splatPath}`, mode)
+    }
+  }, [mode, prefix, splatPath])
 
   if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined

@@ -6,17 +6,27 @@ import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, schemaReady } from 'scribe-data'
 import NoteListView from './SlugNoteListPage'
 
+// Cache loaded library data so remounting the component renders the previously
+// loaded content instantly instead of flashing a loading spinner.
+interface NoteListCacheEntry {
+  notes: NoteSlugRow[]
+  collections: { collection: Collection; slug: string | null }[]
+  collidingSlugsSet: Set<string>
+  libraryName: string | null
+}
+const noteListCache = new Map<string, NoteListCacheEntry>()
+
 const NoteListPage: React.FC = () => {
   const routeCtx = useRouteContext()
   const prefix = routeCtx.prefix
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
-  const [notes, setNotes] = useState<NoteSlugRow[]>([])
-  const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>([])
-  const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
-  const [libraryName, setLibraryName] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [waitingForSync, setWaitingForSync] = useState(false)
+  const cached = prefix ? noteListCache.get(prefix) : undefined
+  const [notes, setNotes] = useState<NoteSlugRow[]>(() => cached?.notes ?? [])
+  const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>(() => cached?.collections ?? [])
+  const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(() => cached?.collidingSlugsSet ?? new Set())
+  const [libraryName, setLibraryName] = useState<string | null>(() => cached?.libraryName ?? null)
+  const [loading, setLoading] = useState(() => !cached)
   const [error, setError] = useState<string | null>(null)
 
   // Focus sync on this library while the page is mounted
@@ -47,7 +57,6 @@ const NoteListPage: React.FC = () => {
           // re-run when librarySyncStatusDep or globalSyncStatus.synced changes.
           const libStatus = syncStatus[prefix]
           if ((!libStatus || !libStatus.synced) && !globalSyncStatus.synced) {
-            setWaitingForSync(true)
             return
           }
           throw new Error('Could not get local database')
@@ -61,7 +70,6 @@ const NoteListPage: React.FC = () => {
           const libStatus = syncStatus[prefix]
           if (!libStatus || !libStatus.synced) {
             // Still syncing — stay in loading state, effect will re-run
-            setWaitingForSync(true)
             return
           }
           throw new Error('Library schema could not be loaded. The library data may be corrupt or incompatible.')
@@ -70,35 +78,49 @@ const NoteListPage: React.FC = () => {
         // Get library root collection
         const library = await getLibrary(localDb)
 
+        let loadedNotes: NoteSlugRow[]
+        let loadedCollections: { collection: Collection; slug: string | null }[]
+        let loadedCollisions: Set<string>
+
         if (library) {
           // Get child collections of library root
           const childCollections = await getChildCollections(localDb, library.collection_uuid)
-          setCollections(childCollections.map(c => ({
+          loadedCollections = childCollections.map(c => ({
             collection: c,
             slug: c.slug || null
-          })))
+          }))
 
           // Get root-level notes and colliding slugs
           const [noteList, collisions] = await Promise.all([
             getNotesInCollectionWithSlugs(localDb, null),
             getCollidingSlugs(localDb, library.collection_uuid)
           ])
-          setNotes(noteList)
-          setCollidingSlugsSet(collisions)
+          loadedNotes = noteList
+          loadedCollisions = collisions
         } else {
           // No library root — all notes are root-level
-          const noteList = await getNotesInCollectionWithSlugs(localDb, null)
-          setNotes(noteList)
-          setCollections([])
-          setCollidingSlugsSet(new Set())
+          loadedNotes = await getNotesInCollectionWithSlugs(localDb, null)
+          loadedCollections = []
+          loadedCollisions = new Set()
         }
 
-        // Get library display name
-        const name = await getLibraryDisplayName(localDb)
-        setLibraryName(name)
+        const loadedName = await getLibraryDisplayName(localDb)
 
+        setNotes(loadedNotes)
+        setCollections(loadedCollections)
+        setCollidingSlugsSet(loadedCollisions)
+        setLibraryName(loadedName)
         setError(null)
         setLoading(false)
+
+        if (prefix) {
+          noteListCache.set(prefix, {
+            notes: loadedNotes,
+            collections: loadedCollections,
+            collidingSlugsSet: loadedCollisions,
+            libraryName: loadedName
+          })
+        }
       } catch (err) {
         console.error('Error loading notes:', err)
         const libStatus = syncStatus[prefix]
@@ -116,11 +138,6 @@ const NoteListPage: React.FC = () => {
   }, [client, prefix, librarySyncStatusDep, globalSyncStatus.synced])
 
   if (loading) {
-    // Only show the spinner when we've explicitly determined we need to wait
-    // for sync. Otherwise render nothing briefly while the async check runs —
-    // avoids flashing a loading spinner on every page navigation when data is
-    // available locally.
-    if (!waitingForSync) return null
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
         <div className="text-center">
