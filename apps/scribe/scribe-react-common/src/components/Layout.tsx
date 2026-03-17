@@ -112,10 +112,8 @@ const Layout: React.FC = () => {
             ) : (
               <>
                 <Link
-                  to="/new"
-                  className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
-                    location.pathname === '/new' ? 'text-blue-600' : 'text-gray-500'
-                  }`}
+                  to="/?create"
+                  className="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-500"
                 >
                   <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center -mt-3 shadow-lg">
                     <PlusIcon className="w-6 h-6 text-white" />
