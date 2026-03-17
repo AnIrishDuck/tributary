@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { getLibraries, LibraryInfo } from '../actions/getLibraries'
-import { getHomeCollections } from '../actions/getHomeCollections'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
-import { importLibrary, createLibrary, titleToSlug } from 'scribe-data'
+import { getLibraries, getHomeCollections, importLibrary, createLibrary, titleToSlug, LibraryInfo } from 'scribe-data'
 import { CONFIG } from '../config'
 import * as base64url from 'urlsafe-base64'
 
@@ -371,8 +369,7 @@ const HomePage: React.FC = () => {
                   // Pre-compute slugs and detect collisions so we can prefer /n/ routes
                   const slugCounts = new Map<string, number>()
                   const libraryDisplayNames = (libraries ?? []).map((library) => {
-                    const libStatus = syncStatus[library.libraryId]
-                    const displayName = libStatus?.libraryTitle || library.libraryTitle || 'Notes'
+                    const displayName = library.libraryTitle || 'Notes'
                     const slug = titleToSlug(displayName)
                     slugCounts.set(slug, (slugCounts.get(slug) ?? 0) + 1)
                     return { library, displayName, slug }
@@ -389,7 +386,7 @@ const HomePage: React.FC = () => {
                     const libraryPath = hasUniqueSlug ? `/n/${slug}/` : `/pk/${library.libraryId}/`
                     const settingsPath = hasUniqueSlug ? `/n/${slug}/&library` : `/pk/${library.libraryId}/&library`
 
-                    const lastEdited = libStatus?.lastEdited ?? library.lastEdited
+                    const lastEdited = library.lastEdited
                     const lastEditedText = isSyncing
                       ? null // progress indicator replaces this
                       : !hasSynced
