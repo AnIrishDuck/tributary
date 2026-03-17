@@ -3,7 +3,7 @@ import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, createLibrary } from '../src/library.js'
-import { getLibraries, getHomeCollections, resolveLibraryBySlug, resolveLibrarySlug } from '../src/homeLibrary.js'
+import { getLibraries, getHomeCollections, resolveLibraryBySlug, resolveLibrarySlug } from '../src/home.js'
 import { LibraryInfo } from '../src/types.js'
 
 function makeClient(server?: FakeServer) {
