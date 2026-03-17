@@ -437,7 +437,7 @@ const SlugViewPage: React.FC = () => {
         if (!resolved) {
           // Slug not found. If the library is still syncing, the target may
           // appear once more data arrives — show loading instead of an error.
-          if (!librarySynced) {
+          if (!librarySynced && !globalSyncStatus.synced) {
             setMode({ type: 'loading' })
             return
           }
@@ -525,7 +525,7 @@ const SlugViewPage: React.FC = () => {
         // If the library is still syncing, the error may be due to
         // incomplete data (e.g. authoritative version not indexed yet).
         // Show loading and let the effect retry once more data arrives.
-        if (!librarySynced) {
+        if (!librarySynced && !globalSyncStatus.synced) {
           setMode({ type: 'loading' })
         } else {
           setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
