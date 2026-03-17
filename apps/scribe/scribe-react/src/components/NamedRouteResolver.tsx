@@ -3,15 +3,8 @@ import { useParams, Outlet } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { RouteContextProvider } from 'scribe-react-common/src/context/routeContext'
-import { titleToSlug } from 'scribe-data'
-import { getHomeCollections } from '../actions/getHomeCollections'
-import { getLibraries, LibraryInfo } from '../actions/getLibraries'
+import { resolveLibrarySlug, LibrarySlugResult } from 'scribe-data'
 import LibraryConflictPage from '../pages/LibraryConflictPage'
-
-interface ResolvedLibrary {
-  libraryId: string
-  libraryTitle: string | null
-}
 
 /**
  * Resolves a named library route (#n/:librarySlug/...) to the correct
@@ -22,12 +15,12 @@ const NamedRouteResolver: React.FC = () => {
   const params = useParams()
   const librarySlug = params.librarySlug || ''
   const { client } = useTributary()
-  const { syncStatus, globalSyncStatus } = useSyncStatus()
+  const { globalSyncStatus } = useSyncStatus()
 
   const [state, setState] = useState<
     | { type: 'loading' }
     | { type: 'resolved'; prefix: string }
-    | { type: 'conflict'; matches: ResolvedLibrary[] }
+    | { type: 'conflict'; matches: Array<{ libraryId: string; libraryTitle: string | null }> }
     | { type: 'not_found' }
   >({ type: 'loading' })
 
@@ -39,53 +32,12 @@ const NamedRouteResolver: React.FC = () => {
       }
 
       try {
-        // Get all known libraries
-        let libraries: LibraryInfo[]
-        const collections = await getHomeCollections(client)
-        if (collections !== null) {
-          libraries = collections
-        } else {
-          libraries = await getLibraries(client)
-        }
+        const result: LibrarySlugResult = await resolveLibrarySlug(client, librarySlug)
 
-        // Merge titles from syncStatus (which has up-to-date library names)
-        const enriched = libraries.map(lib => ({
-          ...lib,
-          libraryTitle: syncStatus[lib.libraryId]?.libraryTitle || lib.libraryTitle,
-        }))
-
-        // Also try to fetch display names for libraries without titles
-        const withTitles = await Promise.all(
-          enriched.map(async lib => {
-            if (lib.libraryTitle) return lib
-            try {
-              const localDb = await client.getLocal('scribe', lib.libraryId)
-              if (!localDb) return lib
-              const { getLibraryDisplayName } = await import('scribe-data')
-              const name = await getLibraryDisplayName(localDb)
-              return { ...lib, libraryTitle: name }
-            } catch {
-              return lib
-            }
-          })
-        )
-
-        // Find libraries whose slugified name matches the URL slug
-        const matches = withTitles.filter(lib => {
-          if (!lib.libraryTitle) return false
-          return titleToSlug(lib.libraryTitle) === librarySlug
-        })
-
-        if (matches.length === 1) {
-          setState({ type: 'resolved', prefix: matches[0].libraryId })
-        } else if (matches.length > 1) {
-          setState({
-            type: 'conflict',
-            matches: matches.map(m => ({
-              libraryId: m.libraryId,
-              libraryTitle: m.libraryTitle,
-            })),
-          })
+        if (result.type === 'resolved') {
+          setState({ type: 'resolved', prefix: result.libraryId })
+        } else if (result.type === 'conflict') {
+          setState({ type: 'conflict', matches: result.matches })
         } else {
           // If sync hasn't completed yet, stay loading
           if (!globalSyncStatus.synced) {
@@ -101,7 +53,7 @@ const NamedRouteResolver: React.FC = () => {
     }
 
     resolve()
-  }, [client, librarySlug, syncStatus, globalSyncStatus.synced])
+  }, [client, librarySlug, globalSyncStatus.synced])
 
   if (state.type === 'loading') {
     return (

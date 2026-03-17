@@ -1,6 +1,27 @@
 import { TributaryClient } from 'tributary-client'
-import { getCachedLinkedLibraries, getLinkedLibraries, localMigrations, seedLinkedLibrariesCache } from 'scribe-data'
-import { LibraryInfo } from './getLibraries'
+import { getCachedLinkedLibraries, seedLinkedLibrariesCache } from './library.js'
+import { getLinkedLibraries } from './collection.js'
+import { localMigrations } from './migrations.js'
+import { titleToSlug } from './indexing.js'
+import { LibraryInfo, LibrarySlugResult } from './types.js'
+
+/**
+ * Get all libraries tracked by the TributaryClient.
+ *
+ * Returns a lightweight list of library IDs.  Per-library metadata
+ * (lastEdited, libraryTitle) is populated by the sync loop and stored
+ * in the linked_libraries cache, so this function never queries
+ * individual library DBs.
+ */
+export async function getLibraries(client: TributaryClient): Promise<LibraryInfo[]> {
+  const libraryIds = await client.list()
+
+  return libraryIds.map(libraryId => ({
+    libraryId,
+    lastEdited: null,
+    libraryTitle: null,
+  }))
+}
 
 /**
  * Load the home collections from the configured home library.
@@ -67,4 +88,49 @@ export async function getHomeCollections(client: TributaryClient): Promise<Libra
     lastEdited: null,
     libraryTitle: collection.title,
   }))
+}
+
+/**
+ * Given a list of libraries with titles, find which one(s) match a URL slug.
+ * Pure function — no DB access, no side effects.
+ */
+export function resolveLibraryBySlug(
+  libraries: LibraryInfo[],
+  slug: string
+): LibrarySlugResult {
+  const matches = libraries.filter(lib => {
+    if (!lib.libraryTitle) return false
+    return titleToSlug(lib.libraryTitle) === slug
+  })
+
+  if (matches.length === 1) {
+    return {
+      type: 'resolved',
+      libraryId: matches[0].libraryId,
+      libraryTitle: matches[0].libraryTitle,
+    }
+  }
+  if (matches.length > 1) {
+    return {
+      type: 'conflict',
+      matches: matches.map(m => ({
+        libraryId: m.libraryId,
+        libraryTitle: m.libraryTitle,
+      })),
+    }
+  }
+  return { type: 'not_found' }
+}
+
+/**
+ * Load all known libraries from the home library (or fallback)
+ * and resolve a slug to a library ID.
+ */
+export async function resolveLibrarySlug(
+  client: TributaryClient,
+  slug: string
+): Promise<LibrarySlugResult> {
+  const collections = await getHomeCollections(client)
+  const libraries = collections !== null ? collections : await getLibraries(client)
+  return resolveLibraryBySlug(libraries, slug)
 }

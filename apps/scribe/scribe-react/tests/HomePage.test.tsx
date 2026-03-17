@@ -8,7 +8,7 @@ import { createTestTributaryClient, TributaryProvider } from 'scribe-react-commo
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
 import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { routes } from '../src/route'
-import { getLibraries } from '../src/actions/getLibraries'
+import { getLibraries } from 'scribe-data'
 import { WithProviders } from './test-utils'
 
 // Mock the useNavigate hook from react-router

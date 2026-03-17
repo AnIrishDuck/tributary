@@ -255,6 +255,24 @@ export type SyncOperation =
   | { kind: 'update'; from: SyncItem; target: SyncItem }
   | { kind: 'move'; from: SyncItem; to: SyncItem }
 
+/**
+ * Information about a library including last edit time and display name.
+ * Used by getLibraries() and getHomeCollections().
+ */
+export interface LibraryInfo {
+  libraryId: string
+  lastEdited: string | null
+  libraryTitle: string | null
+}
+
+/**
+ * Result of resolving a library by its URL slug.
+ */
+export type LibrarySlugResult =
+  | { type: 'resolved'; libraryId: string; libraryTitle: string | null }
+  | { type: 'conflict'; matches: Array<{ libraryId: string; libraryTitle: string | null }> }
+  | { type: 'not_found' }
+
 // Re-export search types from search.ts
 export type {
   SearchOptions,

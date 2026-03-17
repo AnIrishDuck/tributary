@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries, getCachedLinkedLibraries } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -396,7 +396,38 @@ export const SyncStatusProvider: React.FC<{
       }
     }
 
-    syncLoop()
+    // Load cached sync state from the linked_libraries table so the home
+    // page can render immediately with last-known data instead of showing
+    // "Awaiting sync" for every library until the sync loop catches up.
+    const initFromCache = async () => {
+      try {
+        const homeStreamId = await client.getHomeStream()
+        if (!homeStreamId) return
+        const homeStream = await client.get('scribe', homeStreamId)
+        if (!homeStream) return
+        const homeLocal = homeStream.local()
+        const cached = await getCachedLinkedLibraries(homeLocal)
+        for (const lib of cached) {
+          latestPerStream[lib.stream_id] = {
+            synced: lib.last_synced_at != null,
+            isSyncing: lib.last_synced_at == null,
+            currentIndex: lib.sync_current_index,
+            finalIndex: lib.sync_final_index,
+            lastSyncedAt: lib.last_synced_at ? new Date(lib.last_synced_at) : null,
+            hasError: false,
+            lastEdited: lib.last_edited,
+            libraryTitle: lib.title,
+          }
+        }
+        if (cached.length > 0) {
+          pushStatus()
+        }
+      } catch (err) {
+        console.error('[sync] Error loading cached sync state:', err)
+      }
+    }
+
+    initFromCache().then(() => syncLoop())
 
     return () => {
       isMounted = false
