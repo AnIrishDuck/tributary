@@ -67,3 +67,12 @@ export async function deriveStreamSeed(password: string, email: string, appId: s
   const masterKey = await deriveMasterKey(password, email)
   return hkdfExpand(masterKey, `tributary-stream:${appId}`)
 }
+
+/**
+ * Derive a 32-byte nacl.secretbox key for encrypting the local PGlite database at rest.
+ * HKDF(masterKey, info="tributary-storage") → 32 bytes.
+ */
+export async function deriveStorageKey(password: string, email: string): Promise<Uint8Array> {
+  const masterKey = await deriveMasterKey(password, email)
+  return hkdfExpand(masterKey, 'tributary-storage')
+}

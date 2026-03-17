@@ -1,5 +1,6 @@
 import { PGlite, PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
+import { EncryptedIdbFs } from 'tributary-client/src/encryptedIdbFs'
 
 /**
  * Whether to run PGlite in a background Web Worker or in the foreground
@@ -22,9 +23,12 @@ let currentDbName: string | null = null
  * main thread.
  *
  * @param dbName - Name of the IndexedDB database (optional, defaults to 'scribe-db')
+ * @param encryptionKey - Optional 32-byte nacl.secretbox key for at-rest encryption.
+ *   When provided, all data persisted to IndexedDB is encrypted. Derive this
+ *   from the user's login via deriveStorageKey().
  * @returns PGlite-compatible instance
  */
-export function getPGlite(dbName?: string): PGliteInterface {
+export function getPGlite(dbName?: string, encryptionKey?: Uint8Array): PGliteInterface {
   if (dbInstance) {
     return dbInstance
   }
@@ -32,7 +36,12 @@ export function getPGlite(dbName?: string): PGliteInterface {
   const databaseName = dbName || 'scribe-db'
   currentDbName = databaseName
 
-  if (USE_BACKGROUND_WORKER) {
+  if (encryptionKey) {
+    // Encrypted at-rest storage — uses our custom filesystem
+    dbInstance = new PGlite({
+      fs: new EncryptedIdbFs(databaseName, encryptionKey) as any,
+    })
+  } else if (USE_BACKGROUND_WORKER) {
     dbInstance = new PGliteWorker(
       new Worker(new URL('./pglite-worker.ts', import.meta.url), {
         type: 'module',
