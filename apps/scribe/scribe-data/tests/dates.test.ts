@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'vitest'
-import { dateDiff } from '../src/date-diff.js'
+import { dateDiff } from '../src/dates.js'
 
 describe('dateDiff', () => {
   // -----------------------------------------------------------------------
