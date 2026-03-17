@@ -632,6 +632,7 @@ const SlugViewPage: React.FC = () => {
   }
 
   if (mode.type === 'collection') {
+    const libStatus = prefix ? syncStatus[prefix] : undefined
     return (
       <NoteListView
         collection={mode.collection}
@@ -642,6 +643,11 @@ const SlugViewPage: React.FC = () => {
         slugPath={mode.slugPath}
         prefix={prefix || ''}
         libraryName={mode.libraryName}
+        syncProgress={libStatus ? {
+          currentIndex: libStatus.currentIndex,
+          finalIndex: libStatus.finalIndex,
+          synced: libStatus.synced
+        } : null}
       />
     )
   }
