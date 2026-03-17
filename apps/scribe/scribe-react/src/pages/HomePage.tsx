@@ -389,7 +389,7 @@ const HomePage: React.FC = () => {
                     const lastEdited = library.lastEdited
                     const lastEditedText = isSyncing
                       ? null // progress indicator replaces this
-                      : !hasSynced
+                      : !hasSynced && !lastEdited
                         ? 'Awaiting sync'
                         : lastEdited
                           ? new Date(lastEdited).toLocaleDateString('en-US', {
