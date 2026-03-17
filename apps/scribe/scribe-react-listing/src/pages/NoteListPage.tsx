@@ -16,6 +16,7 @@ const NoteListPage: React.FC = () => {
   const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [waitingForSync, setWaitingForSync] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Focus sync on this library while the page is mounted
@@ -46,6 +47,7 @@ const NoteListPage: React.FC = () => {
           // re-run when librarySyncStatusDep or globalSyncStatus.synced changes.
           const libStatus = syncStatus[prefix]
           if ((!libStatus || !libStatus.synced) && !globalSyncStatus.synced) {
+            setWaitingForSync(true)
             return
           }
           throw new Error('Could not get local database')
@@ -59,6 +61,7 @@ const NoteListPage: React.FC = () => {
           const libStatus = syncStatus[prefix]
           if (!libStatus || !libStatus.synced) {
             // Still syncing — stay in loading state, effect will re-run
+            setWaitingForSync(true)
             return
           }
           throw new Error('Library schema could not be loaded. The library data may be corrupt or incompatible.')
@@ -113,6 +116,11 @@ const NoteListPage: React.FC = () => {
   }, [client, prefix, librarySyncStatusDep, globalSyncStatus.synced])
 
   if (loading) {
+    // Only show the spinner when we've explicitly determined we need to wait
+    // for sync. Otherwise render nothing briefly while the async check runs —
+    // avoids flashing a loading spinner on every page navigation when data is
+    // available locally.
+    if (!waitingForSync) return null
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
         <div className="text-center">

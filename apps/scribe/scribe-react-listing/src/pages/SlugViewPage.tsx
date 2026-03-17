@@ -49,7 +49,7 @@ type PageMode =
   | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
 
 const SlugViewPage: React.FC = () => {
-  const [mode, setMode] = useState<PageMode>({ type: 'loading' })
+  const [mode, setMode] = useState<PageMode | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
@@ -536,6 +536,10 @@ const SlugViewPage: React.FC = () => {
 
     loadContent()
   }, [client, prefix, splatPath, librarySyncStatusDep, globalSyncStatus.synced])
+
+  // No mode yet — async loadContent hasn't resolved. Render nothing briefly
+  // rather than flashing a loading spinner when data is available locally.
+  if (!mode) return null
 
   if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined
