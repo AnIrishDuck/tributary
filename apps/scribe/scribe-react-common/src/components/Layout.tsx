@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Outlet, useLocation, Link } from 'react-router'
-import { HomeIcon, PlusIcon, MagnifyingGlassIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
+import { HomeIcon, PlusIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
 import { useTributary } from '../context/tributaryContext'
@@ -30,8 +30,6 @@ const Layout: React.FC = () => {
 
   // Determine which bottom nav item is active
   const isHome = location.pathname === '/'
-  const isSearch = location.pathname.endsWith('/search')
-
   // Detect editor pages: &edit, +note, +draft paths
   const pathSegments = location.pathname.split('/')
   const lastSegment = pathSegments[pathSegments.length - 1] || ''
@@ -63,7 +61,7 @@ const Layout: React.FC = () => {
           </div>
         </div>
       )}
-      <main className={`flex-1 ${isEditorPage ? 'min-h-0 flex flex-col' : 'pb-16 md:pb-0'}`}>
+      <main className={`flex-1 ${isEditorPage ? 'min-h-0 flex flex-col' : prefix ? '' : 'pb-16 md:pb-0'}`}>
         <Outlet />
       </main>
 
@@ -72,7 +70,7 @@ const Layout: React.FC = () => {
         <Link
           to={floatingAction.to}
           className={`fixed z-50 right-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white ${
-            isEditorPage ? 'fab-bottom' : 'fab-above-nav'
+            isEditorPage || prefix ? 'fab-bottom' : 'fab-above-nav'
           }`}
           aria-label={floatingAction.label}
         >
@@ -80,8 +78,8 @@ const Layout: React.FC = () => {
         </Link>
       )}
 
-      {/* Mobile bottom navigation - hidden on desktop and in editor */}
-      {!isEditorPage && (
+      {/* Mobile bottom navigation - only shown on home/non-library pages */}
+      {!isEditorPage && !prefix && (
         <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 md:hidden z-50 pb-safe">
           <div className="flex items-center justify-around h-14">
             <Link
@@ -99,38 +97,24 @@ const Layout: React.FC = () => {
               <span className="text-xs mt-0.5">Home</span>
             </Link>
 
-            {prefix ? (
-              <Link
-                to={routeCtx ? routeCtx.buildPath('search') : `/pk/${prefix}/search`}
-                className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
-                  isSearch ? 'text-blue-600' : 'text-gray-500'
-                }`}
-              >
-                <MagnifyingGlassIcon className="w-6 h-6" />
-                <span className="text-xs mt-0.5">Search</span>
-              </Link>
-            ) : (
-              <>
-                <Link
-                  to="/?create"
-                  className="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-500"
-                >
-                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center -mt-3 shadow-lg">
-                    <PlusIcon className="w-6 h-6 text-white" />
-                  </div>
-                  <span className="text-xs mt-0.5 text-blue-600">New</span>
-                </Link>
-                <Link
-                  to="/?import"
-                  className="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-500"
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                  <span className="text-xs mt-0.5">Import</span>
-                </Link>
-              </>
-            )}
+            <Link
+              to="/?create"
+              className="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-500"
+            >
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center -mt-3 shadow-lg">
+                <PlusIcon className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-xs mt-0.5 text-blue-600">New</span>
+            </Link>
+            <Link
+              to="/?import"
+              className="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-500"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span className="text-xs mt-0.5">Import</span>
+            </Link>
           </div>
         </nav>
       )}
