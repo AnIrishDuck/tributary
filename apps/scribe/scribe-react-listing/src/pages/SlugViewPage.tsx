@@ -61,7 +61,8 @@ const SlugViewPage: React.FC = () => {
   const splatPath = params['*'] || ''
 
   // Track whether this specific library has been synced at least once
-  const librarySynced = prefix ? (syncStatus[prefix]?.synced ?? false) : false
+  const librarySyncStatusDep = prefix ? syncStatus[prefix] : undefined
+  const librarySynced = librarySyncStatusDep?.synced ?? false
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -434,8 +435,16 @@ const SlugViewPage: React.FC = () => {
         const resolved = await resolveSlugPath(localDb, segments, library.collection_uuid)
 
         if (!resolved) {
-          // Slug not found — determine if it's a missing slug (parent exists)
-          // or missing parent (intermediate collections don't exist)
+          // Slug not found. If the library is still syncing, the target may
+          // appear once more data arrives — show loading instead of an error.
+          if (!librarySynced) {
+            setMode({ type: 'loading' })
+            return
+          }
+
+          // Sync finished and slug still missing — determine if it's a missing
+          // slug (parent exists) or missing parent (intermediate collections
+          // don't exist)
           const { resolveSlugPathPartial } = await import('scribe-data')
           const partial = await resolveSlugPathPartial(localDb, segments, library.collection_uuid)
           const fullSlugPath = segments.join('/')
@@ -513,13 +522,20 @@ const SlugViewPage: React.FC = () => {
           return
         }
       } catch (err: any) {
-        setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
+        // If the library is still syncing, the error may be due to
+        // incomplete data (e.g. authoritative version not indexed yet).
+        // Show loading and let the effect retry once more data arrives.
+        if (!librarySynced) {
+          setMode({ type: 'loading' })
+        } else {
+          setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
+        }
         console.error('Error loading content:', err)
       }
     }
 
     loadContent()
-  }, [client, prefix, splatPath, librarySynced, globalSyncStatus.synced])
+  }, [client, prefix, splatPath, librarySyncStatusDep, globalSyncStatus.synced])
 
   if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined

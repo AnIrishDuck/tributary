@@ -98,6 +98,12 @@ const NoteListPage: React.FC = () => {
         setLoading(false)
       } catch (err) {
         console.error('Error loading notes:', err)
+        const libStatus = syncStatus[prefix]
+        if (!libStatus || !libStatus.synced) {
+          // Still syncing — the error may be due to incomplete data.
+          // Stay in loading state; the effect will re-run as sync progresses.
+          return
+        }
         setError(`Failed to load notes: ${(err as Error).message}`)
         setLoading(false)
       }
