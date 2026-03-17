@@ -392,9 +392,9 @@ describe('NoteListPage', () => {
       </WithProviders>
     )
 
-    // Should show loading spinner (not an error) because the library hasn't synced yet
+    // Should render the page shell (not an error) because the library hasn't synced yet
     await waitFor(() => {
-      expect(screen.getByText('Loading notes...')).toBeInTheDocument()
+      expect(screen.getByText('Notes')).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Should NOT show any schema or load error

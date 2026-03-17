@@ -137,14 +137,24 @@ const NoteListPage: React.FC = () => {
     loadNotes()
   }, [client, prefix, librarySyncStatusDep, globalSyncStatus.synced])
 
+  // When loading (no cache), render the page shell with empty data so the
+  // header and layout appear instantly. NoteListView already handles the
+  // empty-while-syncing state with an inline spinner.
   if (loading) {
+    const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
-        <div className="text-center">
-          <div className="mx-auto w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-2"></div>
-          <p className="text-sm text-gray-600">Loading notes...</p>
-        </div>
-      </div>
+      <NoteListView
+        collections={[]}
+        notes={[]}
+        prefix={prefix || ''}
+        slugPath=""
+        libraryName={libraryName}
+        syncProgress={librarySyncStatus ? {
+          currentIndex: librarySyncStatus.currentIndex,
+          finalIndex: librarySyncStatus.finalIndex,
+          synced: librarySyncStatus.synced
+        } : null}
+      />
     )
   }
 

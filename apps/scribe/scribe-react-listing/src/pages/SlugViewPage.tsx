@@ -4,7 +4,6 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { Collection, CollectionSlug, NoteSlugRow, schemaReady } from 'scribe-data'
-import SlugLoadingPage from './SlugLoadingPage'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
@@ -557,8 +556,23 @@ const SlugViewPage: React.FC = () => {
 
   if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined
-    const syncProgress = libStatus ? { currentIndex: libStatus.currentIndex, finalIndex: libStatus.finalIndex } : null
-    return <SlugLoadingPage syncProgress={syncProgress} />
+    const hasSyncInfo = libStatus && libStatus.finalIndex > 0
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-6 h-6 border-2 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-3" role="status" aria-label="Loading"></div>
+              {hasSyncInfo && (
+                <p className="text-xs text-gray-400">
+                  Syncing: {libStatus.currentIndex} / {libStatus.finalIndex}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (mode.type === 'schemaError') {
