@@ -1,5 +1,4 @@
 import { RouteObject, redirect } from 'react-router'
-import NewLibraryPage from './pages/NewLibraryPage'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
 import SlugViewPage from 'scribe-react-listing/src/pages/SlugViewPage'
 import HomePage from './pages/HomePage'
@@ -49,7 +48,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: '/new',
-        Component: NewLibraryPage,
+        loader: () => redirect('/?create'),
       },
       {
         path: '/import',

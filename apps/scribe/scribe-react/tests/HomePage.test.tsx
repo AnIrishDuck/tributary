@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import nacl from 'tweetnacl'
 import React from 'react'
@@ -64,7 +64,7 @@ describe('HomePage', () => {
     expect(screen.getByText(/no libraries yet/i)).toBeInTheDocument()
 
     // Check for "Create New Library" button
-    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create new library/i })).toBeInTheDocument()
 
     // Check for "Import Existing Library" button
     expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
@@ -121,7 +121,7 @@ describe('HomePage', () => {
     expect(screen.queryByText(/your libraries/i)).not.toBeInTheDocument()
 
     // Should show action buttons
-    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create new library/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
   })
 
@@ -170,7 +170,7 @@ describe('HomePage', () => {
     expect(libraryLink).toHaveAttribute('href', '/n/test-stream/')
 
     // Should show action buttons at the top of "Your Libraries" section
-    expect(screen.getByRole('link', { name: /create new library/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create new library/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /import existing library/i })).toBeInTheDocument()
   })
 
@@ -340,5 +340,108 @@ describe('HomePage', () => {
 
     expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/syncing your libraries/i)).not.toBeInTheDocument()
+  })
+
+  it('should show inline create card when "Create New Library" is clicked', async () => {
+    const { client } = createTestTributaryClient()
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/']
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Click "Create New Library" button
+    fireEvent.click(screen.getByRole('button', { name: /create new library/i }))
+
+    // Should show the inline create card
+    expect(screen.getByRole('heading', { name: /create library/i })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/library name/i)).toBeInTheDocument()
+  })
+
+  it('should show inline create card when navigating to /?create', async () => {
+    const { client } = createTestTributaryClient()
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/?create']
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /create library/i })).toBeInTheDocument()
+    }, { timeout: 2000 })
+  })
+
+  it('should redirect /new to /?create', async () => {
+    const { client } = createTestTributaryClient()
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/new']
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should end up on the home page with the create card visible
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /create library/i })).toBeInTheDocument()
+    }, { timeout: 2000 })
+  })
+
+  it('should create a library inline and navigate to it', async () => {
+    const { client } = createTestTributaryClient()
+
+    // Set up home library so createLibrary can work
+    const homeKeyPair = nacl.sign.keyPair()
+    await createHomeLibrary(client, 'Home', homeKeyPair)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/?create']
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/library name/i)).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Fill in the name and click Create
+    fireEvent.change(screen.getByPlaceholderText(/library name/i), { target: { value: 'My Notes' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    // Should show creating state
+    await waitFor(() => {
+      expect(screen.getByText('Creating...')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Wait for the create card to disappear (library created successfully and navigated away)
+    await waitFor(() => {
+      expect(screen.queryByText('Creating...')).not.toBeInTheDocument()
+      expect(screen.queryByPlaceholderText(/library name/i)).not.toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Verify a new library was created (home + new library = 2)
+    const libs = await getLibraries(client)
+    expect(libs.length).toBe(2)
   })
 })
