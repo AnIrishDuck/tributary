@@ -123,10 +123,10 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               {isRoot && (
                 <button
                   onClick={() => navigate(routeCtx.buildPath('search'))}
-                  className="hidden md:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
                 >
-                  <MagnifyingGlassIcon className="w-4 h-4 mr-1.5" />
-                  Search
+                  <MagnifyingGlassIcon className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline">Search</span>
                 </button>
               )}
 

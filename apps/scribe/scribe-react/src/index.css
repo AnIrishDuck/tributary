@@ -48,12 +48,7 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* FAB positioning above mobile bottom nav (h-14 + safe area + margin) */
-  .fab-above-nav {
-    bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* FAB positioning without bottom nav (editor pages) — just above safe area
+  /* FAB positioning for editor pages — just above safe area
      so it slightly overlaps the bottom of the editor card */
   .fab-bottom {
     bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px));
