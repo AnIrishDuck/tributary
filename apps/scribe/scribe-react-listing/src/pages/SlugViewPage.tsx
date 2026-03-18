@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, Link } from 'react-router'
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router'
 import { ArrowLeftIcon, ArrowRightIcon, ClockIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
@@ -40,7 +40,7 @@ type PageMode =
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; collidingSlugs: Set<string>; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
-  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; collectionLabel: string; ancestors: Collection[] }
+  | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; initialBody?: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
@@ -57,6 +57,7 @@ const SlugViewPage: React.FC = () => {
 
   // Extract the library prefix and splat path from params
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const prefix = routeCtx.prefix || params.prefix
   const splatPath = params['*'] || ''
 
@@ -159,7 +160,8 @@ const SlugViewPage: React.FC = () => {
             noteAncestors = await getCollectionAncestors(localDb, resolved.entity.collection_uuid)
           }
 
-          setMode({ type: 'newNote', collectionId, parentSlugPath, collectionLabel, ancestors: noteAncestors })
+          const bodyParam = searchParams.get('body') || undefined
+          setMode({ type: 'newNote', collectionId, parentSlugPath, initialBody: bodyParam, collectionLabel, ancestors: noteAncestors })
           return
         }
 
@@ -659,6 +661,7 @@ const SlugViewPage: React.FC = () => {
         collectionId={mode.collectionId}
         cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         initialTitle={mode.initialTitle}
+        initialBody={mode.initialBody}
         collectionLabel={mode.collectionLabel}
         ancestors={mode.ancestors}
       />

@@ -40,6 +40,30 @@ describe('SlugViewPage', () => {
     }, { timeout: 10000 })
   })
 
+  it('should pass body query param to editor for new note', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const bodyContent = '# From Bookmarklet\n\n[Example](https://example.com)\n'
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/+note?body=${encodeURIComponent(bodyContent)}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // The editor should render with the pre-populated body content
+    await waitFor(() => {
+      const editorEl = document.querySelector('.cm-content')
+      expect(editorEl).toBeTruthy()
+      expect(editorEl!.textContent).toContain('From Bookmarklet')
+      expect(editorEl!.textContent).toContain('https://example.com')
+    }, { timeout: 5000 })
+  })
+
   it('should show disambiguation page when slug matches both a note and a collection', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]

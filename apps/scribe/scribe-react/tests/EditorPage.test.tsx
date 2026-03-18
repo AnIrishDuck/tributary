@@ -82,6 +82,35 @@ describe('EditorPage', () => {
     })
   })
 
+  it('should pre-populate editor with body query param', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const bodyContent = '# Bookmarked Page\n\n[Bookmarked Page](https://example.com)\n'
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/+note?body=${encodeURIComponent(bodyContent)}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for the component to render fully
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
+    })
+
+    // The CodeMirror editor should contain the body content
+    await waitFor(() => {
+      const editorEl = document.querySelector('.cm-content')
+      expect(editorEl).toBeTruthy()
+      expect(editorEl!.textContent).toContain('Bookmarked Page')
+      expect(editorEl!.textContent).toContain('https://example.com')
+    })
+  })
+
   it('should show loading state when Save is clicked', async () => {
     const { client, prefix } = await createTestClientWithStream()
 

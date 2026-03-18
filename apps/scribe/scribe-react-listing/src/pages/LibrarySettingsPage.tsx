@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router'
-import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
+import { ClipboardDocumentIcon, BookmarkIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
+import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getLibraryDisplayName, getLibraryStats, LibraryStats, StreamStorageEstimate } from 'scribe-data'
 
 function formatBytes(bytes: number): string {
@@ -19,6 +20,7 @@ interface LibrarySettingsPageProps {
 const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => {
   const { client } = useTributary()
   const { syncStatus, setFocusedLibrary } = useSyncStatus()
+  const routeCtx = useRouteContext()
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [stats, setStats] = useState<LibraryStats | null>(null)
   const [storageEstimate, setStorageEstimate] = useState<StreamStorageEstimate | null>(null)
@@ -89,6 +91,20 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
       console.error('Failed to copy share link:', err)
     }
   }
+
+  const bookmarkletHref = useMemo(() => {
+    const base = window.location.origin + window.location.pathname
+    const notePath = routeCtx.buildPath('+note')
+    // The bookmarklet composes markdown from the page title and URL, then opens
+    // Scribe's +note route with the body pre-filled via a query parameter.
+    const js = [
+      `javascript:void(window.open(`,
+      `'${base}#${notePath}?body='`,
+      `+encodeURIComponent('# '+document.title+'\\n\\n['+document.title+']('+location.href+')\\n')`,
+      `))`,
+    ].join('')
+    return js
+  }, [routeCtx])
 
   const displayName = libraryName || 'Library'
   const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
@@ -163,7 +179,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
             </div>
           )}
 
-          <div className="px-8 py-6">
+          <div className="px-8 py-6 border-b border-gray-100">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Sharing</h2>
             <p className="text-sm text-gray-600 mb-4">
               Share this link to give someone write access to this library.
@@ -175,6 +191,21 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
               <ClipboardDocumentIcon className="h-4 w-4 mr-2" />
               {copied ? 'Copied!' : 'Copy share link'}
             </button>
+          </div>
+
+          <div className="px-8 py-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Bookmarklet</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Drag this link to your bookmarks bar. Click it on any page to save the page title and URL as a new note.
+            </p>
+            <a
+              href={bookmarkletHref}
+              onClick={(e) => e.preventDefault()}
+              className="inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors cursor-grab"
+            >
+              <BookmarkIcon className="h-4 w-4 mr-2" />
+              Save to {displayName}
+            </a>
           </div>
         </div>
       </div>
