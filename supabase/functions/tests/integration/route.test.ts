@@ -317,3 +317,61 @@ Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
     throw error;
   }
 });
+
+Deno.test('Route testing: Custom authenticator rejects unauthorized requests', async () => {
+  const db = new Database(true);
+  // Authenticator that always rejects
+  const rejectAuth: Authenticator = async (_req) => null;
+  const handler = createRouteHandler(db, rejectAuth);
+
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+
+  const testData = new TextEncoder().encode('Should be rejected');
+  const chainHash = await computeChainHash('', testData);
+  const hashBytes = new TextEncoder().encode(chainHash);
+  const signature = generateTestSignature(hashBytes, keyPair);
+
+  const storeRequest = createFakeRequest(createEncodedPath(encodedPubkey), {
+    method: 'POST',
+    headers: {
+      'X-Tributary-Hash': chainHash,
+      'X-Tributary-Authorization': signature,
+    },
+    body: testData,
+  });
+
+  const response = await handler(storeRequest);
+  assertEquals(response.status, 401);
+});
+
+Deno.test('Route testing: Custom authenticator with different user ID', async () => {
+  const db = new Database(true);
+  const CUSTOM_USER_ID = 'custom-user-from-jwks';
+  const customAuth: Authenticator = async (_req) => ({ userId: CUSTOM_USER_ID });
+  const handler = createRouteHandler(db, customAuth);
+
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+
+  const testData = new TextEncoder().encode('Data with custom auth');
+  const chainHash = await computeChainHash('', testData);
+  const hashBytes = new TextEncoder().encode(chainHash);
+  const signature = generateTestSignature(hashBytes, keyPair);
+
+  const storeRequest = createFakeRequest(createEncodedPath(encodedPubkey), {
+    method: 'POST',
+    headers: {
+      'X-Tributary-Hash': chainHash,
+      'X-Tributary-Authorization': signature,
+    },
+    body: testData,
+  });
+
+  const response = await handler(storeRequest);
+  // Should succeed — the custom authenticator accepted the request
+  assertEquals(response.status, 200);
+
+  const body = await response.json();
+  assertEquals(body.status, 'stored');
+});
