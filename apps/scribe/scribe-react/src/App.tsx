@@ -9,6 +9,7 @@ import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { getPGlite, wipePGlite } from './db/persistence'
 import { CONFIG } from './config'
+import { fetchStorageServerUrl, clearStorageConfigCache } from './storageConfig'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
 
@@ -31,15 +32,16 @@ const initialPasswordRecovery = window.location.hash.includes('type=recovery')
 let clientPromise: Promise<{ client: TributaryClient; server: TributaryServer }> | null = null
 
 // Create client based on configuration
-// Uses real TributaryServer connecting to remote Supabase
-async function createTributaryClient(session: Session | null) {
+// Uses real TributaryServer connecting to remote Supabase or a custom storage server
+async function createTributaryClient(session: Session | null, storageServerUrl?: string | null) {
   // Return existing promise if already creating
   if (clientPromise) {
     return clientPromise
   }
 
   clientPromise = (async () => {
-    const server = new TributaryServer(CONFIG.API_URL, CONFIG.API_KEY)
+    const serverUrl = storageServerUrl || CONFIG.API_URL
+    const server = new TributaryServer(serverUrl, CONFIG.API_KEY)
 
     if (session?.access_token) {
       server.setWriteAuthToken(session.access_token)
@@ -225,6 +227,7 @@ function App() {
   // user is never stuck with a stale client on next login.
   async function logout() {
     clearPersistedRootSeed()
+    clearStorageConfigCache()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
@@ -276,7 +279,12 @@ function App() {
 
     async function init() {
       try {
-        const { client: newClient, server } = await createTributaryClient(session)
+        // If the user has configured a custom storage server, use it
+        let storageUrl: string | null = null
+        if (supabaseAuth && session) {
+          storageUrl = await fetchStorageServerUrl(supabaseAuth, CONFIG.SUPABASE_PROJECT_URL)
+        }
+        const { client: newClient, server } = await createTributaryClient(session, storageUrl)
         if (mounted) {
           setClient(newClient)
         }
