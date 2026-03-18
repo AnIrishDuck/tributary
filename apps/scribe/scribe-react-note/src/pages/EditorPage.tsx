@@ -26,6 +26,8 @@ export interface EditorPageProps {
   cancelPath: string
   /** Optional initial title for new notes (used when creating from a missing slug). */
   initialTitle?: string
+  /** Optional initial body for new notes (used when creating from a bookmarklet or URL with ?body= param). Takes priority over initialTitle. */
+  initialBody?: string
   /** Label of the collection this note belongs to, shown in the header. */
   collectionLabel?: string
   /** Full slug path of the note being edited (e.g. "cooking/italian/pasta-recipe"), shown as breadcrumbs. */
@@ -34,9 +36,9 @@ export interface EditorPageProps {
   ancestors?: Collection[]
 }
 
-const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, collectionLabel, noteSlugPath, ancestors }) => {
+const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, initialBody, collectionLabel, noteSlugPath, ancestors }) => {
   const routeCtx = useRouteContext()
-  const defaultContent = initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
+  const defaultContent = initialBody ? initialBody : initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
