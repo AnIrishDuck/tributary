@@ -163,7 +163,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
         )}
 
         {totalItems === 0 ? (
-          isRoot && showSyncProgress ? (
+          showSyncProgress ? (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
               <div className="mx-auto w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">
@@ -171,7 +171,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               </h3>
               <p className="text-gray-600 text-sm">Notes will appear as they are synced</p>
             </div>
-          ) : (
+          ) : syncProgress && syncProgress.synced ? (
             <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
               <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                 <DocumentTextIcon className="w-8 h-8 text-blue-600" />
@@ -189,6 +189,10 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 <PlusIcon className="w-4 h-4 mr-1.5" />
                 Create first note
               </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+              <div className="mx-auto w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-3"></div>
             </div>
           )
         ) : (

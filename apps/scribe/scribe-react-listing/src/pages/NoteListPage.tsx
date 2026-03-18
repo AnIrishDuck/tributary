@@ -67,37 +67,48 @@ const NoteListPage: React.FC = () => {
         // Get library root collection
         const library = await getLibrary(localDb)
 
+        let loadedNotes: NoteSlugRow[]
+        let loadedCollections: { collection: Collection; slug: string | null }[]
+        let loadedCollisions: Set<string>
+
         if (library) {
           // Get child collections of library root
           const childCollections = await getChildCollections(localDb, library.collection_uuid)
-          setCollections(childCollections.map(c => ({
+          loadedCollections = childCollections.map(c => ({
             collection: c,
             slug: c.slug || null
-          })))
+          }))
 
           // Get root-level notes and colliding slugs
           const [noteList, collisions] = await Promise.all([
             getNotesInCollectionWithSlugs(localDb, null),
             getCollidingSlugs(localDb, library.collection_uuid)
           ])
-          setNotes(noteList)
-          setCollidingSlugsSet(collisions)
+          loadedNotes = noteList
+          loadedCollisions = collisions
         } else {
           // No library root — all notes are root-level
-          const noteList = await getNotesInCollectionWithSlugs(localDb, null)
-          setNotes(noteList)
-          setCollections([])
-          setCollidingSlugsSet(new Set())
+          loadedNotes = await getNotesInCollectionWithSlugs(localDb, null)
+          loadedCollections = []
+          loadedCollisions = new Set()
         }
 
-        // Get library display name
-        const name = await getLibraryDisplayName(localDb)
-        setLibraryName(name)
+        const loadedName = await getLibraryDisplayName(localDb)
 
+        setNotes(loadedNotes)
+        setCollections(loadedCollections)
+        setCollidingSlugsSet(loadedCollisions)
+        setLibraryName(loadedName)
         setError(null)
         setLoading(false)
       } catch (err) {
         console.error('Error loading notes:', err)
+        const libStatus = syncStatus[prefix]
+        if (!libStatus || !libStatus.synced) {
+          // Still syncing — the error may be due to incomplete data.
+          // Stay in loading state; the effect will re-run as sync progresses.
+          return
+        }
         setError(`Failed to load notes: ${(err as Error).message}`)
         setLoading(false)
       }
@@ -106,14 +117,24 @@ const NoteListPage: React.FC = () => {
     loadNotes()
   }, [client, prefix, librarySyncStatusDep, globalSyncStatus.synced])
 
+  // Render the page shell with empty data so the header and layout appear
+  // instantly. Override synced to false so NoteListView shows a loading
+  // spinner instead of the "empty collection" state while we load.
   if (loading) {
+    const librarySyncStatus = prefix ? syncStatus[prefix] : undefined
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-4">
-        <div className="text-center">
-          <div className="mx-auto w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-2"></div>
-          <p className="text-sm text-gray-600">Loading notes...</p>
-        </div>
-      </div>
+      <NoteListView
+        collections={[]}
+        notes={[]}
+        prefix={prefix || ''}
+        slugPath=""
+        libraryName={libraryName}
+        syncProgress={librarySyncStatus ? {
+          currentIndex: librarySyncStatus.currentIndex,
+          finalIndex: librarySyncStatus.finalIndex,
+          synced: false
+        } : { currentIndex: 0, finalIndex: 0, synced: false }}
+      />
     )
   }
 

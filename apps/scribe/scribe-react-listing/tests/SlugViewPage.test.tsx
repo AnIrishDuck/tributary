@@ -225,7 +225,7 @@ describe('SlugViewPage', () => {
 
     // Should show loading spinner (not an error) because the library hasn't synced yet
     await waitFor(() => {
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     }, { timeout: 5000 })
 
     // Should NOT show any schema or load error
@@ -286,9 +286,7 @@ describe('SlugViewPage', () => {
 
     // Initially should be in a loading state (either generic or schema loading)
     await waitFor(() => {
-      const loading = screen.queryByText('Loading...')
-      const syncing = screen.queryByText('Syncing library...')
-      expect(loading || syncing).toBeTruthy()
+      expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     }, { timeout: 3000 })
 
     // After sync completes, should show the note content

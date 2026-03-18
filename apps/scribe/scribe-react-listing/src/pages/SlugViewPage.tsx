@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, Link } from 'react-router'
+import { ArrowLeftIcon, ArrowRightIcon, ClockIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { Collection, CollectionSlug, NoteSlugRow, schemaReady } from 'scribe-data'
-import SlugLoadingPage from './SlugLoadingPage'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
@@ -49,7 +50,6 @@ type PageMode =
   | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
 
 const SlugViewPage: React.FC = () => {
-  const [mode, setMode] = useState<PageMode>({ type: 'loading' })
   const navigate = useNavigate()
   const { client } = useTributary()
   const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
@@ -60,8 +60,11 @@ const SlugViewPage: React.FC = () => {
   const prefix = routeCtx.prefix || params.prefix
   const splatPath = params['*'] || ''
 
+  const [mode, setMode] = useState<PageMode>({ type: 'loading' })
+
   // Track whether this specific library has been synced at least once
-  const librarySynced = prefix ? (syncStatus[prefix]?.synced ?? false) : false
+  const librarySyncStatusDep = prefix ? syncStatus[prefix] : undefined
+  const librarySynced = librarySyncStatusDep?.synced ?? false
 
   // Focus sync on this library while the page is mounted
   useEffect(() => {
@@ -434,8 +437,16 @@ const SlugViewPage: React.FC = () => {
         const resolved = await resolveSlugPath(localDb, segments, library.collection_uuid)
 
         if (!resolved) {
-          // Slug not found — determine if it's a missing slug (parent exists)
-          // or missing parent (intermediate collections don't exist)
+          // Slug not found. If the library is still syncing, the target may
+          // appear once more data arrives — show loading instead of an error.
+          if (!librarySynced && !globalSyncStatus.synced) {
+            setMode({ type: 'loading' })
+            return
+          }
+
+          // Sync finished and slug still missing — determine if it's a missing
+          // slug (parent exists) or missing parent (intermediate collections
+          // don't exist)
           const { resolveSlugPathPartial } = await import('scribe-data')
           const partial = await resolveSlugPathPartial(localDb, segments, library.collection_uuid)
           const fullSlugPath = segments.join('/')
@@ -513,18 +524,79 @@ const SlugViewPage: React.FC = () => {
           return
         }
       } catch (err: any) {
-        setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
+        // If the library is still syncing, the error may be due to
+        // incomplete data (e.g. authoritative version not indexed yet).
+        // Show loading and let the effect retry once more data arrives.
+        if (!librarySynced && !globalSyncStatus.synced) {
+          setMode({ type: 'loading' })
+        } else {
+          setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
+        }
         console.error('Error loading content:', err)
       }
     }
 
     loadContent()
-  }, [client, prefix, splatPath, librarySynced, globalSyncStatus.synced])
+  }, [client, prefix, splatPath, librarySyncStatusDep, globalSyncStatus.synced])
 
   if (mode.type === 'loading' || mode.type === 'schemaLoading') {
     const libStatus = prefix ? syncStatus[prefix] : undefined
-    const syncProgress = libStatus ? { currentIndex: libStatus.currentIndex, finalIndex: libStatus.finalIndex } : null
-    return <SlugLoadingPage syncProgress={syncProgress} />
+    const hasSyncInfo = libStatus && libStatus.finalIndex > 0
+    const trailingSlug = splatPath.split('/').pop()
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 py-3 shadow-sm sticky top-0 z-40">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => navigate(routeCtx.buildPath(''))}
+                  className="text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center font-medium"
+                >
+                  <ArrowLeftIcon className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Breadcrumbs + action icons */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1 min-w-0">
+              <Breadcrumbs ancestors={[]} prefix={prefix || ''} allLinks trailingSlug={trailingSlug} />
+            </div>
+            <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
+              <Link
+                to={routeCtx.buildPath(`${splatPath}&history`)}
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+              >
+                <ClockIcon className="w-4 h-4" />
+              </Link>
+              <button
+                aria-label="Move"
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+                disabled
+              >
+                <ArrowRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-6 h-6 border-2 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-3" role="status" aria-label="Loading"></div>
+              {hasSyncInfo && (
+                <p className="text-xs text-gray-400">
+                  Syncing: {libStatus.currentIndex} / {libStatus.finalIndex}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (mode.type === 'schemaError') {
@@ -560,6 +632,7 @@ const SlugViewPage: React.FC = () => {
   }
 
   if (mode.type === 'collection') {
+    const libStatus = prefix ? syncStatus[prefix] : undefined
     return (
       <NoteListView
         collection={mode.collection}
@@ -570,6 +643,11 @@ const SlugViewPage: React.FC = () => {
         slugPath={mode.slugPath}
         prefix={prefix || ''}
         libraryName={mode.libraryName}
+        syncProgress={libStatus ? {
+          currentIndex: libStatus.currentIndex,
+          finalIndex: libStatus.finalIndex,
+          synced: libStatus.synced
+        } : null}
       />
     )
   }
