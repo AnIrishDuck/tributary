@@ -39,11 +39,13 @@ export function getPGlite(dbName?: string): PGliteInterface {
       }),
       {
         dataDir: `idb://${databaseName}`,
+        relaxedDurability: true,
       },
     )
   } else {
     dbInstance = new PGlite({
       dataDir: `idb://${databaseName}`,
+      relaxedDurability: true,
     })
   }
 
