@@ -30,6 +30,7 @@ let encryptedDbCounter = 0;
  */
 export async function createTestDb(): Promise<PGliteInterface> {
   if (process.env.TRIBUTARY_TEST_ENCRYPTED) {
+    // @ts-ignore -- fake-indexeddb/auto types don't resolve under package.json "exports"
     await import('fake-indexeddb/auto');
     const nacl = await import('tweetnacl');
     const { EncryptedIdbFs } = await import('./encryptedIdbFs.js');
