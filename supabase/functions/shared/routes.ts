@@ -9,7 +9,7 @@ import { makeTable, tableToIPC, vectorFromArray, Utf8, Binary, Uint64 } from '@a
 // CORS headers for all responses
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Tributary-Hash, X-Tributary-Authorization, Authorization',
   'Access-Control-Expose-Headers': 'X-Total-Count',
   'Access-Control-Max-Age': '86400',
@@ -56,6 +56,17 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
       );
     }
     
+    // Handle account config endpoints (before pubkey routing)
+    if (pathParts.includes('config')) {
+      if (req.method === 'GET') {
+        return handleGetConfig(req, db, authenticator);
+      } else if (req.method === 'PUT') {
+        return handleSetConfig(req, db, authenticator);
+      } else if (req.method === 'DELETE') {
+        return handleDeleteConfig(req, db, authenticator);
+      }
+    }
+
     // In Supabase Edge Functions, the path structure is:
     // /functions/v1/stream/[pubkey]/[endpoint]
     // So we need to find where 'stream' is in the path and parse from there
@@ -442,6 +453,133 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       }
+    );
+  }
+}
+
+// GET /config
+// Get all account config entries for the authenticated user
+async function handleGetConfig(req: Request, db: Database, authenticate: Authenticator): Promise<Response> {
+  try {
+    const authResult = await authenticate(req);
+    if (!authResult) {
+      return createResponse(
+        JSON.stringify({ error: 'Unauthorized' }),
+        401,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    const entries = await db.getAccountConfig(authResult.userId);
+    return createResponse(
+      JSON.stringify({ config: entries }),
+      200,
+      { 'Content-Type': 'application/json' }
+    );
+  } catch (error) {
+    console.error('Error in getConfig:', error);
+    return createResponse(
+      JSON.stringify({ error: 'Internal server error' }),
+      500,
+      { 'Content-Type': 'application/json' }
+    );
+  }
+}
+
+// PUT /config
+// Set an account config entry for the authenticated user
+// Body: { key: string, value: string }
+async function handleSetConfig(req: Request, db: Database, authenticate: Authenticator): Promise<Response> {
+  try {
+    const authResult = await authenticate(req);
+    if (!authResult) {
+      return createResponse(
+        JSON.stringify({ error: 'Unauthorized' }),
+        401,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    const body = await req.json();
+    const { key, value } = body;
+
+    if (typeof key !== 'string' || typeof value !== 'string') {
+      return createResponse(
+        JSON.stringify({ error: 'key and value must be strings' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    if (key.length > 256 || value.length > 256) {
+      return createResponse(
+        JSON.stringify({ error: 'key and value must be at most 256 characters' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    const stored = await db.setAccountConfig(authResult.userId, key, value);
+    if (stored) {
+      return createResponse(
+        JSON.stringify({ status: 'ok' }),
+        200,
+        { 'Content-Type': 'application/json' }
+      );
+    } else {
+      return createResponse(
+        JSON.stringify({ error: 'Could not store config entry (max 64 entries)' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+  } catch (error) {
+    console.error('Error in setConfig:', error);
+    return createResponse(
+      JSON.stringify({ error: 'Internal server error' }),
+      500,
+      { 'Content-Type': 'application/json' }
+    );
+  }
+}
+
+// DELETE /config
+// Delete an account config entry for the authenticated user
+// Body: { key: string }
+async function handleDeleteConfig(req: Request, db: Database, authenticate: Authenticator): Promise<Response> {
+  try {
+    const authResult = await authenticate(req);
+    if (!authResult) {
+      return createResponse(
+        JSON.stringify({ error: 'Unauthorized' }),
+        401,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    const body = await req.json();
+    const { key } = body;
+
+    if (typeof key !== 'string') {
+      return createResponse(
+        JSON.stringify({ error: 'key must be a string' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    await db.deleteAccountConfig(authResult.userId, key);
+    return createResponse(
+      JSON.stringify({ status: 'ok' }),
+      200,
+      { 'Content-Type': 'application/json' }
+    );
+  } catch (error) {
+    console.error('Error in deleteConfig:', error);
+    return createResponse(
+      JSON.stringify({ error: 'Internal server error' }),
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }

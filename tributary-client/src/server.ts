@@ -102,4 +102,25 @@ export interface Server {
     }>;
     totalCount: number;
   }>;
+
+  /**
+   * Get all account config entries for the authenticated user
+   * @returns Promise resolving to array of {key, value} entries
+   */
+  getAccountConfig(): Promise<Array<{ key: string; value: string }>>;
+
+  /**
+   * Set an account config entry
+   * @param key Config key (max 256 chars)
+   * @param value Config value (max 256 chars)
+   * @returns Promise resolving to success status
+   */
+  setAccountConfig(key: string, value: string): Promise<boolean>;
+
+  /**
+   * Delete an account config entry
+   * @param key Config key to delete
+   * @returns Promise resolving to success status
+   */
+  deleteAccountConfig(key: string): Promise<boolean>;
 }

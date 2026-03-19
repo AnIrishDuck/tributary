@@ -10,6 +10,37 @@ import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
 export class FakeServer implements Server {
+  private static readonly MAX_CONFIG_ENTRIES = 64;
+  private static readonly MAX_CONFIG_LENGTH = 256;
+
+  private accountConfig: Map<string, string> = new Map();
+
+  async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
+    const entries: Array<{ key: string; value: string }> = [];
+    for (const [key, value] of this.accountConfig) {
+      entries.push({ key, value });
+    }
+    return entries;
+  }
+
+  async setAccountConfig(key: string, value: string): Promise<boolean> {
+    if (key.length > FakeServer.MAX_CONFIG_LENGTH || value.length > FakeServer.MAX_CONFIG_LENGTH) {
+      return false;
+    }
+
+    if (!this.accountConfig.has(key) && this.accountConfig.size >= FakeServer.MAX_CONFIG_ENTRIES) {
+      return false;
+    }
+
+    this.accountConfig.set(key, value);
+    return true;
+  }
+
+  async deleteAccountConfig(key: string): Promise<boolean> {
+    this.accountConfig.delete(key);
+    return true;
+  }
+
   private blobs: Map<string, {
     id: string;
     pubkey: string;

@@ -2,7 +2,7 @@
 // This module will handle all database operations using Supabase client
 
 import { createClient } from '@supabase/supabase-js';
-import { Blob, BlobMetadata, CollectionInfo } from './models.ts';
+import { Blob, BlobMetadata, CollectionInfo, AccountConfigEntry } from './models.ts';
 
 // Helper function to convert hex string to Uint8Array
 function hexStringToUint8Array(hexString: string): Uint8Array {
@@ -289,5 +289,79 @@ export class Database {
       blobs,
       totalCount: count !== null ? count : 0
     };
+  }
+
+  private static readonly MAX_CONFIG_ENTRIES = 64;
+  private static readonly MAX_CONFIG_LENGTH = 256;
+
+  async getAccountConfig(ownerId: string): Promise<AccountConfigEntry[]> {
+    const { data, error } = await this.client
+      .from('account_config')
+      .select('key, value')
+      .eq('owner_id', ownerId);
+
+    if (error) {
+      console.error('Database error in getAccountConfig:', error);
+      return [];
+    }
+
+    return (data || []) as AccountConfigEntry[];
+  }
+
+  async setAccountConfig(ownerId: string, key: string, value: string): Promise<boolean> {
+    if (key.length > Database.MAX_CONFIG_LENGTH || value.length > Database.MAX_CONFIG_LENGTH) {
+      return false;
+    }
+
+    // Check entry count (only if this is a new key)
+    const { data: existing } = await this.client
+      .from('account_config')
+      .select('key')
+      .eq('owner_id', ownerId)
+      .eq('key', key)
+      .maybeSingle();
+
+    if (!existing) {
+      // New key — enforce max entries
+      const { count, error: countError } = await this.client
+        .from('account_config')
+        .select('*', { count: 'exact', head: true })
+        .eq('owner_id', ownerId);
+
+      if (countError) {
+        console.error('Database error counting config entries:', countError);
+        return false;
+      }
+
+      if ((count ?? 0) >= Database.MAX_CONFIG_ENTRIES) {
+        return false;
+      }
+    }
+
+    const { error } = await this.client
+      .from('account_config')
+      .upsert({ owner_id: ownerId, key, value }, { onConflict: 'owner_id,key' });
+
+    if (error) {
+      console.error('Database error in setAccountConfig:', error);
+      return false;
+    }
+
+    return true;
+  }
+
+  async deleteAccountConfig(ownerId: string, key: string): Promise<boolean> {
+    const { error } = await this.client
+      .from('account_config')
+      .delete()
+      .eq('owner_id', ownerId)
+      .eq('key', key);
+
+    if (error) {
+      console.error('Database error in deleteAccountConfig:', error);
+      return false;
+    }
+
+    return true;
   }
 }
