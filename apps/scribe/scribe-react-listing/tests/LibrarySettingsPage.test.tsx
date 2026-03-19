@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
 import { createTestClientWithStream, WithProviders } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
-import { createCollection, getLibrary } from 'scribe-data'
+import { createCollection, getLibrary, setFeatureFlag } from 'scribe-data'
 
 describe('LibrarySettingsPage', () => {
   beforeEach(() => {
@@ -88,6 +88,54 @@ describe('LibrarySettingsPage', () => {
 
     // Storage stat should be visible
     expect(screen.getByText('Storage')).toBeInTheDocument()
+  })
+
+  it('should display feature flags', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    await setFeatureFlag(stream, 'experimental', 'on')
+    await setFeatureFlag(stream, 'theme', 'dark')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&library`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Feature Flags')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    expect(screen.getByText('experimental')).toBeInTheDocument()
+    expect(screen.getByText('on')).toBeInTheDocument()
+    expect(screen.getByText('theme')).toBeInTheDocument()
+    expect(screen.getByText('dark')).toBeInTheDocument()
+  })
+
+  it('should show empty state for feature flags', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&library`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Feature Flags')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    expect(screen.getByText('No feature flags set')).toBeInTheDocument()
   })
 
   it('should show back link to home', async () => {

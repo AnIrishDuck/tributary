@@ -9,6 +9,7 @@ import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { getPGlite, wipePGlite } from './db/persistence'
 import { CONFIG } from './config'
+import { resolveLibrarySlug, setFeatureFlag } from 'scribe-data'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
 
@@ -419,6 +420,48 @@ function App() {
 
     return () => { mounted = false }
   }, [client, derivedKeyPair, passwordRecovery])
+
+  // Register console API for setting feature flags
+  useEffect(() => {
+    if (!client) return
+
+    ;(window as any).setFeatureFlag = async (
+      librarySlug: string | null,
+      flagName: string,
+      flagValue: string
+    ) => {
+      let streamId: string | null = null
+
+      if (librarySlug === null) {
+        streamId = await client.getHomeStream()
+        if (!streamId) {
+          console.error('No home library configured')
+          return
+        }
+      } else {
+        const result = await resolveLibrarySlug(client, librarySlug)
+        if (result.type !== 'resolved') {
+          console.error(`Library slug '${librarySlug}' not found or ambiguous:`, result)
+          return
+        }
+        streamId = result.libraryId
+      }
+
+      const stream = await client.get('scribe', streamId)
+      if (!stream) {
+        console.error(`Could not open stream for library ${streamId}`)
+        return
+      }
+
+      const flag = await setFeatureFlag(stream, flagName, flagValue)
+      await stream.sync(1000)
+      console.log('Feature flag set:', flag)
+    }
+
+    return () => {
+      delete (window as any).setFeatureFlag
+    }
+  }, [client])
 
   // Show SetPasswordPage during password recovery flow (wait for client to be ready)
   if (passwordRecovery && session && supabaseAuth && client) {

@@ -4,7 +4,8 @@ import { ClipboardDocumentIcon, BookmarkIcon } from '@heroicons/react/24/outline
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
-import { getLibraryDisplayName, getLibraryStats, LibraryStats, StreamStorageEstimate } from 'scribe-data'
+import { getLibraryDisplayName, getLibraryStats, getFeatureFlags, LibraryStats, StreamStorageEstimate } from 'scribe-data'
+import type { FeatureFlag } from 'scribe-data'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -24,6 +25,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   const [libraryName, setLibraryName] = useState<string | null>(null)
   const [stats, setStats] = useState<LibraryStats | null>(null)
   const [storageEstimate, setStorageEstimate] = useState<StreamStorageEstimate | null>(null)
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -63,6 +65,13 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
         if (stream) {
           const storage = await stream.estimateStorage()
           setStorageEstimate(storage)
+
+          try {
+            const flags = await getFeatureFlags(stream)
+            setFeatureFlags(flags)
+          } catch {
+            // Feature flags are optional
+          }
         }
       } catch (err) {
         console.error('Failed to load library settings:', err)
@@ -193,7 +202,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
             </button>
           </div>
 
-          <div className="px-8 py-6">
+          <div className="px-8 py-6 border-b border-gray-100">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Bookmarklet</h2>
             <p className="text-sm text-gray-600 mb-4">
               Drag this link to your bookmarks bar. Click it on any page to save the page title and URL as a new note.
@@ -206,6 +215,22 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
               <BookmarkIcon className="h-4 w-4 mr-2" />
               Save to {displayName}
             </a>
+          </div>
+
+          <div className="px-8 py-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Feature Flags</h2>
+            {featureFlags.length > 0 ? (
+              <dl className="space-y-3">
+                {featureFlags.map(flag => (
+                  <div key={flag.flag_name}>
+                    <dt className="text-sm text-gray-500">{flag.flag_name}</dt>
+                    <dd className="text-sm font-medium text-gray-900">{flag.flag_value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-gray-500">No feature flags set</p>
+            )}
           </div>
         </div>
       </div>

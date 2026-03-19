@@ -195,6 +195,16 @@ export interface VersionSummary {
 }
 
 /**
+ * A feature flag stored per-library (synchronized via Tributary)
+ */
+export interface FeatureFlag {
+  flag_name: string
+  flag_value: string
+  insert_datetime: string
+  inserter: string
+}
+
+/**
  * Cached linked library row stored on the home stream's local DB
  */
 export interface LinkedLibrary {

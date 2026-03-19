@@ -242,6 +242,31 @@ export interface LinkedLibraryTable {
 }
 
 /**
+ * Database representation of a feature flag (synchronized via Tributary)
+ */
+export interface FeatureFlagTable {
+  /**
+   * Name of the feature flag (primary key)
+   */
+  flag_name: string
+
+  /**
+   * Value of the feature flag
+   */
+  flag_value: string
+
+  /**
+   * Timestamp when this flag was set or last updated
+   */
+  insert_datetime: string
+
+  /**
+   * User or device that set this flag
+   */
+  inserter: string
+}
+
+/**
  * The main database schema for the scribe app
  */
 export interface ScribeSchema {
@@ -284,6 +309,11 @@ export interface ScribeSchema {
    * Table caching linked library metadata on the home stream (non-synchronized)
    */
   linked_libraries: LinkedLibraryTable
+
+  /**
+   * Table containing feature flags (synchronized via Tributary)
+   */
+  feature_flag: FeatureFlagTable
 
 }
 

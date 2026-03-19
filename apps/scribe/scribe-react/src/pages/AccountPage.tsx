@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
-import { getHomeCollections, getLibraries, estimateQuota } from 'scribe-data'
-import type { QuotaEstimate } from 'scribe-data'
+import { getHomeCollections, getLibraries, estimateQuota, getFeatureFlags } from 'scribe-data'
+import type { QuotaEstimate, FeatureFlag } from 'scribe-data'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -16,6 +16,7 @@ const AccountPage: React.FC = () => {
   const { client, session } = useTributary()
   const [libraryCount, setLibraryCount] = useState<number | null>(null)
   const [quota, setQuota] = useState<QuotaEstimate | null>(null)
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,17 +24,36 @@ const AccountPage: React.FC = () => {
     let mounted = true
 
     async function load() {
-      const [collections, quotaEstimate] = await Promise.all([
-        getHomeCollections(client!).then(c =>
-          c !== null ? c : getLibraries(client!)
-        ),
-        estimateQuota(),
-      ])
+      try {
+        const [collections, quotaEstimate] = await Promise.all([
+          getHomeCollections(client!).then(c =>
+            c !== null ? c : getLibraries(client!)
+          ),
+          estimateQuota().catch(() => null),
+        ])
 
-      if (!mounted) return
-      setLibraryCount(collections.length)
-      setQuota(quotaEstimate)
-      setLoading(false)
+        if (!mounted) return
+        setLibraryCount(collections.length)
+        setQuota(quotaEstimate)
+
+        // Load feature flags from home library
+        try {
+          const homeStreamId = await client!.getHomeStream()
+          if (homeStreamId) {
+            const homeStream = await client!.get('scribe', homeStreamId)
+            if (homeStream) {
+              const flags = await getFeatureFlags(homeStream)
+              if (mounted) setFeatureFlags(flags)
+            }
+          }
+        } catch {
+          // Feature flags are optional
+        }
+      } catch (err) {
+        console.error('Failed to load account data:', err)
+      }
+
+      if (mounted) setLoading(false)
     }
 
     load()
@@ -96,6 +116,25 @@ const AccountPage: React.FC = () => {
             </div>
           ) : (
             <p className="text-sm text-gray-500">Storage estimate unavailable</p>
+          )}
+        </div>
+
+        {/* Feature Flags */}
+        <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Feature Flags</h2>
+          {loading ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : featureFlags.length > 0 ? (
+            <dl className="space-y-3">
+              {featureFlags.map(flag => (
+                <div key={flag.flag_name}>
+                  <dt className="text-sm text-gray-500">{flag.flag_name}</dt>
+                  <dd className="text-sm font-medium text-gray-900">{flag.flag_value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-sm text-gray-500">No feature flags set</p>
           )}
         </div>
       </div>

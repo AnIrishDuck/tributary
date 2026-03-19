@@ -58,6 +58,16 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
     CREATE INDEX IF NOT EXISTS collection_slug_parent
     ON collection (slug, parent_collection_uuid)
   `)
+
+  // Create the feature_flag table
+  await stream.exec(`
+    CREATE TABLE IF NOT EXISTS feature_flag (
+      flag_name TEXT NOT NULL PRIMARY KEY,
+      flag_value TEXT NOT NULL,
+      insert_datetime TEXT NOT NULL,
+      inserter TEXT NOT NULL
+    )
+  `)
 }
 
 /**
@@ -178,6 +188,7 @@ export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): 
   await localDb.exec('DROP TABLE IF EXISTS block_tag')
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
+  await syncedDb.exec('DROP TABLE IF EXISTS feature_flag')
   await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')
 }
