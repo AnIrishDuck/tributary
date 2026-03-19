@@ -1,7 +1,6 @@
 // Tests for batch sync functionality with various edge cases
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PGlite } from '@electric-sql/pglite';
-import { TributaryClient, FakeServer } from '../src/index';
+import { FakeServer, createTestClient } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -17,7 +16,7 @@ describe('Batch Sync Tests', () => {
   });
 
   it('should sync in batches and return correct in-sync status', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     // Write 5 blobs
@@ -28,7 +27,7 @@ describe('Batch Sync Tests', () => {
     await stream.exec('INSERT INTO test VALUES (4)');
 
     // Create a second client to sync
-    const client2 = new TributaryClient({ server, db: new PGlite() });
+    const client2 = await createTestClient({ server });
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync 2 blobs at a time
@@ -49,7 +48,7 @@ describe('Batch Sync Tests', () => {
   });
 
   it('should not reprocess the last synced blob', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     // Write 3 blobs
@@ -58,7 +57,7 @@ describe('Batch Sync Tests', () => {
     await stream.exec('INSERT INTO test VALUES (2)');
 
     // Create a second client to sync
-    const client2 = new TributaryClient({ server, db: new PGlite() });
+    const client2 = await createTestClient({ server });
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync first 2 blobs
@@ -82,7 +81,7 @@ describe('Batch Sync Tests', () => {
   });
 
   it('should handle max=1 without infinite loops', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     // Write 3 blobs
@@ -91,7 +90,7 @@ describe('Batch Sync Tests', () => {
     await stream.exec('INSERT INTO test VALUES (2)');
 
     // Create a second client to sync
-    const client2 = new TributaryClient({ server, db: new PGlite() });
+    const client2 = await createTestClient({ server });
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync one blob at a time - this is a critical test case
@@ -110,7 +109,7 @@ describe('Batch Sync Tests', () => {
   });
 
   it('should verify hash chain integrity during batch sync', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     // Write 5 blobs
@@ -131,7 +130,7 @@ describe('Batch Sync Tests', () => {
     }
 
     // Create a second client and sync in batches
-    const client2 = new TributaryClient({ server, db: new PGlite() });
+    const client2 = await createTestClient({ server });
     const stream2 = await client2.addWriteKey('test', privateKeyBase64);
 
     // Sync should verify chain integrity automatically

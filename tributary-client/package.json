@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/urlsafe-base64": "^1.0.31",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^5.3.3",
     "vite": "^5.0.0",
     "vitest": "^1.0.0"

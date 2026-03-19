@@ -20,6 +20,12 @@ test-client:
 	@echo "Running tributary-client tests..."
 	cd tributary-client && npm run test
 
+# Test tributary-client with encrypted storage backend
+.PHONY: test-client-encrypted
+test-client-encrypted:
+	@echo "Running tributary-client tests (encrypted backend)..."
+	cd tributary-client && TRIBUTARY_TEST_ENCRYPTED=1 npm run test
+
 # Test cli-scripts (bash scripts in cli-tests directory)
 .PHONY: test-cli-scripts
 test-cli-scripts:
@@ -116,6 +122,7 @@ help:
 	@echo "  test              - Run all tests"
 	@echo "  test-server       - Run tributary-server tests"
 	@echo "  test-client       - Run tributary-client tests"
+	@echo "  test-client-encrypted - Run tributary-client tests with encrypted storage"
 	@echo "  test-cli-scripts  - Run cli-tests scripts"
 	@echo ""
 	@echo "Building:"

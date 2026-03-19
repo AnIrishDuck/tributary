@@ -1,6 +1,6 @@
 // Comprehensive validation test for the simplified hash process
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, createTestServer } from '../src/index';
+import { createTestServer, createTestClient } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -24,7 +24,7 @@ describe('Hash Process Validation', () => {
       return;
     }
     
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     

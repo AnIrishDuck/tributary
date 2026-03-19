@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { TributaryClient, createTestServer, estimateStreamStorageBytes, estimateQuota } from '../src/index'
+import { createTestServer, createTestClient, estimateStreamStorageBytes, estimateQuota } from '../src/index'
 
 describe('estimateStreamStorageBytes', () => {
   it('returns zero for an empty schema', async () => {
@@ -92,7 +92,7 @@ describe('TributaryStream.estimateStorage', () => {
   })
 
   it('returns storage estimate for a stream with data', async () => {
-    const client = new TributaryClient({ server: testServer })
+    const client = await createTestClient({ server: testServer })
     const keyPair = nacl.sign.keyPair()
     const privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey))
     const stream = await client.addWriteKey('app', privateKeyBase64)
