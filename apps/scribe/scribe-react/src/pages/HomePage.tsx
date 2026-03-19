@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router'
-import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { getLibraries, getHomeCollections, importLibrary, createLibrary, titleToSlug, LibraryInfo } from 'scribe-data'
@@ -226,7 +226,7 @@ const CreateCard: React.FC<{
 
 const HomePage: React.FC = () => {
   const { client } = useTributary()
-  const { syncStatus, globalSyncStatus, setFocusedLibrary } = useSyncStatus()
+  const { syncStatus, globalSyncStatus, setFocusedLibrary, requestSync, isSyncingAny } = useSyncStatus()
   const [libraries, setLibraries] = useState<LibraryInfo[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [showImport, setShowImport] = useState(false)
@@ -332,6 +332,15 @@ const HomePage: React.FC = () => {
                 )}
               </div>
               <div className="flex gap-3">
+                <button
+                  onClick={requestSync}
+                  disabled={isSyncingAny}
+                  className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Sync all libraries"
+                  title="Sync all libraries"
+                >
+                  <ArrowPathIcon className={`h-6 w-6 ${isSyncingAny ? 'animate-spin' : ''}`} />
+                </button>
                 <button
                   onClick={handleStartCreate}
                   disabled={showCreate}
