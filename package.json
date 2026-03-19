@@ -2,6 +2,7 @@
   "name": "tributary",
   "private": true,
   "workspaces": [
+    "tome",
     "tributary-client",
     "tributary-cli",
     "apps/scribe/scribe-data",
