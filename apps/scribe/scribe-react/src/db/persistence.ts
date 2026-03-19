@@ -1,6 +1,6 @@
 import { PGlite, PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
-import { EncryptedIdbFs } from 'tributary-client/src/encryptedIdbFs'
+import { EncryptedIdbFs } from 'tributary-client'
 
 /**
  * Whether to run PGlite in a background Web Worker or in the foreground
