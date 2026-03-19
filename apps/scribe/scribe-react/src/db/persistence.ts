@@ -40,6 +40,7 @@ export function getPGlite(dbName?: string, encryptionKey?: Uint8Array): PGliteIn
     // Encrypted at-rest storage — uses our custom filesystem
     dbInstance = new PGlite({
       fs: new EncryptedIdbFs(databaseName, encryptionKey) as any,
+      relaxedDurability: true,
     })
   } else if (USE_BACKGROUND_WORKER) {
     dbInstance = new PGliteWorker(
