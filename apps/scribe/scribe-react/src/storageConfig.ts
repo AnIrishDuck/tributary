@@ -1,7 +1,8 @@
-// Fetches the user's storage server configuration from the central server.
-// Returns a custom storage server URL if configured, or null for the default.
+// Thin caching wrapper around the shared fetchStorageServerUrl.
+// The cache lives for the browser session — call clearStorageConfigCache() on logout.
 
 import { SupabaseClient } from '@supabase/supabase-js'
+import { fetchStorageServerUrl as fetchUrl } from 'tributary-client'
 
 let cachedUrl: string | null | undefined = undefined
 
@@ -30,21 +31,7 @@ export async function fetchStorageServerUrl(
       return null
     }
 
-    const baseUrl = supabaseProjectUrl.replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/functions/v1/storage`, {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    })
-
-    if (!response.ok) {
-      console.warn('Failed to fetch storage config:', response.status)
-      cachedUrl = null
-      return null
-    }
-
-    const result = await response.json()
-    cachedUrl = result.server_url ?? null
+    cachedUrl = await fetchUrl(supabaseProjectUrl, session.access_token)
     return cachedUrl
   } catch (e) {
     console.warn('Error fetching storage config:', e)

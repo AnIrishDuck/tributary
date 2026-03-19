@@ -2,6 +2,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Server } from './server.js';
 import { TributaryServer } from './tributaryServer.js';
 import { deriveAuthKey } from './kdf.js';
+import { fetchStorageServerUrl } from './storageConfig.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -110,8 +111,19 @@ export async function getCliAuthToken(): Promise<string | null> {
 
 export async function createCliServer(): Promise<Server> {
   const { cliUrl, cliKey } = getCliEnv();
-  const server = new TributaryServer(cliUrl, cliKey);
   const authToken = await getCliAuthToken();
+
+  // Check if the user has configured a custom storage server
+  let serverUrl = cliUrl;
+  if (authToken) {
+    const supabaseBaseUrl = new URL(cliUrl).origin;
+    const customUrl = await fetchStorageServerUrl(supabaseBaseUrl, authToken);
+    if (customUrl) {
+      serverUrl = customUrl;
+    }
+  }
+
+  const server = new TributaryServer(serverUrl, cliKey);
   if (authToken) {
     server.setWriteAuthToken(authToken);
   }

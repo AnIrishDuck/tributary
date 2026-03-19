@@ -11,6 +11,7 @@ export type { StreamStorageEstimate, QuotaEstimate } from './storage.js';
 export { estimateStreamStorageBytes, estimateQuota } from './storage.js';
 export { computeHash } from './hashUtils.js';
 export { deriveAuthKey, deriveStreamSeed } from './kdf.js';
+export { fetchStorageServerUrl } from './storageConfig.js';
 export {
   createNodeFileReader,
   createBrowserFileReader,
