@@ -6,9 +6,6 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
-    setupFiles: process.env.TRIBUTARY_TEST_ENCRYPTED
-      ? ['test/setup-encrypted.ts']
-      : [],
     testTimeout: 30000
   },
 });

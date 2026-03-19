@@ -1,6 +1,6 @@
 // Tests for server persistence functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, createTestServer } from '../src/index';
+import { createTestServer, createTestClient } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -31,7 +31,7 @@ describe('Server Persistence', () => {
   });
 
   it('should persist write operations to server before local execution', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -60,7 +60,7 @@ describe('Server Persistence', () => {
   });
 
   it('should maintain proper chaining of transactions', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -85,7 +85,7 @@ describe('Server Persistence', () => {
   });
 
   it('should properly chain hashes for multiple entries', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -129,7 +129,7 @@ describe('Server Persistence', () => {
   });
 
   it('should validate signatures using the same method as the server', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -162,7 +162,7 @@ describe('Server Persistence', () => {
   });
 
   it('should replicate the exact hash structure from server integration tests', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -217,7 +217,7 @@ describe('Server Persistence', () => {
   });
 
   it('should handle server persistence failures appropriately', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -239,7 +239,7 @@ describe('Server Persistence', () => {
   });
 
   it('should persist exec operations to server before local execution', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -265,7 +265,7 @@ describe('Server Persistence', () => {
   });
 
   it('should properly chain hashes for exec entries', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -309,7 +309,7 @@ describe('Server Persistence', () => {
   });
 
   it('should handle server persistence failures for exec operations appropriately', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -331,7 +331,7 @@ describe('Server Persistence', () => {
   });
 
   it.skip('should support exec operations within transactions', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -376,7 +376,7 @@ describe('Server Persistence', () => {
   }, 30000); // Increase timeout to 30 seconds
 
   it('should rollback transaction when exec operation fails server persistence', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     

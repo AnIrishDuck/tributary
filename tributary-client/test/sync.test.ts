@@ -1,7 +1,6 @@
 // Test for sync functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, createTestServer } from '../src/index';
-import { PGlite } from '@electric-sql/pglite';
+import { createTestServer, createTestClient, createTestDb } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -17,7 +16,7 @@ describe('Sync Functionality', () => {
   });
 
   it('should track last sync index in database and avoid replaying commands', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -69,10 +68,10 @@ describe('Sync Functionality', () => {
 
   it('should not double process data when creating a new client with existing database', async () => {
     // Create a shared database instance
-    const sharedDb = new PGlite();
-    
+    const sharedDb = await createTestDb();
+
     // Create first client and perform operations
-    const client1 = new TributaryClient({
+    const client1 = await createTestClient({
       server: testServer,
       db: sharedDb
     });
@@ -93,7 +92,7 @@ describe('Sync Functionality', () => {
     expect(result.rows[0].count).toBe(2);
     
     // Create a second client with the same database
-    const client2 = new TributaryClient({
+    const client2 = await createTestClient({
       server: testServer,
       db: sharedDb
     });
@@ -128,15 +127,15 @@ describe('Sync Functionality', () => {
 
   it('should return true when fully synced and false when more blobs available', async () => {
     // Create two separate streams
-    const freshDb1 = new PGlite();
-    const freshDb2 = new PGlite();
-    
-    const freshClient1 = new TributaryClient({
+    const freshDb1 = await createTestDb();
+    const freshDb2 = await createTestDb();
+
+    const freshClient1 = await createTestClient({
       server: testServer,
       db: freshDb1
     });
-    
-    const freshClient2 = new TributaryClient({
+
+    const freshClient2 = await createTestClient({
       server: testServer,
       db: freshDb2
     });

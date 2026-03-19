@@ -1,6 +1,6 @@
 // Tests for exec functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, createTestServer } from '../src/index';
+import { createTestServer, createTestClient } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -16,7 +16,7 @@ describe('Exec Functionality', () => {
   });
 
   it('should execute CREATE TABLE command with exec', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -32,7 +32,7 @@ describe('Exec Functionality', () => {
   });
 
   it('should execute INSERT command with exec', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -51,7 +51,7 @@ describe('Exec Functionality', () => {
   });
 
   it('should execute UPDATE command with exec', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -71,7 +71,7 @@ describe('Exec Functionality', () => {
   });
 
   it('should execute DELETE command with exec', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -98,7 +98,7 @@ describe('Exec Functionality', () => {
       return;
     }
     
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -130,7 +130,7 @@ describe('Exec Functionality', () => {
   });
 
   it.skip('should support exec in transactions with mixed query and exec operations', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     

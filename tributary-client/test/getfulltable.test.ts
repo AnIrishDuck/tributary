@@ -1,6 +1,6 @@
 // Test for getFullTable functionality in TributaryStream and TributaryLocal
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, TributaryLocal, createTestServer } from '../src/index';
+import { TributaryClient, TributaryLocal, createTestServer, createTestClient } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -11,7 +11,7 @@ describe('getFullTable Method', () => {
 
   beforeEach(async () => {
     const server = createTestServer();
-    client = new TributaryClient({ server });
+    client = await createTestClient({ server });
     
     // Generate a key pair for testing
     const keyPair = nacl.sign.keyPair();

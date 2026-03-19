@@ -1,7 +1,6 @@
 // Tests for automatic prefetch functionality built into sync()
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PGlite } from '@electric-sql/pglite';
-import { TributaryClient, FakeServer } from '../src/index';
+import { FakeServer, createTestClient } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -18,14 +17,14 @@ describe('Prefetch', () => {
 
   it('should auto-prefetch after an incomplete sync and reuse it on the next call', async () => {
     // Writer creates 4 blobs
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     await writerStream.exec('INSERT INTO test VALUES (1)');
     await writerStream.exec('INSERT INTO test VALUES (2)');
     await writerStream.exec('INSERT INTO test VALUES (3)');
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     // Spy on getBlobsArrow to count how many network requests are made
@@ -52,12 +51,12 @@ describe('Prefetch', () => {
   });
 
   it('should not prefetch when sync is complete', async () => {
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     await writerStream.exec('INSERT INTO test VALUES (1)');
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     const spy = vi.spyOn(server, 'getBlobsArrow');
@@ -69,14 +68,14 @@ describe('Prefetch', () => {
   });
 
   it('should invalidate prefetch when max changes between sync calls', async () => {
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     await writerStream.exec('INSERT INTO test VALUES (1)');
     await writerStream.exec('INSERT INTO test VALUES (2)');
     await writerStream.exec('INSERT INTO test VALUES (3)');
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     const spy = vi.spyOn(server, 'getBlobsArrow');
@@ -96,13 +95,13 @@ describe('Prefetch', () => {
   });
 
   it('should invalidate prefetch when a local write changes the sync index', async () => {
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     await writerStream.exec('INSERT INTO test VALUES (1)');
     await writerStream.exec('INSERT INTO test VALUES (2)');
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     // First sync all remote blobs so the reader has the table
@@ -140,7 +139,7 @@ describe('Prefetch', () => {
     // 4. Verify: blobs are applied correctly, no double-applies
     // 5. Subsequent syncs pick up the remaining blobs
 
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     await writerStream.exec('INSERT INTO test VALUES (1)');
@@ -149,7 +148,7 @@ describe('Prefetch', () => {
     await writerStream.exec('INSERT INTO test VALUES (4)');
     // 5 blobs on server now (CREATE + 4 INSERTs)
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     // Sync batch 1: blobs 1-2, auto-prefetches from index 2 (will get blobs 3-4)
@@ -186,14 +185,14 @@ describe('Prefetch', () => {
   it('should pipeline correctly through a full sync loop', async () => {
     // Simulates the real-world sync loop pattern:
     // sync → local work → sync (reuses prefetch) → local work → ...
-    const writer = new TributaryClient({ server, db: new PGlite() });
+    const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
     for (let i = 1; i <= 10; i++) {
       await writerStream.exec(`INSERT INTO test VALUES (${i})`);
     }
 
-    const reader = new TributaryClient({ server, db: new PGlite() });
+    const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
     const spy = vi.spyOn(server, 'getBlobsArrow');
@@ -227,7 +226,7 @@ describe('Prefetch', () => {
   });
 
   it('should handle prefetch with empty server', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     const spy = vi.spyOn(server, 'getBlobsArrow');
@@ -240,7 +239,7 @@ describe('Prefetch', () => {
   });
 
   it('should work correctly when writer is also the reader (self-sync)', async () => {
-    const client = new TributaryClient({ server, db: new PGlite() });
+    const client = await createTestClient({ server });
     const stream = await client.addWriteKey('test', privateKeyBase64);
 
     await stream.exec('CREATE TABLE test (id INTEGER)');

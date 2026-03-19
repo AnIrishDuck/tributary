@@ -1,7 +1,6 @@
 // Consolidated Sync Test converted to unit test
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TributaryClient, createTestServer } from '../src/index';
-import { PGlite } from '@electric-sql/pglite';
+import { createTestServer, createTestClient, createTestDb } from '../src/index';
 import * as nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -18,18 +17,18 @@ describe('Consolidated Sync Test', () => {
 
   it('should sync data between two clients properly', async () => {
     // Create two separate database instances
-    const db1 = new PGlite();
-    const db2 = new PGlite();
+    const db1 = await createTestDb();
+    const db2 = await createTestDb();
 
     // Create first client
-    const client1 = new TributaryClient({
+    const client1 = await createTestClient({
       server: testServer,
       db: db1
     });
     const stream1 = await client1.addWriteKey('test', testPrivateKeyBase64);
 
     // Create second client
-    const client2 = new TributaryClient({
+    const client2 = await createTestClient({
       server: testServer,
       db: db2
     });

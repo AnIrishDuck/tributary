@@ -1,6 +1,6 @@
 // Basic tests for the new tributary-client multi-stream API
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TributaryClient, TributaryServer, createTestServer } from '../src/index';
+import { TributaryClient, TributaryServer, createTestServer, createTestClient } from '../src/index';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -16,8 +16,8 @@ describe('TributaryClient - Multi-stream API', () => {
     publicKeyBase64 = base64url.encode(Buffer.from(keyPair.publicKey));
   });
 
-  it('should create a TributaryClient instance', () => {
-    const client = new TributaryClient({
+  it('should create a TributaryClient instance', async () => {
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -25,7 +25,7 @@ describe('TributaryClient - Multi-stream API', () => {
   });
 
   it('should add a write key and create a stream', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -36,7 +36,7 @@ describe('TributaryClient - Multi-stream API', () => {
   });
 
   it('should list streams', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -54,7 +54,7 @@ describe('TributaryClient - Multi-stream API', () => {
   });
 
   it('should get a stream by ID', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
@@ -67,7 +67,7 @@ describe('TributaryClient - Multi-stream API', () => {
   });
 
   it('should perform database operations on a stream', async () => {
-    const client = new TributaryClient({
+    const client = await createTestClient({
       server: testServer
     });
     
