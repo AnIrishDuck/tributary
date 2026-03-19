@@ -60,42 +60,6 @@ interface IdbfsEntry {
 
 // ── EncryptedIdbFs ──────────────────────────────────────────────────────
 
-/**
- * Wraps the real IDBFS object, intercepting storeRemoteEntry/loadRemoteEntry
- * to encrypt/decrypt entry.contents at the IndexedDB boundary.
- */
-function wrapIdbfs(realIdbfs: any, key: Uint8Array): any {
-  return new Proxy(realIdbfs, {
-    get(target, prop, receiver) {
-      if (prop === 'storeRemoteEntry') {
-        return (store: IDBObjectStore, path: string, entry: IdbfsEntry, callback: (err?: any) => void) => {
-          const encrypted = { ...entry }
-          if (encrypted.contents instanceof Uint8Array && encrypted.contents.length > 0) {
-            encrypted.contents = encryptBlob(encrypted.contents, key)
-          }
-          return target.storeRemoteEntry(store, path, encrypted, callback)
-        }
-      }
-      if (prop === 'loadRemoteEntry') {
-        return (store: IDBObjectStore, path: string, callback: (err: any, entry?: IdbfsEntry) => void) => {
-          return target.loadRemoteEntry(store, path, (err: any, entry?: IdbfsEntry) => {
-            if (err || !entry) return callback(err, entry)
-            if (entry.contents instanceof Uint8Array && entry.contents.length > 0) {
-              try {
-                entry = { ...entry, contents: decryptBlob(entry.contents, key) }
-              } catch (e) {
-                return callback(e)
-              }
-            }
-            callback(null, entry)
-          })
-        }
-      }
-      return Reflect.get(target, prop, receiver)
-    },
-  })
-}
-
 export class EncryptedIdbFs extends IdbFs {
   private encryptionKey: Uint8Array
 
@@ -115,24 +79,42 @@ export class EncryptedIdbFs extends IdbFs {
     const key = this.encryptionKey
     const result = await super.init(pg, opts)
 
-    // Wrap the preRun hooks: after IdbFs's preRun mounts IDBFS, we swap in
-    // our encrypting wrapper before Emscripten proceeds.
+    // After IdbFs's preRun mounts IDBFS, replace it with a prototype-derived
+    // copy that overrides storeRemoteEntry / loadRemoteEntry to encrypt/decrypt.
     const originalPreRun: Array<(mod: any) => void> = result.emscriptenOpts.preRun || []
     result.emscriptenOpts.preRun = originalPreRun.map((fn: (mod: any) => void) => {
       return (mod: any) => {
-        // Run the original preRun (which does the mount)
         fn(mod)
-        // Now replace the IDBFS reference with our encrypting wrapper
-        mod.FS.filesystems.IDBFS = wrapIdbfs(mod.FS.filesystems.IDBFS, key)
+
+        const realIdbfs = mod.FS.filesystems.IDBFS
+        const encryptedIdbfs = Object.create(realIdbfs)
+
+        encryptedIdbfs.storeRemoteEntry = (store: IDBObjectStore, path: string, entry: IdbfsEntry, callback: (err?: any) => void) => {
+          const encrypted = { ...entry }
+          if (encrypted.contents instanceof Uint8Array && encrypted.contents.length > 0) {
+            encrypted.contents = encryptBlob(encrypted.contents, key)
+          }
+          return realIdbfs.storeRemoteEntry(store, path, encrypted, callback)
+        }
+
+        encryptedIdbfs.loadRemoteEntry = (store: IDBObjectStore, path: string, callback: (err: any, entry?: IdbfsEntry) => void) => {
+          return realIdbfs.loadRemoteEntry(store, path, (err: any, entry?: IdbfsEntry) => {
+            if (err || !entry) return callback(err, entry)
+            if (entry.contents instanceof Uint8Array && entry.contents.length > 0) {
+              try {
+                entry = { ...entry, contents: decryptBlob(entry.contents, key) }
+              } catch (e) {
+                return callback(e)
+              }
+            }
+            callback(null, entry)
+          })
+        }
+
+        mod.FS.filesystems.IDBFS = encryptedIdbfs
       }
     })
 
     return result
-  }
-
-  async closeFs(): Promise<void> {
-    // The wrapper proxies through to the real IDBFS, so dbs lookup works
-    // through the Proxy's Reflect.get — super.closeFs() handles it.
-    await super.closeFs()
   }
 }
