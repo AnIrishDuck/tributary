@@ -1,5 +1,6 @@
 import { RouteObject, redirect } from 'react-router'
 import GrantWriteAccessPage from './pages/GrantWriteAccessPage'
+import AccountPage from './pages/AccountPage'
 import SlugViewPage from 'scribe-react-listing/src/pages/SlugViewPage'
 import HomePage from './pages/HomePage'
 import NoteListPage from 'scribe-react-listing/src/pages/NoteListPage'
@@ -45,6 +46,10 @@ export const routes: RouteObject[] = [
       {
         path: '/',
         Component: HomePage,
+      },
+      {
+        path: '/account',
+        Component: AccountPage,
       },
       {
         path: '/new',

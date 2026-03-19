@@ -2,28 +2,36 @@ import React, { createContext, useContext, ReactNode } from 'react'
 import { TributaryClient, createTestServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 
+/** Minimal session info exposed to the app. */
+export interface AccountSession {
+  email: string | undefined
+}
+
 // Define the context type
 interface TributaryContextType {
   client: TributaryClient | null
   logout: (() => Promise<void>) | null
+  session: AccountSession | null
 }
 
 // Create the context with default value
 const TributaryContext = createContext<TributaryContextType>({
   client: null,
   logout: null,
+  session: null,
 })
 
 // Create a provider component
 interface TributaryProviderProps {
   client: TributaryClient | null
   logout?: (() => Promise<void>) | null
+  session?: AccountSession | null
   children: ReactNode
 }
 
-export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, logout, children }) => {
+export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, logout, session, children }) => {
   return (
-    <TributaryContext.Provider value={{ client, logout: logout ?? null }}>
+    <TributaryContext.Provider value={{ client, logout: logout ?? null, session: session ?? null }}>
       {children}
     </TributaryContext.Provider>
   )
