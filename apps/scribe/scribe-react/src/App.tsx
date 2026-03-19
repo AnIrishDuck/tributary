@@ -3,7 +3,7 @@ import { RouterProvider, createHashRouter } from 'react-router'
 import { routes } from './route'
 import { TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
-import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed } from 'tributary-client'
+import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed, deriveStorageKey } from 'tributary-client'
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
@@ -38,7 +38,7 @@ function accountDbName(session: Session | null): string {
 
 // Create client based on configuration
 // Uses real TributaryServer connecting to remote Supabase
-async function createTributaryClient(session: Session | null) {
+async function createTributaryClient(session: Session | null, encryptionKey?: Uint8Array) {
   // Return existing promise if already creating
   if (clientPromise) {
     return clientPromise
@@ -65,8 +65,12 @@ async function createTributaryClient(session: Session | null) {
       }
     }
 
-    // Use per-account IndexedDB for persistence
-    const pglite = getPGlite(accountDbName(session))
+    // Use a separate per-account IndexedDB database for encrypted storage so
+    // the two formats never collide, and per-account wipes can target only
+    // the relevant database.
+    const baseDbName = accountDbName(session)
+    const dbName = encryptionKey ? `${baseDbName}-encrypted` : baseDbName
+    const pglite = getPGlite(dbName, encryptionKey)
 
     return { client: new TributaryClient({ server, db: pglite }), server }
   })()
@@ -127,8 +131,14 @@ interface DerivedKeyPair {
   secretKey: Uint8Array
 }
 
+/** Result returned by login/password-reentry screens. */
+interface LoginResult {
+  keyPair: DerivedKeyPair
+  storageKey: Uint8Array
+}
+
 // Login screen shown when Supabase auth is configured but user is not signed in
-function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPair) => void }) {
+function LoginScreen({ onLogin }: { onLogin: (result: LoginResult) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -151,13 +161,15 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
         return
       }
 
-      // Derive root seed and keypair for home library registration.
-      // Persist the root seed so PWA restarts can re-derive the key pair
-      // without prompting for the password again.
-      const rootSeed = await deriveStreamSeed(password, email, CONFIG.APP_ID)
-      persistRootSeed(rootSeed, signInData.user?.id)
+      // Derive root seed, keypair, and storage key.
+      // The storage key is always derived so it's available if encrypted
+      // storage is enabled; it's simply ignored otherwise.
+      const [rootSeed, encKey] = await Promise.all([
+        deriveStreamSeed(password, email, CONFIG.APP_ID),
+        deriveStorageKey(password, email),
+      ])
       const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
-      onDerivedKeyPair(keyPair)
+      onLogin({ keyPair, storageKey: encKey })
     } catch (err: any) {
       setError(err.message || 'Login failed')
     }
@@ -247,8 +259,94 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
   )
 }
 
+// Password re-entry screen shown on page reload when encrypted storage is enabled.
+// The Supabase session is still valid, but the encryption key (derived from the
+// password) is not persisted — the user must re-enter their password to unlock.
+function PasswordReentryScreen({ email, onLogin }: { email: string; onLogin: (result: LoginResult) => void }) {
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabaseAuth) return
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Re-authenticate to validate the password
+      const authKey = await deriveAuthKey(password, email)
+      const { error: signInError } = await supabaseAuth.auth.signInWithPassword({ email, password: authKey })
+      if (signInError) {
+        setError(signInError.message)
+        setLoading(false)
+        return
+      }
+
+      const [rootSeed, encKey] = await Promise.all([
+        deriveStreamSeed(password, email, CONFIG.APP_ID),
+        deriveStorageKey(password, email),
+      ])
+      const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
+      onLogin({ keyPair, storageKey: encKey })
+    } catch (err: any) {
+      setError(err.message || 'Unlock failed')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
+      <div className="max-w-sm w-full">
+        <div className="card p-8">
+          <div className="text-center mb-6">
+            <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <LockClosedIcon className="w-6 h-6 text-blue-600" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900">Unlock Encrypted Storage</h1>
+            <p className="text-sm text-gray-500 mt-2">Enter your password to decrypt your local data.</p>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                readOnly
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                autoFocus
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Unlocking...' : 'Unlock'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [client, setClient] = useState<TributaryClient | null>(null)
+  const [server, setServer] = useState<TributaryServer | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(!supabaseAuth) // skip auth gate if no supabase auth
   const [error, setError] = useState<string | null>(null)
@@ -257,6 +355,19 @@ function App() {
   const [setupStep, setSetupStep] = useState<string | null>(null)
 
   const userId = session?.user?.id
+
+  // Encrypted storage state — key is derived from the user's password and
+  // kept in memory only.  null means we haven't checked the account config yet.
+  const [encryptedStorageEnabled, setEncryptedStorageEnabled] = useState<boolean | null>(null)
+  const [storageKey, setStorageKey] = useState<Uint8Array | null>(null)
+  const [needsPasswordReentry, setNeedsPasswordReentry] = useState(false)
+
+  // Callback for LoginScreen / PasswordReentryScreen
+  function handleLogin(result: LoginResult) {
+    setDerivedKeyPair(result.keyPair)
+    setStorageKey(result.storageKey)
+    setNeedsPasswordReentry(false)
+  }
 
   // Logout: sign out of Supabase and reset in-memory state.
   // The per-account local database is preserved so the next login is fast.
@@ -272,8 +383,12 @@ function App() {
     }
     clientPromise = null
     setClient(null)
+    setServer(null)
     setSession(null)
     setDerivedKeyPair(null)
+    setStorageKey(null)
+    setEncryptedStorageEnabled(null)
+    setNeedsPasswordReentry(false)
   }
 
   // Clear: sign out, request deletion of this account's local database,
@@ -281,13 +396,15 @@ function App() {
   // hold internal IndexedDB connections that prevent deleteDatabase from
   // completing — the reload closes them so the pending delete succeeds.
   async function clearAccount() {
-    const dbName = accountDbName(session)
+    const baseDbName = accountDbName(session)
     clearPersistedRootSeed(userId)
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
     try {
-      await wipeDatabase(dbName)
+      // Wipe both the plain and encrypted database variants for this account
+      await wipeDatabase(baseDbName)
+      await wipeDatabase(`${baseDbName}-encrypted`)
     } catch (err) {
       console.error('wipeDatabase failed during clear:', err)
     }
@@ -321,31 +438,74 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Check account config for encryptedStorage flag once we have a session.
+  // This runs BEFORE client creation so we know whether to pass an encryption key.
+  useEffect(() => {
+    if (!authReady || !session) return
+    // Skip if we already know (e.g. just logged in and storageKey is set)
+    if (encryptedStorageEnabled !== null) return
+
+    let mounted = true
+
+    async function checkConfig() {
+      try {
+        const tempServer = new TributaryServer(CONFIG.API_URL, CONFIG.API_KEY)
+        tempServer.setWriteAuthToken(session!.access_token)
+        const config = await tempServer.getAccountConfig()
+        const entry = config.find(e => e.key === 'encryptedStorage')
+        const enabled = entry?.value === 'true'
+        if (mounted) {
+          setEncryptedStorageEnabled(enabled)
+          if (enabled && !storageKey) {
+            // Persisted session but no password-derived key in memory — prompt
+            setNeedsPasswordReentry(true)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check account config:', err)
+        // Fail-open to unencrypted so the app remains usable
+        if (mounted) setEncryptedStorageEnabled(false)
+      }
+    }
+
+    checkConfig()
+    return () => { mounted = false }
+  }, [authReady, session, encryptedStorageEnabled, storageKey])
+
   // Initialize tributary client once we have a session (or auth is not configured)
+  // and the encrypted-storage config check has completed.
   useEffect(() => {
     if (!authReady) return
     // If auth is configured, require a session before initializing
     if (supabaseAuth && !session) return
+    // Wait for the encrypted-storage config check to complete
+    if (supabaseAuth && encryptedStorageEnabled === null) return
+    // If encrypted storage is enabled, wait for the password-derived key
+    if (encryptedStorageEnabled && !storageKey) return
 
     let mounted = true
 
     async function init() {
       try {
-        const { client: newClient, server } = await createTributaryClient(session)
+        const { client: newClient, server: newServer } = await createTributaryClient(
+          session,
+          encryptedStorageEnabled ? storageKey ?? undefined : undefined
+        )
         if (mounted) {
           setClient(newClient)
+          setServer(newServer)
         }
 
         // Keep write token fresh on session changes
         if (supabaseAuth) {
           // Proactively update token when Supabase auto-refreshes it
           const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, session) => {
-            server.setWriteAuthToken(session?.access_token ?? undefined)
+            newServer.setWriteAuthToken(session?.access_token ?? undefined)
           })
 
           // Force-refresh the token when a 401 is received (e.g. after
           // the browser tab was suspended and auto-refresh didn't fire)
-          server.setAuthTokenRefresher(async () => {
+          newServer.setAuthTokenRefresher(async () => {
             const { data, error } = await supabaseAuth!.auth.refreshSession()
             if (error || !data.session) return undefined
             return data.session.access_token
@@ -369,7 +529,23 @@ function App() {
       mounted = false
       unsubscribe?.()
     }
-  }, [authReady, session])
+  }, [authReady, session, encryptedStorageEnabled, storageKey])
+
+  // Persist the root seed when encrypted storage is NOT enabled, so that PWA
+  // restarts can re-derive the key pair without prompting for the password.
+  // When encrypted storage IS enabled, never persist the seed — the user must
+  // re-enter their password on every page load.
+  useEffect(() => {
+    if (!derivedKeyPair || encryptedStorageEnabled === null) return
+    if (encryptedStorageEnabled) {
+      // Ensure no seed is persisted when encryption is active
+      clearPersistedRootSeed(userId)
+    } else {
+      // Persist seed for auto-recovery on reload
+      // Recover the seed from the secret key (first 32 bytes of the 64-byte Ed25519 secret key)
+      persistRootSeed(derivedKeyPair.secretKey.slice(0, 32), userId)
+    }
+  }, [derivedKeyPair, encryptedStorageEnabled])
 
   // Post-login home stream registration: re-derive and register the home key.
   // Updates setupStep so the UI can show progress during the multi-step process.
@@ -450,11 +626,16 @@ function App() {
   // survives (localStorage) but PGlite's writes are lost and derivedKeyPair
   // (React state) is gone.
   //
+  // When encrypted storage is enabled this recovery path is skipped — the
+  // password reentry screen will provide both the keypair and storage key.
+  //
   // If we have a persisted root seed we can re-derive the key pair and
   // re-run registration without prompting for the password.  Only force
   // re-authentication as a last resort when no root seed is available.
   useEffect(() => {
     if (!client || derivedKeyPair || passwordRecovery) return
+    // Encrypted storage requires the password — don't try auto-recovery
+    if (encryptedStorageEnabled) return
 
     let mounted = true
 
@@ -473,7 +654,7 @@ function App() {
     })
 
     return () => { mounted = false }
-  }, [client, derivedKeyPair, passwordRecovery])
+  }, [client, derivedKeyPair, passwordRecovery, encryptedStorageEnabled])
 
   // Show SetPasswordPage during password recovery flow (wait for client to be ready)
   if (passwordRecovery && session && supabaseAuth && client) {
@@ -489,7 +670,13 @@ function App() {
 
   // Show login screen if auth is configured but user is not signed in
   if (supabaseAuth && authReady && !session) {
-    return <LoginScreen onDerivedKeyPair={setDerivedKeyPair} />
+    return <LoginScreen onLogin={handleLogin} />
+  }
+
+  // Show password re-entry screen when encrypted storage is enabled but the
+  // password-derived key is not in memory (e.g. page reload).
+  if (needsPasswordReentry && session) {
+    return <PasswordReentryScreen email={session.user.email!} onLogin={handleLogin} />
   }
 
   // Show setup screen during initial account registration (registerHomeKey).
@@ -569,7 +756,7 @@ function App() {
 
   return (
     <SyncStatusProvider client={client}>
-      <TributaryProvider client={client} logout={logout} clearAccount={clearAccount} session={session ? { email: session.user?.email } : null}>
+      <TributaryProvider client={client} server={server} logout={logout} clearAccount={clearAccount} session={session ? { email: session.user?.email } : null}>
         <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>
