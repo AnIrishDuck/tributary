@@ -472,7 +472,7 @@ async function handleGetConfig(req: Request, db: Database, authenticate: Authent
 
     const entries = await db.getAccountConfig(authResult.userId);
     return createResponse(
-      JSON.stringify({ global: entries }),
+      JSON.stringify({ account: entries }),
       200,
       { 'Content-Type': 'application/json' }
     );
