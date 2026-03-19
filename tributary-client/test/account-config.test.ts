@@ -1,6 +1,8 @@
 // Tests for account config (server-side key/value registry)
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTestServer } from '../src/index';
+import { TributaryClient, createTestServer } from '../src/index';
+import nacl from 'tweetnacl';
+import * as base64url from 'urlsafe-base64';
 
 describe('Account Config', () => {
   let server: any;
@@ -101,5 +103,68 @@ describe('Account Config', () => {
     // Now we should be able to add a new one
     const stored = await server.setAccountConfig('newkey', 'newvalue');
     expect(stored).toBe(true);
+  });
+});
+
+describe('Account Config Integration', () => {
+  let testServer: any;
+  let keyPair: nacl.SignKeyPair;
+  let privateKeyBase64: string;
+
+  beforeEach(() => {
+    testServer = createTestServer();
+    keyPair = nacl.sign.keyPair();
+    privateKeyBase64 = base64url.encode(Buffer.from(keyPair.secretKey));
+  });
+
+  it('should persist config alongside stream operations', async () => {
+    const client = new TributaryClient({ server: testServer });
+    const stream = await client.addWriteKey('scribe', privateKeyBase64);
+
+    // Set up a home stream and account config in parallel
+    await client.setHomeStream(stream.getId());
+    await testServer.setAccountConfig('encrypt_all', 'true');
+    await testServer.setAccountConfig('home_stream', stream.getId());
+
+    // Perform normal stream operations
+    await stream.exec('CREATE TABLE docs (id SERIAL PRIMARY KEY, title TEXT)');
+    await stream.exec("INSERT INTO docs (title) VALUES ('secret note')");
+
+    // Verify stream works
+    const result = await stream.query('SELECT * FROM docs');
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].title).toBe('secret note');
+
+    // Verify config is available alongside stream data
+    const config = await testServer.getAccountConfig();
+    expect(config).toHaveLength(2);
+
+    const configMap = Object.fromEntries(config.map((e: any) => [e.key, e.value]));
+    expect(configMap['encrypt_all']).toBe('true');
+    expect(configMap['home_stream']).toBe(stream.getId());
+  });
+
+  it('should allow a second client to read config and sync the stream', async () => {
+    // First client sets up config and writes data
+    const client1 = new TributaryClient({ server: testServer });
+    const stream1 = await client1.addWriteKey('scribe', privateKeyBase64);
+
+    await testServer.setAccountConfig('encrypt_all', 'true');
+    await stream1.exec('CREATE TABLE notes (id SERIAL PRIMARY KEY, body TEXT)');
+    await stream1.exec("INSERT INTO notes (body) VALUES ('hello')");
+
+    // Second client reads config, then syncs the stream
+    const client2 = new TributaryClient({ server: testServer });
+
+    const config = await testServer.getAccountConfig();
+    const configMap = Object.fromEntries(config.map((e: any) => [e.key, e.value]));
+    expect(configMap['encrypt_all']).toBe('true');
+
+    const stream2 = await client2.addWriteKey('scribe', privateKeyBase64);
+    await stream2.sync(1000);
+
+    const result = await stream2.query('SELECT * FROM notes');
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].body).toBe('hello');
   });
 });
