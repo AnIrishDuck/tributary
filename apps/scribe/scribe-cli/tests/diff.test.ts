@@ -54,7 +54,8 @@ async function computeOps(
 describe('formatDiffStat', () => {
   const pk = 'abcd1234'
 
-  it('should format a local create', () => {
+  it('should format create targeting remote with pk prefix', () => {
+    // Local file needs to be pushed to remote → shows as remote
     const ops: SyncOperation[] = [{
       kind: 'create',
       target: {
@@ -64,10 +65,11 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+   /new-note'])
+    expect(lines).toEqual(['+   abcd1234:/new-note'])
   })
 
-  it('should format a remote create', () => {
+  it('should format create targeting local with local path', () => {
+    // Remote note needs to be pulled to local → shows as local
     const ops: SyncOperation[] = [{
       kind: 'create',
       target: {
@@ -77,10 +79,11 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+   abcd1234:/remote-note'])
+    expect(lines).toEqual(['+   /remote-note'])
   })
 
-  it('should format a local update', () => {
+  it('should format update where remote is stale with pk prefix', () => {
+    // Local is newer → remote will be overwritten → shows as remote
     const ops: SyncOperation[] = [{
       kind: 'update',
       from: {
@@ -95,10 +98,11 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+-  /changed'])
+    expect(lines).toEqual(['+-  abcd1234:/changed'])
   })
 
-  it('should format a remote update', () => {
+  it('should format update where local is stale with local path', () => {
+    // Remote is newer → local will be overwritten → shows as local
     const ops: SyncOperation[] = [{
       kind: 'update',
       from: {
@@ -113,7 +117,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+-  abcd1234:/remote-changed'])
+    expect(lines).toEqual(['+-  /remote-changed'])
   })
 
   it('should format a local move', () => {
@@ -152,7 +156,7 @@ describe('formatDiffStat', () => {
     expect(lines).toEqual(['*   abcd1234:/remote-moved => abcd1234:/collection/remote-moved'])
   })
 
-  it('should format collection creates', () => {
+  it('should format collection create targeting remote with pk prefix', () => {
     const ops: SyncOperation[] = [{
       kind: 'create',
       target: {
@@ -162,7 +166,7 @@ describe('formatDiffStat', () => {
       },
     }]
     const lines = formatDiffStat(ops, pk)
-    expect(lines).toEqual(['+   /recipes'])
+    expect(lines).toEqual(['+   abcd1234:/recipes'])
   })
 
   it('should format nested paths', () => {
@@ -186,8 +190,8 @@ describe('formatDiffStat', () => {
     ]
     const lines = formatDiffStat(ops, pk)
     expect(lines).toEqual([
-      '+   /cooking/italian/pasta',
-      '+   abcd1234:/desserts/cake',
+      '+   abcd1234:/cooking/italian/pasta',
+      '+   /desserts/cake',
     ])
   })
 
@@ -277,11 +281,11 @@ describe('formatDiffStat', () => {
 
     const lines = formatDiffStat(ops, '1abfu259')
     expect(lines).toEqual([
-      '+   /local-created',
-      '+   /collection',
-      '+   1abfu259:/remote-created',
-      '+-  /changed',
-      '+-  1abfu259:/remote-changed',
+      '+   1abfu259:/local-created',
+      '+   1abfu259:/collection',
+      '+   /remote-created',
+      '+-  1abfu259:/changed',
+      '+-  /remote-changed',
       '*   /moved => /collection/moved',
       '*   1abfu259:/remote-moved => 1abfu259:/collection/remote-moved',
     ])
@@ -519,11 +523,60 @@ describe('diff stat — path computation', () => {
     const lines = formatDiffStat(ops, 'abcd1234')
 
     // Should have creates for:
-    // - local-only (new local file → push to remote) → local format
-    // - recipes collection (remote → pull to local) → remote format
-    // - remote-note (remote → pull to local) → remote format
-    expect(lines).toContainEqual('+   /local-only')
-    expect(lines).toContainEqual('+   abcd1234:/recipes')
-    expect(lines).toContainEqual('+   abcd1234:/recipes/remote-note')
+    // - local-only (new local file → push to remote) → remote format
+    // - recipes collection (remote → pull to local) → local format
+    // - remote-note (remote → pull to local) → local format
+    expect(lines).toContainEqual('+   abcd1234:/local-only')
+    expect(lines).toContainEqual('+   /recipes')
+    expect(lines).toContainEqual('+   /recipes/remote-note')
+  })
+
+  it('should show remote-added note as local path (it will be created locally)', async () => {
+    // Sync a library to local first
+    await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Existing\n\nAlready synced.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+    await sync(stream, client, tmpDir, { dryRun: false })
+
+    // Now add a note remotely (simulating another client adding it)
+    await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# New Remote Note\n\nAdded remotely after initial sync.',
+      inserter: 'test'
+    })
+    await stream.sync(1000)
+
+    // diff --stat should show the new note as a LOCAL path,
+    // because it will be created on the local filesystem
+    const ops = await computeOps(stream, tmpDir)
+    const lines = formatDiffStat(ops, 'abcd1234')
+
+    // The remote-added note needs to be pulled to local → local format
+    expect(lines).toContainEqual('+   /new-remote-note')
+    // It should NOT show with pk prefix
+    expect(lines.some(l => l.includes('abcd1234:/new-remote-note'))).toBe(false)
+  })
+
+  it('should show locally-added file as remote path (it will be created remotely)', async () => {
+    await stream.sync(1000)
+
+    // Create a local-only file
+    await fs.promises.writeFile(
+      path.join(tmpDir, 'local-new.md'),
+      '# Local New\n\nCreated locally.',
+      'utf8'
+    )
+
+    const ops = await computeOps(stream, tmpDir)
+    const lines = formatDiffStat(ops, 'abcd1234')
+
+    // The local-only file needs to be pushed to remote → remote format
+    expect(lines).toContainEqual('+   abcd1234:/local-new')
+    // It should NOT show as a bare local path
+    expect(lines.some(l => l === '+   /local-new')).toBe(false)
   })
 })

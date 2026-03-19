@@ -1,17 +1,18 @@
 import type { SyncItem, SyncOperation } from 'scribe-data';
 
 /**
- * Determine the source of truth (where the change originates) for a sync operation.
+ * Determine which side will be changed by a sync operation.
  *
- * - Create: the item exists on the opposite side of target.source
- * - Update: target is the authoritative (newer) version
- * - Move: from.source indicates which side moved
+ * The display format indicates where the change will happen:
+ * - Create: target.source is where the new item will be written
+ * - Update: from.source is the stale side that will be overwritten
+ * - Move: from.source is the side where the item will be relocated
  */
-function getChangeSource(op: SyncOperation): 'local' | 'remote' {
+function getChangeDestination(op: SyncOperation): 'local' | 'remote' {
   if (op.kind === 'create') {
-    return op.target.source === 'local' ? 'remote' : 'local';
-  } else if (op.kind === 'update') {
     return op.target.source;
+  } else if (op.kind === 'update') {
+    return op.from.source;
   } else {
     return op.from.source;
   }
@@ -49,22 +50,22 @@ export function formatDiffStat(operations: SyncOperation[], pkPrefix: string): s
   const lines: string[] = [];
 
   for (const op of operations) {
-    const source = getChangeSource(op);
+    const destination = getChangeDestination(op);
 
     switch (op.kind) {
       case 'create': {
-        const display = formatItemPath(op.target.path, source, pkPrefix);
+        const display = formatItemPath(op.target.path, destination, pkPrefix);
         lines.push(`+   ${display}`);
         break;
       }
       case 'update': {
-        const display = formatItemPath(op.target.path, source, pkPrefix);
+        const display = formatItemPath(op.target.path, destination, pkPrefix);
         lines.push(`+-  ${display}`);
         break;
       }
       case 'move': {
-        const fromDisplay = formatItemPath(op.from.path, source, pkPrefix);
-        const toDisplay = formatItemPath(op.to.path, source, pkPrefix);
+        const fromDisplay = formatItemPath(op.from.path, destination, pkPrefix);
+        const toDisplay = formatItemPath(op.to.path, destination, pkPrefix);
         lines.push(`*   ${fromDisplay} => ${toDisplay}`);
         break;
       }
