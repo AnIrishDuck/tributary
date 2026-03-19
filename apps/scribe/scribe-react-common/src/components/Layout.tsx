@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Outlet, useLocation, Link } from 'react-router'
-import { ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
+import { ArrowRightStartOnRectangleIcon, UserCircleIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useTributary } from '../context/tributaryContext'
 import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
@@ -10,14 +10,29 @@ const Layout: React.FC = () => {
   const location = useLocation()
   const { logout } = useTributary()
   const [loggingOut, setLoggingOut] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useDocumentTitle()
 
   const handleLogout = async () => {
     if (!logout || loggingOut) return
+    setMenuOpen(false)
     setLoggingOut(true)
     await logout()
   }
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
 
   const isHome = location.pathname === '/'
   // Detect editor pages: &edit, +note, +draft paths
@@ -36,15 +51,38 @@ const Layout: React.FC = () => {
       {logout && isHome && (
         <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-3 sm:px-4 flex justify-end h-10 items-center">
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-              title="Sign out"
-            >
-              <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
-              <span>{loggingOut ? 'Signing out...' : 'Sign out'}</span>
-            </button>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(prev => !prev)}
+                disabled={loggingOut}
+                className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                title="Account menu"
+              >
+                <UserCircleIcon className="w-4 h-4" />
+                <span>Account</span>
+                <ChevronDownIcon className="w-3 h-3" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <Link
+                    to="/account"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <UserCircleIcon className="w-4 h-4" />
+                    Account
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                  >
+                    <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
+                    {loggingOut ? 'Signing out...' : 'Sign out'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

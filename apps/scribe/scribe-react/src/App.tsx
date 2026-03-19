@@ -514,7 +514,7 @@ function App() {
 
   return (
     <SyncStatusProvider client={client}>
-      <TributaryProvider client={client} logout={logout}>
+      <TributaryProvider client={client} logout={logout} session={session ? { email: session.user?.email } : null}>
         <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>
