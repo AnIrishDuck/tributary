@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Outlet, useLocation, Link } from 'react-router'
-import { ArrowRightStartOnRectangleIcon, UserCircleIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
+import { ArrowRightStartOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useTributary } from '../context/tributaryContext'
 import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
@@ -55,12 +55,10 @@ const Layout: React.FC = () => {
               <button
                 onClick={() => setMenuOpen(prev => !prev)}
                 disabled={loggingOut}
-                className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                className="inline-flex items-center p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
                 title="Account menu"
               >
-                <UserCircleIcon className="w-4 h-4" />
-                <span>Account</span>
-                <ChevronDownIcon className="w-3 h-3" />
+                <UserCircleIcon className="w-5 h-5" />
               </button>
               {menuOpen && (
                 <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
