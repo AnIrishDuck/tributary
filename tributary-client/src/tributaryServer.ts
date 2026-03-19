@@ -297,7 +297,7 @@ export class TributaryServer implements Server {
     }
 
     const result = await response.json();
-    return result.config;
+    return result.global;
   }
 
   async setAccountConfig(key: string, value: string): Promise<boolean> {
