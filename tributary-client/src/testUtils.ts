@@ -4,6 +4,7 @@ import { Server } from './server.js';
 import { FakeServer } from './fakeServer.js';
 import { TributaryServer } from './tributaryServer.js';
 import { TributaryClient } from './tributaryClient.js';
+import { info } from './logger.js';
 
 /**
  * Creates a test server instance for use in tests
@@ -36,6 +37,7 @@ export async function createTestDb(): Promise<PGliteInterface> {
     const { EncryptedIdbFs } = await import('./encryptedIdbFs.js');
     const key = nacl.default.randomBytes(nacl.default.secretbox.keyLength);
     const dbName = `test-encrypted-${encryptedDbCounter++}`;
+    info(`Creating encrypted PGlite database: ${dbName}`);
     return new PGlite({
       fs: new EncryptedIdbFs(dbName, key) as any,
     });
