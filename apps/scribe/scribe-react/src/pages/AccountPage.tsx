@@ -4,6 +4,8 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { getHomeCollections, getLibraries, estimateQuota } from 'scribe-data'
 import type { QuotaEstimate } from 'scribe-data'
+import { wipeDatabase } from '../db/persistence'
+import CONFIG from '../config'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -64,8 +66,12 @@ const AccountPage: React.FC = () => {
         await server.deleteAccountConfig('encryptedStorage')
       }
 
-      // Reload so the app re-initialises with the correct database variant.
-      // Encrypted and unencrypted databases use different names, so no wipe needed.
+      // Wipe the database variant we're switching away from
+      const userId = session?.user?.id
+      const baseDbName = userId ? `${CONFIG.DB_NAME}-${userId}` : CONFIG.DB_NAME
+      const dbToWipe = enabling ? baseDbName : `${baseDbName}-encrypted`
+      await wipeDatabase(dbToWipe)
+
       window.location.reload()
     } catch (err) {
       console.error('Failed to toggle encrypted storage:', err)
