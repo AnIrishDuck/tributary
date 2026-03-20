@@ -45,3 +45,8 @@ export interface StaticSiteFile {
   ix: number;
   "content-type": string;
 }
+
+export interface AccountConfigEntry {
+  key: string;
+  value: string;
+}

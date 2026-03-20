@@ -283,6 +283,72 @@ export class TributaryServer implements Server {
    * @param max Optional: Maximum number of blobs to return (default: 10)
    * @returns Array of blobs with their data and the total count
    */
+  async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
+    const url = `${this.baseUrl}/config`;
+    const headers: Record<string, string> = {};
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`Failed to get account config: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.account;
+  }
+
+  async setAccountConfig(key: string, value: string): Promise<boolean> {
+    const url = `${this.baseUrl}/config`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ key, value })
+    });
+
+    if (!response.ok) {
+      if (response.status === 400) {
+        return false;
+      }
+      throw new Error(`Failed to set account config: ${response.status} ${response.statusText}`);
+    }
+
+    return true;
+  }
+
+  async deleteAccountConfig(key: string): Promise<boolean> {
+    const url = `${this.baseUrl}/config`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({ key })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete account config: ${response.status} ${response.statusText}`);
+    }
+
+    return true;
+  }
+
   async getBlobsArrow(
     pubkey: string,
     startSequence?: number,
