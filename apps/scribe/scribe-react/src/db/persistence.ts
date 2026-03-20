@@ -84,14 +84,14 @@ export async function wipePGlite(): Promise<void> {
 }
 
 /**
- * Close PGlite and wipe only the IndexedDB databases whose names start with
- * the given prefix.  PGlite / IdbFs may create auxiliary databases with
- * related names, so a prefix match catches them all while leaving other
- * accounts' databases intact.
+ * Close PGlite and wipe IndexedDB databases belonging to a given logical
+ * database.  PGlite's IdbFs stores data under `/pglite/{name}`, so we match
+ * both the raw name and the `/pglite/` prefixed variant.
  */
-export async function wipeDatabase(dbNamePrefix: string): Promise<void> {
+export async function wipeDatabase(dbName: string): Promise<void> {
   await closePGlite()
-  await deleteIndexedDBs((name) => name.startsWith(dbNamePrefix))
+  const pgliteName = `/pglite/${dbName}`
+  await deleteIndexedDBs((name) => name === dbName || name.startsWith(pgliteName))
 }
 
 /**

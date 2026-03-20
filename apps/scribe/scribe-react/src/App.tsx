@@ -55,7 +55,8 @@ async function createTributaryClient(session: Session | null) {
     // Data is a local cache and can be re-synced from the server.
     if (session?.user?.id && typeof indexedDB !== 'undefined' && indexedDB.databases) {
       const dbs = await indexedDB.databases()
-      if (dbs.some(db => db.name === CONFIG.DB_NAME)) {
+      const legacyPgliteName = `/pglite/${CONFIG.DB_NAME}`
+      if (dbs.some(db => db.name === CONFIG.DB_NAME || db.name === legacyPgliteName)) {
         try {
           await wipeDatabase(CONFIG.DB_NAME)
         } catch (err) {
