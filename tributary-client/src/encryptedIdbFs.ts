@@ -2,13 +2,19 @@
  * EncryptedIdbFs — a PGlite Filesystem that encrypts all data at rest in IndexedDB.
  *
  * Architecture:
- *   Extends PGlite's IdbFs. In init(), we replace Emscripten's IDBFS with a
- *   thin wrapper that intercepts the two IndexedDB boundary methods:
- *     - storeRemoteEntry: encrypt entry.contents before store.put()
- *     - loadRemoteEntry:  decrypt entry.contents after store.get()
+ *   Extends PGlite's IdbFs. In init(), we proxy Emscripten's IDBFS.reconcile()
+ *   so that every IndexedDB transaction it opens flows through an encrypting
+ *   Proxy chain:
  *
- *   Everything else (mount, syncfs, reconcile, getDB, etc.) passes through
- *   to the real IDBFS unchanged. MEMFS still works with plaintext — Postgres
+ *     reconcile(src, dst, cb)
+ *       → db.transaction()          — proxied to wrap the transaction
+ *         → tx.objectStore()        — proxied to wrap the store
+ *           → store.put(entry, key) — encrypts entry.contents before write
+ *           → store.get(key)        — decrypts entry.contents after read
+ *
+ *   This avoids monkey-patching storeRemoteEntry/loadRemoteEntry and works
+ *   regardless of how Emscripten's internals call those methods (closure,
+ *   property lookup, etc.). MEMFS still works with plaintext — Postgres
  *   never sees encrypted data.
  *
  * Encryption:
@@ -49,53 +55,136 @@ export function decryptBlob(encrypted: Uint8Array, key: Uint8Array): Uint8Array 
   return plaintext
 }
 
-// ── IDBFS entry shape ───────────────────────────────────────────────────
+// ── IDB Proxy helpers ───────────────────────────────────────────────────
 
-/** IDBFS file record as stored in IndexedDB. */
-interface IdbfsEntry {
-  timestamp: number
-  mode: number
-  contents?: Uint8Array
+/**
+ * Proxy an IDBRequest so the onsuccess handler receives decrypted contents.
+ */
+function proxyRequestForDecryption(req: IDBRequest, encKey: Uint8Array): IDBRequest {
+  return new Proxy(req, {
+    set(target, prop, value) {
+      if (prop === 'onsuccess') {
+        target.onsuccess = (event: any) => {
+          const entry = event.target.result
+          if (entry?.contents instanceof Uint8Array && entry.contents.length > 0) {
+            try {
+              entry.contents = decryptBlob(entry.contents, encKey)
+            } catch (e) {
+              // Decryption failed — redirect to onerror if set
+              if (target.onerror) {
+                target.onerror({ target: { error: e }, preventDefault() {} } as any)
+              }
+              return
+            }
+          }
+          value(event)
+        }
+        return true
+      }
+      ;(target as any)[prop] = value
+      return true
+    },
+    get(target, prop) {
+      const val = (target as any)[prop]
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  })
+}
+
+/**
+ * Proxy an IDBObjectStore: encrypt on put(), decrypt on get().
+ */
+function proxyStoreForEncryption(store: IDBObjectStore, encKey: Uint8Array): IDBObjectStore {
+  return new Proxy(store, {
+    get(target, prop) {
+      if (prop === 'put') {
+        return (entry: any, path: string) => {
+          const encrypted = { ...entry }
+          if (encrypted.contents instanceof Uint8Array && encrypted.contents.length > 0) {
+            encrypted.contents = encryptBlob(encrypted.contents, encKey)
+          }
+          return target.put(encrypted, path)
+        }
+      }
+      if (prop === 'get') {
+        return (path: string) => proxyRequestForDecryption(target.get(path), encKey)
+      }
+      const val = (target as any)[prop]
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  })
+}
+
+/**
+ * Proxy an IDBTransaction so objectStore() returns an encrypting store.
+ */
+function proxyTxForEncryption(tx: IDBTransaction, encKey: Uint8Array): IDBTransaction {
+  return new Proxy(tx, {
+    get(target, prop) {
+      if (prop === 'objectStore') {
+        return (...args: any[]) => proxyStoreForEncryption(
+          (target.objectStore as any)(...args), encKey,
+        )
+      }
+      const val = (target as any)[prop]
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+    set(target, prop, value) {
+      ;(target as any)[prop] = value
+      return true
+    },
+  })
+}
+
+/**
+ * Proxy an IDBDatabase so transaction() returns an encrypting transaction.
+ */
+function proxyDbForEncryption(db: IDBDatabase, encKey: Uint8Array): IDBDatabase {
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === 'transaction') {
+        return (...args: any[]) => proxyTxForEncryption(
+          (target.transaction as any)(...args), encKey,
+        )
+      }
+      const val = (target as any)[prop]
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  })
 }
 
 // ── encryptedIdbfs ──────────────────────────────────────────────────────
 
 /**
- * Wrap an Emscripten IDBFS object with encrypt/decrypt on the IndexedDB boundary.
+ * Patch Emscripten's IDBFS.reconcile() to encrypt/decrypt at the IndexedDB
+ * boundary.
  *
- * Returns a prototype-derived copy that overrides storeRemoteEntry (encrypt
- * before write) and loadRemoteEntry (decrypt after read). Everything else
- * delegates to the original IDBFS.
+ * reconcile() receives src and dst sets; the remote set carries an IDBDatabase
+ * reference (`.db`). We replace that reference with a Proxy chain that
+ * intercepts store.put() (encrypt) and store.get() (decrypt). The original
+ * storeRemoteEntry / loadRemoteEntry are never modified.
  *
- * @param realIdbfs  The Emscripten IDBFS singleton (mod.FS.filesystems.IDBFS)
- * @param key        32-byte nacl.secretbox key
+ * @param idbfs  The Emscripten IDBFS singleton (mod.FS.filesystems.IDBFS)
+ * @param key    32-byte nacl.secretbox key
  */
-export function encryptedIdbfs(realIdbfs: any, key: Uint8Array): any {
-  const wrapped = Object.create(realIdbfs)
+export function encryptedIdbfs(idbfs: any, key: Uint8Array): void {
+  const originalReconcile = idbfs.reconcile
 
-  wrapped.storeRemoteEntry = (store: IDBObjectStore, path: string, entry: IdbfsEntry, callback: (err?: any) => void) => {
-    const encrypted = { ...entry }
-    if (encrypted.contents instanceof Uint8Array && encrypted.contents.length > 0) {
-      encrypted.contents = encryptBlob(encrypted.contents, key)
-    }
-    return realIdbfs.storeRemoteEntry(store, path, encrypted, callback)
+  idbfs.reconcile = (src: any, dst: any, callback: (err?: any) => void) => {
+    // Wrap the remote set's db with an encrypting proxy.
+    // reconcile extracts db via `src.type === 'remote' ? src.db : dst.db`,
+    // then passes the IDB object store to storeRemoteEntry / loadRemoteEntry.
+    // Our proxy chain intercepts put() and get() on that store.
+    const remoteIsSource = src.type === 'remote'
+    const wrappedSrc = remoteIsSource
+      ? { ...src, db: proxyDbForEncryption(src.db, key) }
+      : src
+    const wrappedDst = remoteIsSource
+      ? dst
+      : { ...dst, db: proxyDbForEncryption(dst.db, key) }
+
+    return originalReconcile(wrappedSrc, wrappedDst, callback)
   }
-
-  wrapped.loadRemoteEntry = (store: IDBObjectStore, path: string, callback: (err: any, entry?: IdbfsEntry) => void) => {
-    return realIdbfs.loadRemoteEntry(store, path, (err: any, entry?: IdbfsEntry) => {
-      if (err || !entry) return callback(err, entry)
-      if (entry.contents instanceof Uint8Array && entry.contents.length > 0) {
-        try {
-          entry = { ...entry, contents: decryptBlob(entry.contents, key) }
-        } catch (e) {
-          return callback(e)
-        }
-      }
-      callback(null, entry)
-    })
-  }
-
-  return wrapped
 }
 
 // ── EncryptedIdbFs ──────────────────────────────────────────────────────
@@ -123,7 +212,7 @@ export class EncryptedIdbFs extends IdbFs {
     result.emscriptenOpts.preRun = originalPreRun.map((fn: (mod: any) => void) => {
       return (mod: any) => {
         fn(mod)
-        mod.FS.filesystems.IDBFS = encryptedIdbfs(mod.FS.filesystems.IDBFS, key)
+        encryptedIdbfs(mod.FS.filesystems.IDBFS, key)
       }
     })
 
