@@ -13,7 +13,7 @@ function formatBytes(bytes: number): string {
 }
 
 const AccountPage: React.FC = () => {
-  const { client, server, clearAccount, session } = useTributary()
+  const { client, server, session } = useTributary()
   const [libraryCount, setLibraryCount] = useState<number | null>(null)
   const [quota, setQuota] = useState<QuotaEstimate | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,12 +64,9 @@ const AccountPage: React.FC = () => {
         await server.deleteAccountConfig('encryptedStorage')
       }
 
-      // Wipe this account's local data (incompatible format) and force a fresh start
-      if (clearAccount) {
-        await clearAccount()
-      } else {
-        window.location.reload()
-      }
+      // Reload so the app re-initialises with the correct database variant.
+      // Encrypted and unencrypted databases use different names, so no wipe needed.
+      window.location.reload()
     } catch (err) {
       console.error('Failed to toggle encrypted storage:', err)
       setToggling(false)
