@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router'
 import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
@@ -233,6 +233,23 @@ const HomePage: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false)
   const [importKey, setImportKey] = useState<string | undefined>(undefined)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [syncSpinning, setSyncSpinning] = useState(false)
+  const syncSpinTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleSync = useCallback(() => {
+    requestSync()
+    setSyncSpinning(true)
+    // Guarantee at least one full rotation (1s) even if sync completes instantly
+    if (syncSpinTimer.current) clearTimeout(syncSpinTimer.current)
+    syncSpinTimer.current = setTimeout(() => setSyncSpinning(false), 1000)
+  }, [requestSync])
+
+  // Clear timer on unmount
+  useEffect(() => {
+    return () => { if (syncSpinTimer.current) clearTimeout(syncSpinTimer.current) }
+  }, [])
+
+  const showSyncSpin = syncSpinning || isSyncingAny
 
   // Open create/import card if ?create or ?import is in the URL (e.g. from mobile nav or /import/write/:writeKey redirect)
   useEffect(() => {
@@ -333,13 +350,13 @@ const HomePage: React.FC = () => {
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={requestSync}
-                  disabled={isSyncingAny}
+                  onClick={handleSync}
+                  disabled={showSyncSpin}
                   className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Sync all libraries"
                   title="Sync all libraries"
                 >
-                  <ArrowPathIcon className={`h-6 w-6 ${isSyncingAny ? 'animate-spin' : ''}`} />
+                  <ArrowPathIcon className={`h-6 w-6 ${showSyncSpin ? 'animate-spin' : ''}`} />
                 </button>
                 <button
                   onClick={handleStartCreate}
