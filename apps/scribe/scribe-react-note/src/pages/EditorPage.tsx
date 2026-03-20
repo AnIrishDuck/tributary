@@ -9,7 +9,7 @@ import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
 import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
-import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
@@ -47,6 +47,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
   const [showConflictWarning, setShowConflictWarning] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [showLineNumbers, setShowLineNumbers] = useState(false)
+  const [optionsMenuOpen, setOptionsMenuOpen] = useState(false)
+  const optionsMenuRef = useRef<HTMLDivElement>(null)
   const loadedVersionUuidRef = useRef<string | null>(null)
   const navigate = useNavigate()
   const { client } = useTributary()
@@ -205,6 +208,18 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
     checkForConflict()
   }, [editBlockUuid, client, prefix, lastSyncedAt])
+
+  // Close options menu when clicking outside
+  useEffect(() => {
+    if (!optionsMenuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (optionsMenuRef.current && !optionsMenuRef.current.contains(e.target as Node)) {
+        setOptionsMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [optionsMenuOpen])
 
   const onConflictReload = useCallback(async () => {
     if (!editBlockUuid || !client || !prefix) return
@@ -391,30 +406,80 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
       <div className="flex-1 min-h-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-8 w-full flex flex-col">
         {isNewNote && ancestors && (
-          <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={dynamicSlug} />
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1 min-w-0">
+              <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={dynamicSlug} />
+            </div>
+            <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1 relative" ref={optionsMenuRef}>
+              <button
+                onClick={() => setOptionsMenuOpen(prev => !prev)}
+                aria-label="Editor options"
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+              >
+                <Cog6ToothIcon className="w-4 h-4" />
+              </button>
+              {optionsMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <button
+                    onClick={() => setShowLineNumbers(prev => !prev)}
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <span>Line numbers</span>
+                    <span className={`w-8 h-5 rounded-full relative inline-flex items-center transition-colors ${showLineNumbers ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                      <span className={`w-3.5 h-3.5 bg-white rounded-full shadow absolute transition-transform ${showLineNumbers ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
         {noteSlugPath && (
-          <nav className="flex items-baseline text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
-            <Link to={routeCtx.buildPath()} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
-            {noteSlugPath.split('/').filter(Boolean).map((segment, i, arr) => {
-              const path = arr.slice(0, i + 1).join('/')
-              const isLast = i === arr.length - 1
-              return (
-                <React.Fragment key={i}>
-                  {i > 0 ? (
-                    <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
-                  ) : (
-                    <span className="ml-1 flex-shrink-0" />
-                  )}
-                  {isLast ? (
-                    <span className="text-gray-900 font-medium flex-shrink-0">{segment}</span>
-                  ) : (
-                    <Link to={routeCtx.buildPath(path)} className="hover:text-blue-600 transition-colors flex-shrink-0">{segment}</Link>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </nav>
+          <div className="flex items-start justify-between mb-4">
+            <nav className="flex items-baseline text-sm text-gray-500 overflow-hidden whitespace-nowrap flex-1 min-w-0">
+              <Link to={routeCtx.buildPath()} className="hover:text-blue-600 transition-colors flex-shrink-0">/</Link>
+              {noteSlugPath.split('/').filter(Boolean).map((segment, i, arr) => {
+                const path = arr.slice(0, i + 1).join('/')
+                const isLast = i === arr.length - 1
+                return (
+                  <React.Fragment key={i}>
+                    {i > 0 ? (
+                      <span className="mx-1 text-gray-400 flex-shrink-0">/</span>
+                    ) : (
+                      <span className="ml-1 flex-shrink-0" />
+                    )}
+                    {isLast ? (
+                      <span className="text-gray-900 font-medium flex-shrink-0">{segment}</span>
+                    ) : (
+                      <Link to={routeCtx.buildPath(path)} className="hover:text-blue-600 transition-colors flex-shrink-0">{segment}</Link>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </nav>
+            <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1 relative" ref={optionsMenuRef}>
+              <button
+                onClick={() => setOptionsMenuOpen(prev => !prev)}
+                aria-label="Editor options"
+                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+              >
+                <Cog6ToothIcon className="w-4 h-4" />
+              </button>
+              {optionsMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <button
+                    onClick={() => setShowLineNumbers(prev => !prev)}
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <span>Line numbers</span>
+                    <span className={`w-8 h-5 rounded-full relative inline-flex items-center transition-colors ${showLineNumbers ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                      <span className={`w-3.5 h-3.5 bg-white rounded-full shadow absolute transition-transform ${showLineNumbers ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 animate-fade-in">
@@ -450,6 +515,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
               <CodeMirror
                 value={content}
                 className="border-0 rounded-b-xl !bg-white w-full h-full [&_.cm-editor]:!h-full [&_.cm-scroller]:!overflow-auto"
+                basicSetup={{ lineNumbers: showLineNumbers }}
                 style={{
                   fontSize: '14px',
                   fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace'
