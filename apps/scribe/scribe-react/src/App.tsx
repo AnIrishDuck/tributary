@@ -756,7 +756,7 @@ function App() {
 
   return (
     <SyncStatusProvider client={client}>
-      <TributaryProvider client={client} server={server} logout={logout} clearAccount={clearAccount} session={session ? { email: session.user?.email } : null}>
+      <TributaryProvider client={client} server={server} logout={logout} clearAccount={clearAccount} session={session ? { userId: session.user?.id, email: session.user?.email } : null}>
         <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>

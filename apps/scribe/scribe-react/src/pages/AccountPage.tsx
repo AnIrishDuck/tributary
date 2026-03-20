@@ -5,7 +5,7 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { getHomeCollections, getLibraries, estimateQuota } from 'scribe-data'
 import type { QuotaEstimate } from 'scribe-data'
 import { wipeDatabase } from '../db/persistence'
-import CONFIG from '../config'
+import { CONFIG } from '../config'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -67,7 +67,7 @@ const AccountPage: React.FC = () => {
       }
 
       // Wipe the database variant we're switching away from
-      const userId = session?.user?.id
+      const userId = session?.userId
       const baseDbName = userId ? `${CONFIG.DB_NAME}-${userId}` : CONFIG.DB_NAME
       const dbToWipe = enabling ? baseDbName : `${baseDbName}-encrypted`
       await wipeDatabase(dbToWipe)

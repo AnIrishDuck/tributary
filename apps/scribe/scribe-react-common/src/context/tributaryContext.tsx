@@ -4,6 +4,7 @@ import { PGlite } from '@electric-sql/pglite'
 
 /** Minimal session info exposed to the app. */
 export interface AccountSession {
+  userId: string | undefined
   email: string | undefined
 }
 
