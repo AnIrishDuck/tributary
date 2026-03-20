@@ -78,6 +78,14 @@ const Layout: React.FC = () => {
                     <UserCircleIcon className="w-4 h-4" />
                     Account
                   </Link>
+                  <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
+                    {loggingOut ? 'Signing out...' : 'Sign out'}
+                  </button>
                   {clearAccount && (
                     <button
                       onClick={handleClear}
@@ -88,14 +96,6 @@ const Layout: React.FC = () => {
                       {clearing ? 'Clearing...' : 'Clear'}
                     </button>
                   )}
-                  <button
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
-                    {loggingOut ? 'Signing out...' : 'Sign out'}
-                  </button>
                 </div>
               )}
             </div>
