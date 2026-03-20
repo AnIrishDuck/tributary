@@ -275,7 +275,10 @@ function App() {
     setDerivedKeyPair(null)
   }
 
-  // Clear: sign out and delete this account's local database.
+  // Clear: sign out, request deletion of this account's local database,
+  // then hard-reload.  The reload is necessary because PGlite / IdbFs may
+  // hold internal IndexedDB connections that prevent deleteDatabase from
+  // completing — the reload closes them so the pending delete succeeds.
   async function clearAccount() {
     const dbName = accountDbName(session)
     clearPersistedRootSeed(userId)
@@ -287,10 +290,7 @@ function App() {
     } catch (err) {
       console.error('wipeDatabase failed during clear:', err)
     }
-    clientPromise = null
-    setClient(null)
-    setSession(null)
-    setDerivedKeyPair(null)
+    window.location.reload()
   }
 
   // Listen for auth state changes
