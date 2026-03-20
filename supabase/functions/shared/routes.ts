@@ -13,6 +13,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, X-Tributary-Hash, X-Tributary-Authorization, Authorization',
   'Access-Control-Expose-Headers': 'X-Total-Count',
   'Access-Control-Max-Age': '86400',
+  'Cross-Origin-Resource-Policy': 'cross-origin',
 };
 
 // Helper to create response with CORS headers
