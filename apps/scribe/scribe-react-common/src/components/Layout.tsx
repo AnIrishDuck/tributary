@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Outlet, useLocation, Link } from 'react-router'
-import { ArrowRightStartOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline'
+import { ArrowRightStartOnRectangleIcon, TrashIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useTributary } from '../context/tributaryContext'
 import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
@@ -8,8 +8,9 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const Layout: React.FC = () => {
   const location = useLocation()
-  const { logout } = useTributary()
+  const { logout, clearAccount } = useTributary()
   const [loggingOut, setLoggingOut] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -20,6 +21,13 @@ const Layout: React.FC = () => {
     setMenuOpen(false)
     setLoggingOut(true)
     await logout()
+  }
+
+  const handleClear = async () => {
+    if (!clearAccount || clearing) return
+    setMenuOpen(false)
+    setClearing(true)
+    await clearAccount()
   }
 
   // Close menu when clicking outside
@@ -73,11 +81,21 @@ const Layout: React.FC = () => {
                   <button
                     onClick={handleLogout}
                     disabled={loggingOut}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
                     <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
                     {loggingOut ? 'Signing out...' : 'Sign out'}
                   </button>
+                  {clearAccount && (
+                    <button
+                      onClick={handleClear}
+                      disabled={clearing}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      {clearing ? 'Clearing...' : 'Clear'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
