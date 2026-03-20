@@ -25,6 +25,8 @@ export interface SyncStatusContextType {
   isSyncingAny: boolean
   focusedLibraryId: string | null
   setFocusedLibrary: (id: string | null) => void
+  /** Trigger an immediate restart of the background sync loop. */
+  requestSync: () => void
 }
 
 const SyncStatusContext = createContext<SyncStatusContextType | undefined>(undefined)
@@ -450,6 +452,12 @@ export const SyncStatusProvider: React.FC<{
 
   const isSyncingAny = Object.values(syncStatus).some(status => status.isSyncing)
 
+  const requestSync = useCallback(() => {
+    if (wakeUpRef.current) {
+      wakeUpRef.current()
+    }
+  }, [])
+
   const value: SyncStatusContextType = {
     syncStatus,
     globalSyncStatus,
@@ -458,6 +466,7 @@ export const SyncStatusProvider: React.FC<{
     isSyncingAny,
     focusedLibraryId,
     setFocusedLibrary,
+    requestSync,
   }
 
   return (
