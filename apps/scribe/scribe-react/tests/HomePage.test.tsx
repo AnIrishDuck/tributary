@@ -161,11 +161,11 @@ describe('HomePage', () => {
     expect(screen.getByText(/you have 1 library available/i)).toBeInTheDocument()
 
     // Should show the truncated stream ID with pk/ prefix
-    const displayId = `pk/${streamId.substring(0, 16)}...`
+    const displayId = `pk/${streamId.substring(0, 10)}...`
     expect(screen.getByText(displayId)).toBeInTheDocument()
 
     // Should have the link to the library (uses named route by default)
-    const libraryLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 16)}`) })
+    const libraryLink = screen.getByRole('link', { name: new RegExp(`pk/${streamId.substring(0, 10)}`) })
     expect(libraryLink).toBeInTheDocument()
     expect(libraryLink).toHaveAttribute('href', '/n/test-stream/')
 
@@ -214,7 +214,7 @@ describe('HomePage', () => {
     const libraryLinks = screen.getAllByRole('link')
     expect(libraryLinks.length).toBeGreaterThanOrEqual(3)
     streamIds.forEach(streamId => {
-      const displayId = `pk/${streamId.substring(0, 16)}...`
+      const displayId = `pk/${streamId.substring(0, 10)}...`
       expect(screen.getByText(displayId)).toBeInTheDocument()
     })
   })

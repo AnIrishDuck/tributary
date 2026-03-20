@@ -403,7 +403,7 @@ const HomePage: React.FC = () => {
 
                   return libraryDisplayNames.map(({ library, displayName, slug }) => {
                     const libStatus = syncStatus[library.libraryId]
-                    const displayId = `pk/${library.libraryId.substring(0, 16)}...`
+                    const displayId = `pk/${library.libraryId.substring(0, 10)}...`
                     const isSyncing = libStatus != null && !libStatus.synced
                     const hasSynced = libStatus?.lastSyncedAt != null
 
@@ -434,19 +434,19 @@ const HomePage: React.FC = () => {
                         <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-purple-100 text-purple-600 group-hover:bg-purple-200">
                           <DocumentTextIcon className="h-5 w-5" />
                         </div>
-                        <div className="ml-4 flex-1">
+                        <div className="ml-4 flex-1 min-w-0">
                           <h4 className="text-base font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                             {displayName}
                           </h4>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 font-mono">{displayId}</span>
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="text-xs text-gray-400 font-mono truncate flex-shrink">{displayId}</span>
                             <span className="text-gray-300">·</span>
                             {isSyncing ? (
-                              <span className="text-xs text-blue-600 font-medium">
+                              <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
                                 Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
                               </span>
                             ) : (
-                              <p className="text-sm text-gray-500">{lastEditedText}</p>
+                              <p className="text-sm text-gray-500 whitespace-nowrap">{lastEditedText}</p>
                             )}
                           </div>
                         </div>
