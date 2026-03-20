@@ -7,7 +7,7 @@ import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed } fro
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { getPGlite, wipePGlite } from './db/persistence'
+import { getPGlite, closePGlite, wipeDatabase } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -30,6 +30,12 @@ const initialPasswordRecovery = window.location.hash.includes('type=recovery')
 // Singleton to prevent multiple PGlite instances (WASM can only load once)
 let clientPromise: Promise<{ client: TributaryClient; server: TributaryServer }> | null = null
 
+/** Derive the per-account IndexedDB database name. */
+function accountDbName(session: Session | null): string {
+  const userId = session?.user?.id
+  return userId ? `${CONFIG.DB_NAME}-${userId}` : CONFIG.DB_NAME
+}
+
 // Create client based on configuration
 // Uses real TributaryServer connecting to remote Supabase
 async function createTributaryClient(session: Session | null) {
@@ -45,8 +51,21 @@ async function createTributaryClient(session: Session | null) {
       server.setWriteAuthToken(session.access_token)
     }
 
-    // Use IndexedDB for persistence
-    const pglite = getPGlite(CONFIG.DB_NAME)
+    // Migrate: delete the legacy shared database if it exists.
+    // Data is a local cache and can be re-synced from the server.
+    if (session?.user?.id && typeof indexedDB !== 'undefined' && indexedDB.databases) {
+      const dbs = await indexedDB.databases()
+      if (dbs.some(db => db.name === CONFIG.DB_NAME)) {
+        try {
+          await wipeDatabase(CONFIG.DB_NAME)
+        } catch (err) {
+          console.warn('[createTributaryClient] failed to clean up legacy DB:', err)
+        }
+      }
+    }
+
+    // Use per-account IndexedDB for persistence
+    const pglite = getPGlite(accountDbName(session))
 
     return { client: new TributaryClient({ server, db: pglite }), server }
   })()
@@ -59,20 +78,36 @@ const router = createHashRouter(routes)
 // localStorage key for the persisted root seed.  The root seed is equivalent to
 // the signing private key — storing it in localStorage puts it on the same
 // trust boundary as the Supabase refresh token that's already there.
-const ROOT_SEED_STORAGE_KEY = 'scribe-root-seed'
+// Scoped per Supabase user ID so multiple accounts can coexist.
+const ROOT_SEED_STORAGE_PREFIX = 'scribe-root-seed'
+const LEGACY_ROOT_SEED_KEY = 'scribe-root-seed'
 
-function persistRootSeed(seed: Uint8Array) {
-  localStorage.setItem(ROOT_SEED_STORAGE_KEY, base64url.encode(Buffer.from(seed)))
+function rootSeedKey(userId: string | undefined): string {
+  return userId ? `${ROOT_SEED_STORAGE_PREFIX}-${userId}` : LEGACY_ROOT_SEED_KEY
 }
 
-function loadPersistedRootSeed(): Uint8Array | null {
-  const raw = localStorage.getItem(ROOT_SEED_STORAGE_KEY)
+function persistRootSeed(seed: Uint8Array, userId: string | undefined) {
+  localStorage.setItem(rootSeedKey(userId), base64url.encode(Buffer.from(seed)))
+}
+
+function loadPersistedRootSeed(userId: string | undefined): Uint8Array | null {
+  const key = rootSeedKey(userId)
+  let raw = localStorage.getItem(key)
+  if (!raw && userId) {
+    // Migration: check the legacy unscoped key
+    raw = localStorage.getItem(LEGACY_ROOT_SEED_KEY)
+    if (raw) {
+      // Migrate to scoped key and remove legacy
+      localStorage.setItem(key, raw)
+      localStorage.removeItem(LEGACY_ROOT_SEED_KEY)
+    }
+  }
   if (!raw) return null
   return new Uint8Array(base64url.decode(raw))
 }
 
-function clearPersistedRootSeed() {
-  localStorage.removeItem(ROOT_SEED_STORAGE_KEY)
+function clearPersistedRootSeed(userId: string | undefined) {
+  localStorage.removeItem(rootSeedKey(userId))
 }
 
 // Check whether a Supabase session has exceeded the configurable expiry
@@ -108,7 +143,7 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
     try {
       // Derive auth key from password
       const authKey = await deriveAuthKey(password, email)
-      const { error: signInError } = await supabaseAuth.auth.signInWithPassword({ email, password: authKey })
+      const { data: signInData, error: signInError } = await supabaseAuth.auth.signInWithPassword({ email, password: authKey })
       if (signInError) {
         setError(signInError.message)
         setLoading(false)
@@ -119,7 +154,7 @@ function LoginScreen({ onDerivedKeyPair }: { onDerivedKeyPair: (kp: DerivedKeyPa
       // Persist the root seed so PWA restarts can re-derive the key pair
       // without prompting for the password again.
       const rootSeed = await deriveStreamSeed(password, email, CONFIG.APP_ID)
-      persistRootSeed(rootSeed)
+      persistRootSeed(rootSeed, signInData.user?.id)
       const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
       onDerivedKeyPair(keyPair)
     } catch (err: any) {
@@ -220,18 +255,37 @@ function App() {
   const [derivedKeyPair, setDerivedKeyPair] = useState<DerivedKeyPair | null>(null)
   const [setupStep, setSetupStep] = useState<string | null>(null)
 
-  // Logout: sign out of Supabase, wipe local DB, and reset client state.
-  // Always reset in-memory state even if the PGlite wipe fails, so the
-  // user is never stuck with a stale client on next login.
+  const userId = session?.user?.id
+
+  // Logout: sign out of Supabase and reset in-memory state.
+  // The per-account local database is preserved so the next login is fast.
   async function logout() {
-    clearPersistedRootSeed()
+    clearPersistedRootSeed(userId)
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
     try {
-      await wipePGlite()
+      await closePGlite()
     } catch (err) {
-      console.error('wipePGlite failed during logout:', err)
+      console.error('closePGlite failed during logout:', err)
+    }
+    clientPromise = null
+    setClient(null)
+    setSession(null)
+    setDerivedKeyPair(null)
+  }
+
+  // Clear: sign out and delete this account's local database.
+  async function clearAccount() {
+    const dbName = accountDbName(session)
+    clearPersistedRootSeed(userId)
+    if (supabaseAuth) {
+      await supabaseAuth.auth.signOut()
+    }
+    try {
+      await wipeDatabase(dbName)
+    } catch (err) {
+      console.error('wipeDatabase failed during clear:', err)
     }
     clientPromise = null
     setClient(null)
@@ -405,7 +459,7 @@ function App() {
 
     client.getHomeStream().then(homeStream => {
       if (!homeStream && mounted) {
-        const rootSeed = loadPersistedRootSeed()
+        const rootSeed = loadPersistedRootSeed(userId)
         if (rootSeed) {
           console.info('[app] No home stream — restoring key pair from persisted root seed')
           const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
@@ -482,7 +536,7 @@ function App() {
               </button>
               <button
                 onClick={async () => {
-                  await logout()
+                  await clearAccount()
                   window.location.reload()
                 }}
                 className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors"
@@ -514,7 +568,7 @@ function App() {
 
   return (
     <SyncStatusProvider client={client}>
-      <TributaryProvider client={client} logout={logout} session={session ? { email: session.user?.email } : null}>
+      <TributaryProvider client={client} logout={logout} clearAccount={clearAccount} session={session ? { email: session.user?.email } : null}>
         <RouterProvider router={router} />
       </TributaryProvider>
     </SyncStatusProvider>

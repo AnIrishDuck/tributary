@@ -11,6 +11,7 @@ export interface AccountSession {
 interface TributaryContextType {
   client: TributaryClient | null
   logout: (() => Promise<void>) | null
+  clearAccount: (() => Promise<void>) | null
   session: AccountSession | null
 }
 
@@ -18,6 +19,7 @@ interface TributaryContextType {
 const TributaryContext = createContext<TributaryContextType>({
   client: null,
   logout: null,
+  clearAccount: null,
   session: null,
 })
 
@@ -25,13 +27,14 @@ const TributaryContext = createContext<TributaryContextType>({
 interface TributaryProviderProps {
   client: TributaryClient | null
   logout?: (() => Promise<void>) | null
+  clearAccount?: (() => Promise<void>) | null
   session?: AccountSession | null
   children: ReactNode
 }
 
-export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, logout, session, children }) => {
+export const TributaryProvider: React.FC<TributaryProviderProps> = ({ client, logout, clearAccount, session, children }) => {
   return (
-    <TributaryContext.Provider value={{ client, logout: logout ?? null, session: session ?? null }}>
+    <TributaryContext.Provider value={{ client, logout: logout ?? null, clearAccount: clearAccount ?? null, session: session ?? null }}>
       {children}
     </TributaryContext.Provider>
   )

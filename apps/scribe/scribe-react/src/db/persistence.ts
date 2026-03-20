@@ -76,25 +76,41 @@ export async function closePGlite(): Promise<void> {
 
 /**
  * Close PGlite and wipe all IndexedDB databases.
- * Used during logout to ensure no local data persists.
+ * Used as a nuclear recovery option (e.g. "Clear Local Data & Retry").
  */
 export async function wipePGlite(): Promise<void> {
   await closePGlite()
+  await deleteIndexedDBs(() => true)
+}
 
-  // Delete all IndexedDB databases to ensure a clean slate
+/**
+ * Close PGlite and wipe only the IndexedDB databases whose names start with
+ * the given prefix.  PGlite / IdbFs may create auxiliary databases with
+ * related names, so a prefix match catches them all while leaving other
+ * accounts' databases intact.
+ */
+export async function wipeDatabase(dbNamePrefix: string): Promise<void> {
+  await closePGlite()
+  await deleteIndexedDBs((name) => name.startsWith(dbNamePrefix))
+}
+
+/**
+ * Delete IndexedDB databases matching a predicate.
+ */
+async function deleteIndexedDBs(predicate: (name: string) => boolean): Promise<void> {
   if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
     const databases = await indexedDB.databases()
     await Promise.all(
       databases
-        .filter((db): db is IDBDatabaseInfo & { name: string } => db.name != null)
+        .filter((db): db is IDBDatabaseInfo & { name: string } => db.name != null && predicate(db.name))
         .map((db) => new Promise<void>((resolve) => {
           const req = indexedDB.deleteDatabase(db.name)
           req.onsuccess = () => {
-            console.log(`[wipePGlite] deleteDatabase("${db.name}") succeeded`)
+            console.log(`[deleteIndexedDBs] deleteDatabase("${db.name}") succeeded`)
             resolve()
           }
           req.onerror = () => {
-            console.error(`[wipePGlite] deleteDatabase("${db.name}") failed:`, req.error)
+            console.error(`[deleteIndexedDBs] deleteDatabase("${db.name}") failed:`, req.error)
             resolve()
           }
           // onblocked fires when other connections are still open.
@@ -103,7 +119,7 @@ export async function wipePGlite(): Promise<void> {
           // so the page reload can proceed — the reload itself will close
           // the lingering connections.
           req.onblocked = () => {
-            console.warn(`[wipePGlite] deleteDatabase("${db.name}") blocked — waiting up to 2s`)
+            console.warn(`[deleteIndexedDBs] deleteDatabase("${db.name}") blocked — waiting up to 2s`)
             setTimeout(resolve, 2000)
           }
         }))
