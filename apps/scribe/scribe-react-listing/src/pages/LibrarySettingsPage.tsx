@@ -230,8 +230,8 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
             {showMobileHelp && (
               <ol className="mt-3 text-sm text-gray-600 list-decimal list-inside space-y-1">
                 <li>Tap <strong>Copy</strong> above to copy the bookmarklet</li>
-                <li>Bookmark this page (or any page) in your browser</li>
-                <li>Edit the bookmark and replace the URL with the copied text</li>
+                <li>Open your browser's bookmark manager and add a new bookmark</li>
+                <li>Paste the copied text as the bookmark's URL</li>
                 <li>To use it, open the bookmark from any page</li>
               </ol>
             )}

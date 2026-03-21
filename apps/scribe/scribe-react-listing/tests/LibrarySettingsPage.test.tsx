@@ -139,15 +139,15 @@ describe('LibrarySettingsPage', () => {
 
     // Mobile instructions should be hidden initially
     expect(screen.getByText('On mobile? Tap here for instructions')).toBeInTheDocument()
-    expect(screen.queryByText(/Bookmark this page/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/bookmark manager/)).not.toBeInTheDocument()
 
     // Click to show mobile instructions
     fireEvent.click(screen.getByText('On mobile? Tap here for instructions'))
-    expect(screen.getByText(/Bookmark this page/)).toBeInTheDocument()
+    expect(screen.getByText(/bookmark manager/)).toBeInTheDocument()
     expect(screen.getByText('Hide mobile instructions')).toBeInTheDocument()
 
     // Click to hide again
     fireEvent.click(screen.getByText('Hide mobile instructions'))
-    expect(screen.queryByText(/Bookmark this page/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/bookmark manager/)).not.toBeInTheDocument()
   })
 })
