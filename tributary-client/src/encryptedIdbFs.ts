@@ -546,6 +546,6 @@ export class EncryptedIdbFs extends IdbFs {
   async closeFs() {
     const db = this.idbfs?.dbs?.[`/pglite/${this.dataDir}`]
     if (db) db.close()
-    this.pg.Module.FS.quit()
+    this.pg?.Module?.FS?.quit()
   }
 }
