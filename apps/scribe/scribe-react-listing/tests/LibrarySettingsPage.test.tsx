@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
@@ -112,5 +112,42 @@ describe('LibrarySettingsPage', () => {
     const backLink = screen.getByText(/← Home/)
     expect(backLink).toBeInTheDocument()
     expect(backLink.closest('a')).toHaveAttribute('href', '/')
+  })
+
+  it('should show bookmarklet section with copy button and mobile instructions', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&library`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // Should show bookmarklet section
+    expect(screen.getByText('Bookmarklet')).toBeInTheDocument()
+    expect(screen.getByText(/Save to Test Stream/)).toBeInTheDocument()
+    expect(screen.getByText('Copy')).toBeInTheDocument()
+
+    // Mobile instructions should be hidden initially
+    expect(screen.getByText('On mobile? Tap here for instructions')).toBeInTheDocument()
+    expect(screen.queryByText(/Bookmark this page/)).not.toBeInTheDocument()
+
+    // Click to show mobile instructions
+    fireEvent.click(screen.getByText('On mobile? Tap here for instructions'))
+    expect(screen.getByText(/Bookmark this page/)).toBeInTheDocument()
+    expect(screen.getByText('Hide mobile instructions')).toBeInTheDocument()
+
+    // Click to hide again
+    fireEvent.click(screen.getByText('Hide mobile instructions'))
+    expect(screen.queryByText(/Bookmark this page/)).not.toBeInTheDocument()
   })
 })

@@ -26,6 +26,8 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   const [storageEstimate, setStorageEstimate] = useState<StreamStorageEstimate | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [bookmarkletCopied, setBookmarkletCopied] = useState(false)
+  const [showMobileHelp, setShowMobileHelp] = useState(false)
 
   useEffect(() => {
     if (prefix) {
@@ -196,16 +198,43 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
           <div className="px-8 py-6">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Bookmarklet</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Drag this link to your bookmarks bar. Click it on any page to save the page title and URL as a new note.
+              On desktop, drag this link to your bookmarks bar. Click it on any page to save the page title and URL as a new note.
             </p>
-            <a
-              href={bookmarkletHref}
-              onClick={(e) => e.preventDefault()}
-              className="inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors cursor-grab"
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <a
+                href={bookmarkletHref}
+                onClick={(e) => e.preventDefault()}
+                className="inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors cursor-grab"
+              >
+                <BookmarkIcon className="h-4 w-4 mr-2" />
+                Save to {displayName}
+              </a>
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(bookmarkletHref)
+                  setBookmarkletCopied(true)
+                  setTimeout(() => setBookmarkletCopied(false), 2000)
+                }}
+                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <ClipboardDocumentIcon className="h-4 w-4 mr-2" />
+                {bookmarkletCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <button
+              onClick={() => setShowMobileHelp(!showMobileHelp)}
+              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
             >
-              <BookmarkIcon className="h-4 w-4 mr-2" />
-              Save to {displayName}
-            </a>
+              {showMobileHelp ? 'Hide mobile instructions' : 'On mobile? Tap here for instructions'}
+            </button>
+            {showMobileHelp && (
+              <ol className="mt-3 text-sm text-gray-600 list-decimal list-inside space-y-1">
+                <li>Tap <strong>Copy</strong> above to copy the bookmarklet</li>
+                <li>Bookmark this page (or any page) in your browser</li>
+                <li>Edit the bookmark and replace the URL with the copied text</li>
+                <li>To use it, open the bookmark from any page</li>
+              </ol>
+            )}
           </div>
         </div>
       </div>
