@@ -403,7 +403,8 @@ const HomePage: React.FC = () => {
 
                   return libraryDisplayNames.map(({ library, displayName, slug }) => {
                     const libStatus = syncStatus[library.libraryId]
-                    const displayId = `pk/${library.libraryId.substring(0, 10)}...`
+                    const displayIdShort = `pk/${library.libraryId.substring(0, 10)}...`
+                    const displayIdFull = `pk/${library.libraryId.substring(0, 16)}...`
                     const isSyncing = libStatus != null && !libStatus.synced
                     const hasSynced = libStatus?.lastSyncedAt != null
 
@@ -439,7 +440,10 @@ const HomePage: React.FC = () => {
                             {displayName}
                           </h4>
                           <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="text-xs text-gray-400 font-mono truncate flex-shrink">{displayId}</span>
+                            <span className="text-xs text-gray-400 font-mono truncate flex-shrink">
+                              <span className="sm:hidden">{displayIdShort}</span>
+                              <span className="hidden sm:inline">{displayIdFull}</span>
+                            </span>
                             <span className="text-gray-300">·</span>
                             {isSyncing ? (
                               <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
