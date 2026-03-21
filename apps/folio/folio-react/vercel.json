@@ -1,0 +1,14 @@
+{
+  "installCommand": "cd ../../.. && npm install",
+  "buildCommand": "cd ../../.. && npm run --workspace=tributary-client build && npm run --workspace=scribe-data build && npm run --workspace=folio-react build",
+  "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
+      ]
+    }
+  ]
+}
