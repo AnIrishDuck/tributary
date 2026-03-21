@@ -231,6 +231,8 @@ export interface SyncItem {
   slug: string
   /** Last authoritative modification time (ISO string) */
   datetime: string
+  /** Full slug path from the library root, e.g. '/cooking/italian/pasta' */
+  path: string
 }
 
 /**

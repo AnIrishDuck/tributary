@@ -14,7 +14,10 @@ import readline from 'readline';
 import * as base64url from 'urlsafe-base64';
 
 // Import the sync function
-import { sync } from './sync.js';
+import { sync, syncAndIndex, computeSyncOperations } from './sync.js';
+
+// Import the diff formatter
+import { formatDiffStat } from './diff.js';
 
 // Import extracted modules
 import { syncHomeLibrary, getLibraryWriteKey, listLinkedLibraries } from './home.js';
@@ -113,6 +116,61 @@ program
       console.log(`Synced with directory: ${directory}`);
       if (options.dryRun) {
         console.log('Dry run completed - no changes made');
+      }
+    } catch (error) {
+      console.error('Error:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('diff')
+  .description('Show what would be synced without making changes')
+  .option('--stat', 'Show a summary of sync operations')
+  .option('--path <directory>', 'Local directory to diff', '.')
+  .option('--library-pk <public-key>', 'Public key of the library to sync (stored for future use)')
+  .option('--db <path>', 'Local database directory that is synced with the server')
+  .option('-l, --limit <number>', 'Maximum number of notes to process in this run', '100')
+  .action(async (options) => {
+    try {
+      // Validate auth token before doing any work
+      const authToken = await getCliAuthToken();
+      if (!authToken) {
+        throw new Error('Not logged in. Please run `scribe login` first.');
+      }
+
+      const directory = path.resolve(options.path);
+      const libraryPk = resolveLibraryPk(directory, options.libraryPk);
+
+      const { client, stream } = await createSyncClient(directory, libraryPk, options.db);
+
+      // Sync with server to get latest state
+      const syncStatus = await stream.sync(1000);
+      console.log(`Initial sync: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`);
+
+      // Create local tables
+      await localMigrations(stream.local());
+
+      // Parse limit option
+      const limit = parseInt(options.limit);
+
+      // Phase 1: Sync and index
+      await syncAndIndex(stream, directory, { dryRun: true, limit });
+
+      // Phase 2: Compute sync operations
+      const localDb = stream.local();
+      const operations = await computeSyncOperations(stream, localDb, directory);
+
+      if (operations.length === 0) {
+        console.log('No changes to sync.');
+        return;
+      }
+
+      // Format and display
+      const pkPrefix = libraryPk.slice(0, 8);
+      const lines = formatDiffStat(operations, pkPrefix);
+      for (const line of lines) {
+        console.log(line);
       }
     } catch (error) {
       console.error('Error:', (error as Error).message);

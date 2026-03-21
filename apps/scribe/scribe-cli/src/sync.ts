@@ -11,6 +11,7 @@ import {
   getCollectionBySlugUnderParent,
   getNotesBySlugInCollection,
   getNoteSlugPath,
+  getSlugPath,
   slugToTitle,
 } from 'scribe-data';
 import type { Collection, SyncItem, SyncOperation } from 'scribe-data';
@@ -113,7 +114,7 @@ export async function computeSyncOperations(
 
   // Walk the filesystem and compare each item to the DB state
   await compareDirectoryLevel(
-    stream, localDb, directory, null, libraryUuid,
+    stream, localDb, directory, directory, null, libraryUuid,
     matchedBlockUuids, matchedCollectionUuids, operations
   );
 
@@ -121,6 +122,8 @@ export async function computeSyncOperations(
   const allNotes = await getAllNotesWithTitles(localDb);
   for (const note of allNotes) {
     if (!matchedBlockUuids.has(note.block_uuid)) {
+      const slugPath = await getNoteSlugPath(localDb, note.block_uuid);
+      const itemPath = '/' + slugPath.join('/');
       operations.push({
         kind: 'create',
         target: {
@@ -129,6 +132,7 @@ export async function computeSyncOperations(
           uuid: note.block_uuid,
           slug: note.slug,
           datetime: note.insert_datetime,
+          path: itemPath,
         },
       });
     }
@@ -241,6 +245,7 @@ async function compareDirectoryLevel(
   stream: TributaryStream,
   localDb: TributaryLocal,
   dir: string,
+  rootDir: string,
   collectionId: string | null,
   parentCollectionUuid: string | null,
   matchedBlockUuids: Set<string>,
@@ -250,6 +255,7 @@ async function compareDirectoryLevel(
   if (!fs.existsSync(dir)) return;
 
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  const relDir = path.relative(rootDir, dir);
 
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
@@ -271,7 +277,7 @@ async function compareDirectoryLevel(
       if (matchedCollection) {
         // Known collection directory — recurse into it
         await compareDirectoryLevel(
-          stream, localDb, dirPath,
+          stream, localDb, dirPath, rootDir,
           matchedCollection.collection_uuid,
           matchedCollection.collection_uuid,
           matchedBlockUuids, matchedCollectionUuids, operations
@@ -285,17 +291,19 @@ async function compareDirectoryLevel(
           const subFiles = (await fs.promises.readdir(dirPath))
             .filter(f => f.endsWith('.md') && !f.startsWith('.'));
 
+          const itemPath = relDir ? `/${relDir}/${dirName}` : `/${dirName}`;
           for (const subFile of subFiles) {
             const filePath = path.join(dirPath, subFile);
             const fileUuid = subFile.slice(0, -3);
             await compareFileToDatabase(
-              stream, localDb, filePath, fileUuid, dirName,
+              stream, localDb, filePath, fileUuid, dirName, itemPath,
               matchedBlockUuids, operations
             );
           }
         } else if (parentCollectionUuid) {
           // New local directory → create collection remotely
           const newUuid = uuidv4();
+          const collectionPath = relDir ? `/${relDir}/${dirName}` : `/${dirName}`;
           operations.push({
             kind: 'create',
             target: {
@@ -304,12 +312,13 @@ async function compareDirectoryLevel(
               uuid: newUuid,
               slug: dirName,
               datetime: new Date().toISOString(),
+              path: collectionPath,
             },
           });
 
           // Recurse into the new directory
           await compareDirectoryLevel(
-            stream, localDb, dirPath,
+            stream, localDb, dirPath, rootDir,
             newUuid, newUuid,
             matchedBlockUuids, matchedCollectionUuids, operations
           );
@@ -318,13 +327,14 @@ async function compareDirectoryLevel(
     } else if (entry.name.endsWith('.md')) {
       const filePath = path.join(dir, entry.name);
       const fileSlug = entry.name.slice(0, -3);
+      const itemPath = relDir ? `/${relDir}/${fileSlug}` : `/${fileSlug}`;
 
       // Look up existing note by slug in the current collection scope
       const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
       const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
 
       await compareFileToDatabase(
-        stream, localDb, filePath, blockUuid, fileSlug,
+        stream, localDb, filePath, blockUuid, fileSlug, itemPath,
         matchedBlockUuids, operations
       );
     }
@@ -341,6 +351,7 @@ async function compareFileToDatabase(
   filePath: string,
   blockUuid: string | null,
   slug: string,
+  itemPath: string,
   matchedBlockUuids: Set<string>,
   operations: SyncOperation[],
 ): Promise<void> {
@@ -365,6 +376,7 @@ async function compareFileToDatabase(
         uuid: blockUuid,
         slug: currentNote.slug,
         datetime: currentNote.insert_datetime,
+        path: itemPath,
       };
       const localItem: SyncItem = {
         type: 'block',
@@ -372,6 +384,7 @@ async function compareFileToDatabase(
         uuid: blockUuid,
         slug,
         datetime: fileMtime,
+        path: itemPath,
       };
 
       // Determine direction based on timestamps
@@ -396,6 +409,7 @@ async function compareFileToDatabase(
         uuid: uuidv4(),
         slug,
         datetime: fileMtime,
+        path: itemPath,
       },
     });
   }
@@ -414,6 +428,8 @@ async function findUnmatchedCollections(
   for (const child of children) {
     if (!matchedCollectionUuids.has(child.collection_uuid)) {
       // Remote collection with no local directory → create locally
+      const slugPath = await getSlugPath(localDb, child.collection_uuid);
+      const itemPath = '/' + slugPath.join('/');
       operations.push({
         kind: 'create',
         target: {
@@ -422,6 +438,7 @@ async function findUnmatchedCollections(
           uuid: child.collection_uuid,
           slug: child.slug,
           datetime: child.insert_datetime,
+          path: itemPath,
         },
       });
     }
