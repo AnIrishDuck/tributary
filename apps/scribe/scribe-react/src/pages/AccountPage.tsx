@@ -7,6 +7,8 @@ import type { QuotaEstimate } from 'scribe-data'
 import { wipeDatabase } from '../db/persistence'
 import { CONFIG } from '../config'
 
+const ROOT_SEED_STORAGE_PREFIX = 'scribe-root-seed'
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -71,6 +73,19 @@ const AccountPage: React.FC = () => {
       const baseDbName = userId ? `${CONFIG.DB_NAME}-${userId}` : CONFIG.DB_NAME
       const dbToWipe = enabling ? baseDbName : `${baseDbName}-encrypted`
       await wipeDatabase(dbToWipe)
+
+      // Clear the persisted root seed when enabling encryption.
+      // The root seed allows deriving the stream encryption key, which
+      // can decrypt notes from the server — leaving it in localStorage
+      // would let a passive attacker bypass the encrypted local store.
+      if (enabling) {
+        const seedKey = userId
+          ? `${ROOT_SEED_STORAGE_PREFIX}-${userId}`
+          : ROOT_SEED_STORAGE_PREFIX
+        localStorage.removeItem(seedKey)
+        // Also remove the legacy unscoped key in case it was never migrated
+        localStorage.removeItem(ROOT_SEED_STORAGE_PREFIX)
+      }
 
       window.location.reload()
     } catch (err) {

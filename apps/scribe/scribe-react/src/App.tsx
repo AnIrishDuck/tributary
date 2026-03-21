@@ -456,6 +456,13 @@ function App() {
         const enabled = entry?.value === 'true'
         if (mounted) {
           setEncryptedStorageEnabled(enabled)
+          if (enabled) {
+            // Immediately clear any persisted root seed — when encrypted
+            // storage is active the root seed must never remain in durable
+            // storage because it can derive the stream encryption key,
+            // allowing a passive attacker to decrypt notes from the server.
+            clearPersistedRootSeed(session!.user?.id)
+          }
           if (enabled && !storageKey) {
             // Persisted session but no password-derived key in memory — prompt
             setNeedsPasswordReentry(true)
