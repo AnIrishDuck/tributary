@@ -9,6 +9,7 @@ import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { getPGlite, closePGlite, wipeDatabase } from './db/persistence'
 import { CONFIG } from './config'
+import { branding } from 'scribe-react-common/src/branding'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
 
@@ -204,7 +205,7 @@ function LoginScreen({ onLogin }: { onLogin: (result: LoginResult) => void }) {
             <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
               <LockClosedIcon className="w-6 h-6 text-blue-600" />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Sign in to Scribe</h1>
+            <h1 className="text-xl font-bold text-gray-900">Sign in to {branding.appName}</h1>
           </div>
           {resetSent ? (
             <div className="text-center">
@@ -690,7 +691,7 @@ function App() {
           <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
             <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Setting up Scribe</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Setting up {branding.appName}</h2>
           <p className="text-gray-600 mb-6">{step}</p>
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>

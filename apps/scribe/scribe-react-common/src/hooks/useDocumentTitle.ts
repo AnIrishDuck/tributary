@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router'
 import { useTributary } from '../context/tributaryContext'
 import { useSyncStatusOptional } from '../context/syncStatusContext'
+import { branding } from '../branding'
 
 function slugToTitle(slug: string): string {
   return slug
@@ -38,9 +39,9 @@ function getPageName(slugPath: string, libraryName: string): string {
 /**
  * Sets document.title based on the current library and page context.
  *
- * - No library prefix → "Scribe"
- * - Library root       → "{library name} | Scribe"
- * - Sub-collection     → "{collection name} | Scribe"
+ * - No library prefix → app name (from branding config)
+ * - Library root       → "{library name} | {app name}"
+ * - Sub-collection     → "{collection name} | {app name}"
  */
 export function useDocumentTitle() {
   const location = useLocation()
@@ -69,9 +70,9 @@ export function useDocumentTitle() {
       // On the homepage, show the home library name if available
       if (homeStreamId && syncStatus?.[homeStreamId]?.libraryTitle) {
         const name = syncStatus[homeStreamId].libraryTitle
-        document.title = `${name} | Scribe`
+        document.title = `${name} | ${branding.appName}`
       } else {
-        document.title = 'Scribe'
+        document.title = branding.appName
       }
       return
     }
@@ -81,6 +82,6 @@ export function useDocumentTitle() {
 
     const pageName = getPageName(slugPath, libraryName)
 
-    document.title = `${pageName} | Scribe`
+    document.title = `${pageName} | ${branding.appName}`
   }, [prefix, slugPath, syncStatus, homeStreamId])
 }

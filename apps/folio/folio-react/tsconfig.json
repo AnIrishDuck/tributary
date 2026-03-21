@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "scribe-react/*": ["../../apps/scribe/scribe-react/*"],
+      "scribe-react-common/*": ["../../apps/scribe/scribe-react-common/*"],
+      "scribe-react-listing/*": ["../../apps/scribe/scribe-react-listing/*"],
+      "scribe-react-note/*": ["../../apps/scribe/scribe-react-note/*"],
+      "tributary-client/*": ["../../../tributary-client/dist/*"],
+      "@electric-sql/pglite/worker": ["../../../node_modules/@electric-sql/pglite/dist/worker/index"]
+    }
+  },
+  "include": ["src", "../../apps/scribe/scribe-react/src"],
+  "references": [{ "path": "../../../tributary-client/tsconfig.json" }]
+}
