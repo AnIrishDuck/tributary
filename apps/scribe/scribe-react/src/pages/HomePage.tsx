@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router'
-import { PlusIcon, DocumentTextIcon, ArrowDownIcon, Cog6ToothIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, DocumentTextIcon, ArrowDownOnSquareIcon, Cog6ToothIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { getLibraries, getHomeCollections, importLibrary, createLibrary, titleToSlug, LibraryInfo } from 'scribe-data'
@@ -61,7 +61,7 @@ const ImportCard: React.FC<{
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600">
-            <ArrowDownIcon className="h-5 w-5" />
+            <ArrowDownOnSquareIcon className="h-5 w-5" />
           </div>
           <div>
             <h4 className="text-base font-medium text-gray-900">Import Library</h4>
@@ -372,7 +372,7 @@ const HomePage: React.FC = () => {
                   className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Import existing library"
                 >
-                  <ArrowDownIcon className="h-6 w-6" />
+                  <ArrowDownOnSquareIcon className="h-6 w-6" />
                 </button>
               </div>
             </div>
@@ -516,7 +516,7 @@ const HomePage: React.FC = () => {
                   onClick={handleStartImport}
                   className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
                 >
-                  <ArrowDownIcon className="h-5 w-5 mr-2" />
+                  <ArrowDownOnSquareIcon className="h-5 w-5 mr-2" />
                   Import Existing Library
                 </button>
               </div>
