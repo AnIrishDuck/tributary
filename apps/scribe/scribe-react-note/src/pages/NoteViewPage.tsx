@@ -140,7 +140,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
-            className="prose prose-lg max-w-none"
+            className="prose prose-base max-w-none"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, '')) }}
           />
         </div>
