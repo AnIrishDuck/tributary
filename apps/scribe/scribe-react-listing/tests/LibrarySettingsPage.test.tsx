@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
@@ -112,5 +112,41 @@ describe('LibrarySettingsPage', () => {
     const backLink = screen.getByText(/← Home/)
     expect(backLink).toBeInTheDocument()
     expect(backLink.closest('a')).toHaveAttribute('href', '/')
+  })
+
+  it('should show bookmarklet section with copy button and mobile instructions', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&library`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // Should show bookmarklet section with icon buttons
+    expect(screen.getByText('Bookmarklet')).toBeInTheDocument()
+    expect(screen.getByText(/Save to Test Stream/)).toBeInTheDocument()
+    expect(screen.getByTitle('Copy bookmarklet')).toBeInTheDocument()
+    expect(screen.getByTitle('Setup instructions')).toBeInTheDocument()
+
+    // Instructions should be hidden initially
+    expect(screen.queryByText(/copy button/)).not.toBeInTheDocument()
+
+    // Click help icon to show instructions
+    fireEvent.click(screen.getByTitle('Setup instructions'))
+    expect(screen.getByText(/copy button/)).toBeInTheDocument()
+
+    // Click again to hide
+    fireEvent.click(screen.getByTitle('Setup instructions'))
+    expect(screen.queryByText(/copy button/)).not.toBeInTheDocument()
   })
 })
