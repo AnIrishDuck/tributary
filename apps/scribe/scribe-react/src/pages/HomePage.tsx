@@ -403,7 +403,8 @@ const HomePage: React.FC = () => {
 
                   return libraryDisplayNames.map(({ library, displayName, slug }) => {
                     const libStatus = syncStatus[library.libraryId]
-                    const displayId = `pk/${library.libraryId.substring(0, 16)}...`
+                    const displayIdShort = `pk/${library.libraryId.substring(0, 10)}...`
+                    const displayIdFull = `pk/${library.libraryId.substring(0, 16)}...`
                     const isSyncing = libStatus != null && !libStatus.synced
                     const hasSynced = libStatus?.lastSyncedAt != null
 
@@ -434,26 +435,34 @@ const HomePage: React.FC = () => {
                         <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-lg bg-purple-100 text-purple-600 group-hover:bg-purple-200">
                           <DocumentTextIcon className="h-5 w-5" />
                         </div>
-                        <div className="ml-4 flex-1">
+                        <div className="ml-4 flex-1 min-w-0">
                           <h4 className="text-base font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                             {displayName}
                           </h4>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 font-mono">{displayId}</span>
-                            <span className="text-gray-300">·</span>
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="text-xs text-gray-400 font-mono truncate flex-shrink">
+                              <span className="sm:hidden">{displayIdShort}</span>
+                              <span className="hidden sm:inline">{displayIdFull}</span>
+                            </span>
+                            <span className="text-gray-300 hidden sm:inline">·</span>
                             {isSyncing ? (
-                              <span className="text-xs text-blue-600 font-medium">
-                                Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
-                              </span>
+                              <>
+                                <span className="text-xs text-blue-600 font-medium whitespace-nowrap sm:hidden">
+                                  {libStatus.currentIndex}/{libStatus.finalIndex}
+                                </span>
+                                <span className="text-xs text-blue-600 font-medium whitespace-nowrap hidden sm:inline">
+                                  Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
+                                </span>
+                              </>
                             ) : (
-                              <p className="text-sm text-gray-500">{lastEditedText}</p>
+                              <p className="text-sm text-gray-500 whitespace-nowrap hidden sm:block">{lastEditedText}</p>
                             )}
                           </div>
                         </div>
                         <Link
                           to={settingsPath}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-shrink-0 mr-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="flex-shrink-0 ml-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           aria-label="Library settings"
                           title="Library settings"
                         >
