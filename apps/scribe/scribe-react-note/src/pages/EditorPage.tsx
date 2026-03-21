@@ -500,7 +500,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
             {showPreview ? (
               <div className="bg-white p-6 md:p-8 overflow-auto h-full">
                 <div
-                  className="prose prose-lg max-w-none"
+                  className="prose prose-base max-w-none"
                   dangerouslySetInnerHTML={{
                     __html: renderMarkdown(
                       content,
