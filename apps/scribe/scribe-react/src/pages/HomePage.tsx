@@ -444,20 +444,20 @@ const HomePage: React.FC = () => {
                               <span className="sm:hidden">{displayIdShort}</span>
                               <span className="hidden sm:inline">{displayIdFull}</span>
                             </span>
-                            <span className="text-gray-300">·</span>
+                            <span className="text-gray-300 hidden sm:inline">·</span>
                             {isSyncing ? (
-                              <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
+                              <span className="text-xs text-blue-600 font-medium whitespace-nowrap hidden sm:inline">
                                 Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
                               </span>
                             ) : (
-                              <p className="text-sm text-gray-500 whitespace-nowrap">{lastEditedText}</p>
+                              <p className="text-sm text-gray-500 whitespace-nowrap hidden sm:block">{lastEditedText}</p>
                             )}
                           </div>
                         </div>
                         <Link
                           to={settingsPath}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-shrink-0 mr-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="flex-shrink-0 ml-2 inline-flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           aria-label="Library settings"
                           title="Library settings"
                         >
