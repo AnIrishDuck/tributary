@@ -173,6 +173,24 @@ export function deleteAllDraftsForPrefix(store: DraftStore, prefix: string): voi
   }
 }
 
+/**
+ * Delete every draft in the store regardless of prefix (e.g. on account clear).
+ */
+export function deleteAllDrafts(store: DraftStore): void {
+  const keysToDelete: string[] = []
+
+  try {
+    for (const key of store.keys()) {
+      if (key.startsWith(KEY_PREFIX)) keysToDelete.push(key)
+    }
+    for (const key of keysToDelete) {
+      store.removeItem(key)
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
   getDraftSummariesForCollection as _getDraftSummariesForCollection,
   getBlockUuidsWithDrafts as _getBlockUuidsWithDrafts,
   deleteAllDraftsForPrefix as _deleteAllDraftsForPrefix,
+  deleteAllDrafts as _deleteAllDrafts,
   type DraftStore,
   type Draft,
   type DraftSummary,
@@ -106,4 +107,8 @@ export function getBlockUuidsWithDrafts(prefix: string): Set<string> {
 
 export function deleteAllDraftsForPrefix(prefix: string): void {
   _deleteAllDraftsForPrefix(store, prefix)
+}
+
+export function deleteAllDrafts(): void {
+  _deleteAllDrafts(store)
 }

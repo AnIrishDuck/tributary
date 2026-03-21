@@ -9,6 +9,7 @@ import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { getPGlite, closePGlite, wipeDatabase } from './db/persistence'
 import { CONFIG } from './config'
+import { persistRootSeed, loadPersistedRootSeed, clearRootSeed, clearDrafts } from './rootSeed'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
 
@@ -79,41 +80,6 @@ async function createTributaryClient(session: Session | null, encryptionKey?: Ui
 }
 
 const router = createHashRouter(routes)
-
-// localStorage key for the persisted root seed.  The root seed is equivalent to
-// the signing private key — storing it in localStorage puts it on the same
-// trust boundary as the Supabase refresh token that's already there.
-// Scoped per Supabase user ID so multiple accounts can coexist.
-const ROOT_SEED_STORAGE_PREFIX = 'scribe-root-seed'
-const LEGACY_ROOT_SEED_KEY = 'scribe-root-seed'
-
-function rootSeedKey(userId: string | undefined): string {
-  return userId ? `${ROOT_SEED_STORAGE_PREFIX}-${userId}` : LEGACY_ROOT_SEED_KEY
-}
-
-function persistRootSeed(seed: Uint8Array, userId: string | undefined) {
-  localStorage.setItem(rootSeedKey(userId), base64url.encode(Buffer.from(seed)))
-}
-
-function loadPersistedRootSeed(userId: string | undefined): Uint8Array | null {
-  const key = rootSeedKey(userId)
-  let raw = localStorage.getItem(key)
-  if (!raw && userId) {
-    // Migration: check the legacy unscoped key
-    raw = localStorage.getItem(LEGACY_ROOT_SEED_KEY)
-    if (raw) {
-      // Migrate to scoped key and remove legacy
-      localStorage.setItem(key, raw)
-      localStorage.removeItem(LEGACY_ROOT_SEED_KEY)
-    }
-  }
-  if (!raw) return null
-  return new Uint8Array(base64url.decode(raw))
-}
-
-function clearPersistedRootSeed(userId: string | undefined) {
-  localStorage.removeItem(rootSeedKey(userId))
-}
 
 // Check whether a Supabase session has exceeded the configurable expiry
 // window. Supabase tracks `created_at` on every session (epoch seconds).
@@ -372,7 +338,8 @@ function App() {
   // Logout: sign out of Supabase and reset in-memory state.
   // The per-account local database is preserved so the next login is fast.
   async function logout() {
-    clearPersistedRootSeed(userId)
+    clearRootSeed(userId)
+    clearDrafts()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
@@ -397,7 +364,8 @@ function App() {
   // completing — the reload closes them so the pending delete succeeds.
   async function clearAccount() {
     const baseDbName = accountDbName(session)
-    clearPersistedRootSeed(userId)
+    clearRootSeed(userId)
+    clearDrafts()
     if (supabaseAuth) {
       await supabaseAuth.auth.signOut()
     }
@@ -461,7 +429,7 @@ function App() {
             // storage is active the root seed must never remain in durable
             // storage because it can derive the stream encryption key,
             // allowing a passive attacker to decrypt notes from the server.
-            clearPersistedRootSeed(session!.user?.id)
+            clearRootSeed(session!.user?.id)
           }
           if (enabled && !storageKey) {
             // Persisted session but no password-derived key in memory — prompt
@@ -546,7 +514,7 @@ function App() {
     if (!derivedKeyPair || encryptedStorageEnabled === null) return
     if (encryptedStorageEnabled) {
       // Ensure no seed is persisted when encryption is active
-      clearPersistedRootSeed(userId)
+      clearRootSeed(userId)
     } else {
       // Persist seed for auto-recovery on reload
       // Recover the seed from the secret key (first 32 bytes of the 64-byte Ed25519 secret key)
