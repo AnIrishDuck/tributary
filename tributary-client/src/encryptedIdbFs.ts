@@ -490,8 +490,19 @@ export function createEncryptedIdbfs(fs: any, memfs: any, encKey: Uint8Array): a
 
 // ── EncryptedIdbFs ──────────────────────────────────────────────────────
 
+// PGlite's internal PGDATA symlink target (from emscripten bundle).
+const PGDATA = '/tmp/pglite/base'
+
+/**
+ * PGlite filesystem that encrypts all data at rest in IndexedDB.
+ *
+ * Extends IdbFs only for initialSyncFs() and syncToFs() (which just call
+ * FS.syncfs). init() and closeFs() are fully replaced — we mount our own
+ * encrypted IDBFS implementation directly, no monkey-patching needed.
+ */
 export class EncryptedIdbFs extends IdbFs {
   private encryptionKey: Uint8Array
+  private idbfs: any = null
 
   /**
    * @param dataDir        Storage name (e.g. "scribe-db")
@@ -506,20 +517,35 @@ export class EncryptedIdbFs extends IdbFs {
   }
 
   async init(pg: any, opts: any): Promise<{ emscriptenOpts: any }> {
+    this.pg = pg
     const key = this.encryptionKey
-    const result = await super.init(pg, opts)
 
-    const originalPreRun: Array<(mod: any) => void> = result.emscriptenOpts.preRun || []
-    // Emscripten processes preRun with shift()+unshift(), which reverses the
-    // array. The LAST element runs FIRST. We append our hook so it runs
-    // before the IdbFs mount hook, ensuring mount.type is our encrypted copy.
-    result.emscriptenOpts.preRun = [
-      ...originalPreRun,
-      (mod: any) => {
-        mod.FS.filesystems.IDBFS = createEncryptedIdbfs(mod.FS, mod.MEMFS, key)
+    return {
+      emscriptenOpts: {
+        ...opts,
+        preRun: [
+          ...opts.preRun || [],
+          // Emscripten reverses the preRun array (shift+unshift), so the
+          // last element runs first. Our hook creates the encrypted IDBFS,
+          // mounts it, and symlinks — same as IdbFs but with our implementation.
+          (mod: any) => {
+            this.idbfs = createEncryptedIdbfs(mod.FS, mod.MEMFS, key)
+            mod.FS.mkdir('/pglite')
+            mod.FS.mkdir(`/pglite/${this.dataDir}`)
+            mod.FS.mount(this.idbfs, {}, `/pglite/${this.dataDir}`)
+            mod.FS.symlink(`/pglite/${this.dataDir}`, PGDATA)
+          },
+        ],
       },
-    ]
+    }
+  }
 
-    return result
+  // initialSyncFs() and syncToFs() inherited from IdbFs — they just call
+  // FS.syncfs() which delegates to mount.type.syncfs(), i.e. our idbfs.
+
+  async closeFs() {
+    const db = this.idbfs?.dbs?.[`/pglite/${this.dataDir}`]
+    if (db) db.close()
+    this.pg.Module.FS.quit()
   }
 }
