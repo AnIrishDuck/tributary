@@ -22,9 +22,17 @@ import { HtmlExtension as MicromarkHtmlExtension } from 'micromark-util-types'
 import { Extension as CmExtension } from '@codemirror/state'
 import { ComponentType, ReactNode } from 'react'
 
+export const SCRIBE_PLUGIN_API_VERSION = 1
+
 export interface ScribePlugin {
   /** Unique identifier, e.g. "math", "guitar-tabs", "wake-lock" */
   name: string
+
+  /**
+   * The plugin API version this plugin targets.
+   * Must match SCRIBE_PLUGIN_API_VERSION at runtime.
+   */
+  apiVersion: typeof SCRIBE_PLUGIN_API_VERSION
 
   /**
    * Micromark syntax + HTML extensions.
@@ -340,6 +348,7 @@ function WakeLockEffect() {
 
 export const wakeLock: ScribePlugin = {
   name: 'wake-lock',
+  apiVersion: 1,
   Effect: WakeLockEffect,
 }
 ```
@@ -354,6 +363,7 @@ import { TabEditor } from './TabEditor' // full React component
 
 export const guitarTabs: ScribePlugin = {
   name: 'guitar-tabs',
+  apiVersion: 1,
 
   micromark: {
     // Parse ```tabs fenced code blocks into <div data-plugin-tabs data-content="...">
@@ -383,6 +393,7 @@ import { ScribePlugin } from 'scribe-react-common/src/plugins/types'
 
 export const math: ScribePlugin = {
   name: 'math',
+  apiVersion: 1,
 
   micromark: {
     extensions: [mathSyntax()],
@@ -429,3 +440,63 @@ Summary of files to touch:
 | `scribe-react/src/route.ts` | Wrap library routes in `PluginProvider` |
 
 No schema changes. No new dependencies in the core (plugins bring their own).
+
+## API Versioning & Compatibility
+
+### Version contract
+
+Every plugin declares `apiVersion: N`. The runtime exports `SCRIBE_PLUGIN_API_VERSION` and **rejects plugins whose version doesn't match** at registration time:
+
+```typescript
+function validatePlugin(plugin: ScribePlugin): void {
+  if (plugin.apiVersion !== SCRIBE_PLUGIN_API_VERSION) {
+    console.error(
+      `Plugin "${plugin.name}" targets API v${plugin.apiVersion}, ` +
+      `but this version of scribe requires v${SCRIBE_PLUGIN_API_VERSION}. ` +
+      `Skipping.`
+    )
+  }
+}
+```
+
+This is a hard gate: a mismatched plugin is silently skipped rather than loaded with undefined behavior. Plugins fail loudly at startup instead of subtly at runtime.
+
+### What constitutes a breaking change (bump `SCRIBE_PLUGIN_API_VERSION`)
+
+- Removing or renaming a field on `ScribePlugin`
+- Changing the signature of `transformHtml`, `mounts[].Component`, or `Effect`
+- Changing the props/context available to mounted components
+- Upgrading micromark or CodeMirror major versions (extension APIs may differ)
+
+### What does NOT require a version bump
+
+- Adding new optional fields to `ScribePlugin` (old plugins simply don't use them)
+- Bug fixes in how the runtime processes plugins
+- Changes to internal app code that don't affect the plugin-facing API
+
+### Scoped surface area
+
+The plugin API is deliberately narrow. Plugins interact with scribe through exactly two integration surfaces:
+
+1. **The markdown pipeline** — micromark extensions, HTML transforms, and DOM mounts. Plugins extend how markdown is parsed and rendered, but they don't have access to the note data model, the database, sync state, or routing.
+
+2. **The CodeMirror editor** — plugins provide CodeMirror extensions that are merged into the editor. These follow CodeMirror's own extension API and don't touch scribe internals.
+
+The `Effect` component is the only "escape hatch" — it can use browser APIs (wake lock, clipboard, etc.) but receives no props and has no access to scribe context. If a plugin needs to read the current note content, it should do so through the CodeMirror editor state (via a CodeMirror extension), not by reaching into scribe internals.
+
+This tight scoping means:
+
+- **Refactoring scribe internals** (data model, routing, sync, collections) **cannot break plugins** — plugins never see those layers.
+- **The compatibility boundary is small and testable** — we can write a conformance test suite that exercises the full plugin interface with a mock plugin.
+- **Security is simpler** — plugins can't access encryption keys, raw database handles, or make network requests through scribe. A malicious plugin is limited to what it can do in a React component or CodeMirror extension.
+
+### Plugin-to-plugin isolation
+
+Plugins are composed but not aware of each other. Potential conflicts:
+
+| Conflict | Resolution |
+|---|---|
+| Two micromark extensions claim the same syntax | Micromark processes extensions in order; first match wins. Document that plugins should use namespaced syntax (e.g. `` ```tabs `` not `` ``` ``) |
+| Two plugins mount to the same CSS selector | Both mount — each creates its own React root in matching elements. Avoid generic selectors; use `[data-plugin-NAME]` convention |
+| Overlapping CodeMirror keymaps | CodeMirror's `keymap` facet has built-in precedence. Plugins can use `Prec.high()` / `Prec.low()` to control priority |
+| Conflicting `transformHtml` transforms | Transforms compose in plugin order. Plugins should be additive (add attributes, wrap elements) rather than destructive (strip HTML) |
