@@ -132,22 +132,21 @@ describe('LibrarySettingsPage', () => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    // Should show bookmarklet section
+    // Should show bookmarklet section with icon buttons
     expect(screen.getByText('Bookmarklet')).toBeInTheDocument()
     expect(screen.getByText(/Save to Test Stream/)).toBeInTheDocument()
-    expect(screen.getByText('Copy')).toBeInTheDocument()
+    expect(screen.getByTitle('Copy bookmarklet')).toBeInTheDocument()
+    expect(screen.getByTitle('Setup instructions')).toBeInTheDocument()
 
-    // Mobile instructions should be hidden initially
-    expect(screen.getByText('On mobile? Tap here for instructions')).toBeInTheDocument()
-    expect(screen.queryByText(/bookmark manager/)).not.toBeInTheDocument()
+    // Instructions should be hidden initially
+    expect(screen.queryByText(/copy button/)).not.toBeInTheDocument()
 
-    // Click to show mobile instructions
-    fireEvent.click(screen.getByText('On mobile? Tap here for instructions'))
-    expect(screen.getByText(/bookmark manager/)).toBeInTheDocument()
-    expect(screen.getByText('Hide mobile instructions')).toBeInTheDocument()
+    // Click help icon to show instructions
+    fireEvent.click(screen.getByTitle('Setup instructions'))
+    expect(screen.getByText(/copy button/)).toBeInTheDocument()
 
-    // Click to hide again
-    fireEvent.click(screen.getByText('Hide mobile instructions'))
-    expect(screen.queryByText(/bookmark manager/)).not.toBeInTheDocument()
+    // Click again to hide
+    fireEvent.click(screen.getByTitle('Setup instructions'))
+    expect(screen.queryByText(/copy button/)).not.toBeInTheDocument()
   })
 })

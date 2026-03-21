@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router'
-import { ClipboardDocumentIcon, BookmarkIcon } from '@heroicons/react/24/outline'
+import { ClipboardDocumentIcon, BookmarkIcon, QuestionMarkCircleIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
@@ -197,10 +197,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
 
           <div className="px-8 py-6">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Bookmarklet</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              On desktop, drag this link to your bookmarks bar. Click it on any page to save the page title and URL as a new note.
-            </p>
-            <div className="flex flex-wrap items-center gap-2 mb-4">
+            <div className="flex items-center gap-2">
               <a
                 href={bookmarkletHref}
                 onClick={(e) => e.preventDefault()}
@@ -215,24 +212,26 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
                   setBookmarkletCopied(true)
                   setTimeout(() => setBookmarkletCopied(false), 2000)
                 }}
-                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                title="Copy bookmarklet"
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
               >
-                <ClipboardDocumentIcon className="h-4 w-4 mr-2" />
-                {bookmarkletCopied ? 'Copied!' : 'Copy'}
+                {bookmarkletCopied
+                  ? <CheckIcon className="h-5 w-5 text-green-500" />
+                  : <ClipboardDocumentIcon className="h-5 w-5" />}
+              </button>
+              <button
+                onClick={() => setShowMobileHelp(!showMobileHelp)}
+                title="Setup instructions"
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <QuestionMarkCircleIcon className="h-5 w-5" />
               </button>
             </div>
-            <button
-              onClick={() => setShowMobileHelp(!showMobileHelp)}
-              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
-            >
-              {showMobileHelp ? 'Hide mobile instructions' : 'On mobile? Tap here for instructions'}
-            </button>
             {showMobileHelp && (
               <ol className="mt-3 text-sm text-gray-600 list-decimal list-inside space-y-1">
-                <li>Tap <strong>Copy</strong> above to copy the bookmarklet</li>
-                <li>Open your browser's bookmark manager and add a new bookmark</li>
-                <li>Paste the copied text as the bookmark's URL</li>
-                <li>To use it, open the bookmark from any page</li>
+                <li>Drag the link above to your bookmarks bar, or:</li>
+                <li>Tap the copy button, then add a new bookmark and paste as the URL</li>
+                <li>Click the bookmark on any page to save it as a note</li>
               </ol>
             )}
           </div>
