@@ -1,4 +1,4 @@
-`scribe` is a tributary app for editing, indexing, and cross-linking documents.
+`scribe` is a personal wiki for notes.
 
 # Packages
 
