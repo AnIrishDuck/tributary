@@ -446,9 +446,14 @@ const HomePage: React.FC = () => {
                             </span>
                             <span className="text-gray-300 hidden sm:inline">·</span>
                             {isSyncing ? (
-                              <span className="text-xs text-blue-600 font-medium whitespace-nowrap hidden sm:inline">
-                                Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
-                              </span>
+                              <>
+                                <span className="text-xs text-blue-600 font-medium whitespace-nowrap sm:hidden">
+                                  {libStatus.currentIndex}/{libStatus.finalIndex}
+                                </span>
+                                <span className="text-xs text-blue-600 font-medium whitespace-nowrap hidden sm:inline">
+                                  Syncing {libStatus.currentIndex}/{libStatus.finalIndex}
+                                </span>
+                              </>
                             ) : (
                               <p className="text-sm text-gray-500 whitespace-nowrap hidden sm:block">{lastEditedText}</p>
                             )}
