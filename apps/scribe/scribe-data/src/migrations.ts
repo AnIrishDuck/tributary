@@ -136,6 +136,16 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     )
   `)
 
+  // Create the file_path_map table for mapping filesystem paths to note UUIDs.
+  // Used by scribe-cli sync to track which file belongs to which note,
+  // so that remote slug changes are recognised as moves rather than create+create.
+  await local.exec(`
+    CREATE TABLE IF NOT EXISTS file_path_map (
+      relative_path TEXT NOT NULL PRIMARY KEY,
+      block_uuid TEXT NOT NULL
+    )
+  `)
+
 }
 
 /**
@@ -172,6 +182,7 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  * Migration to drop the block table
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
+  await localDb.exec('DROP TABLE IF EXISTS file_path_map')
   await localDb.exec('DROP TABLE IF EXISTS linked_libraries')
   await localDb.exec('DROP TABLE IF EXISTS slug_collision')
   await localDb.exec('DROP TABLE IF EXISTS block_search_index')

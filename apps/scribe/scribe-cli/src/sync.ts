@@ -13,6 +13,8 @@ import {
   getNoteSlugPath,
   getSlugPath,
   slugToTitle,
+  getBlockUuidByPath,
+  replaceFilePathMap,
 } from 'scribe-data';
 import type { Collection, SyncItem, SyncOperation } from 'scribe-data';
 import { v4 as uuidv4 } from 'uuid';
@@ -331,7 +333,17 @@ async function compareDirectoryLevel(
 
       // Look up existing note by slug in the current collection scope
       const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
-      const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
+      let blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
+
+      // If slug lookup missed, check the file_path_map for a UUID
+      // (handles remote slug changes where the file still has the old name)
+      if (!blockUuid) {
+        const relativePath = path.relative(rootDir, filePath);
+        const mappedUuid = await getBlockUuidByPath(localDb, relativePath);
+        if (mappedUuid) {
+          blockUuid = mappedUuid;
+        }
+      }
 
       await compareFileToDatabase(
         stream, localDb, filePath, blockUuid, fileSlug, itemPath,
@@ -528,6 +540,8 @@ async function syncSlugsDirectory(
   const expectedPaths = new Set<string>();
   // Track expected directory paths (for collections)
   const expectedDirs = new Set<string>();
+  // Track file-to-UUID mappings for the file_path_map table
+  const filePathEntries: Array<{ relativePath: string; blockUuid: string }> = [];
 
   // Also ensure collection directories exist even if they have no notes
   const library = await getLibrary(localDb);
@@ -583,6 +597,10 @@ async function syncSlugsDirectory(
         }
 
         expectedPaths.add(filePath);
+        filePathEntries.push({
+          relativePath: path.relative(rootDir, filePath),
+          blockUuid: noteUuid,
+        });
 
         if (!dryRun) {
           await fs.promises.writeFile(filePath, note.body, 'utf8');
@@ -597,6 +615,12 @@ async function syncSlugsDirectory(
 
   // Clean up files and directories that no longer correspond to any slug or collection
   await cleanDirectory(rootDir, rootDir, expectedPaths, expectedDirs, dryRun);
+
+  // Persist the file-to-UUID map so the next sync can recognise files
+  // whose remote slug has changed since the last sync.
+  if (!dryRun) {
+    await replaceFilePathMap(localDb, filePathEntries);
+  }
 }
 
 /**
@@ -766,7 +790,7 @@ async function syncLocalFilesToDatabase(
   const library = await getLibrary(localDb);
   const libraryUuid = library?.collection_uuid ?? null;
 
-  await syncDirectoryLevel(stream, localDb, rootDir, null, libraryUuid, options);
+  await syncDirectoryLevel(stream, localDb, rootDir, rootDir, null, libraryUuid, options);
 }
 
 /**
@@ -775,6 +799,7 @@ async function syncLocalFilesToDatabase(
  * @param stream The TributaryStream instance
  * @param localDb The TributaryLocal instance
  * @param dir The directory to process
+ * @param rootDir The sync root directory path (for computing relative paths)
  * @param collectionId The collection UUID that notes in this directory belong to (null = root)
  * @param parentCollectionUuid The parent collection UUID for looking up child collections (null if no library)
  * @param options Sync options
@@ -783,6 +808,7 @@ async function syncDirectoryLevel(
   stream: TributaryStream,
   localDb: TributaryLocal,
   dir: string,
+  rootDir: string,
   collectionId: string | null,
   parentCollectionUuid: string | null,
   options: { dryRun?: boolean }
@@ -814,7 +840,7 @@ async function syncDirectoryLevel(
       if (matchedCollection) {
         // This directory is a collection — recurse with the collection context
         await syncDirectoryLevel(
-          stream, localDb, dirPath,
+          stream, localDb, dirPath, rootDir,
           matchedCollection.collection_uuid,
           matchedCollection.collection_uuid,
           options
@@ -855,7 +881,7 @@ async function syncDirectoryLevel(
           }
 
           await syncDirectoryLevel(
-            stream, localDb, dirPath,
+            stream, localDb, dirPath, rootDir,
             newCollectionUuid,
             newCollectionUuid,
             options
@@ -869,7 +895,16 @@ async function syncDirectoryLevel(
 
       // Look up existing note by slug in the current collection scope
       const matchingNotes = await getNotesBySlugInCollection(localDb, fileSlug, collectionId);
-      const blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
+      let blockUuid = matchingNotes.length > 0 ? matchingNotes[0].block_uuid : null;
+
+      // If slug lookup missed, check the file_path_map for a UUID
+      if (!blockUuid) {
+        const relativePath = path.relative(rootDir, filePath);
+        const mappedUuid = await getBlockUuidByPath(localDb, relativePath);
+        if (mappedUuid) {
+          blockUuid = mappedUuid;
+        }
+      }
 
       await syncFileToDatabase(stream, localDb, filePath, blockUuid, entry.name, collectionId, fileSlug, { dryRun });
     }

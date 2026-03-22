@@ -996,3 +996,108 @@ describe('sync — collections', () => {
     expect(fs.existsSync(path.join(tmpDir, 'empty-collection'))).toBe(true)
   })
 })
+
+describe('sync — remote slug changes (moves)', () => {
+  let tmpDir: string
+  let client: TributaryClient
+  let stream: TributaryStream
+
+  beforeEach(async () => {
+    const s = await setup()
+    client = s.client
+    stream = s.stream
+    tmpDir = await createTempSyncDir()
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('should track a remote slug change as a single note, not create+create', async () => {
+    // Create a note with title "My Note" → slug "my-note"
+    const note = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# My Note\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // First sync: writes my-note.md to disk
+    await syncThreePhase(stream, tmpDir, { dryRun: false })
+    expect(fs.existsSync(path.join(tmpDir, 'my-note.md'))).toBe(true)
+
+    // Simulate a remote slug change: create a new version with a different title/slug
+    await createNoteVersion(stream, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# My Updated Note\n\nOriginal content.',
+      inserter: 'remote-client',
+      slug: 'my-updated-note'
+    })
+
+    await stream.sync(1000)
+
+    // Second sync: should recognise this is the same note with a new slug
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // The old file should be gone, the new file should exist
+    expect(fs.existsSync(path.join(tmpDir, 'my-updated-note.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'my-note.md'))).toBe(false)
+
+    // Key assertion: we should NOT see two block creates.
+    // Before the fix, the system would produce:
+    // 1. create remote (pushing old my-note.md as a new note)
+    // 2. create local (writing my-updated-note.md as a new file)
+    // After the fix, the file_path_map should recognise the old file
+    // and there should be no spurious create-remote operation.
+    const remoteCreates = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(remoteCreates).toHaveLength(0)
+  })
+
+  it('should track slug changes within a collection', async () => {
+    const library = await createCollection(stream, {
+      title: 'My Library',
+      inserter: 'test'
+    })
+
+    const recipes = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library.collection_uuid,
+      inserter: 'test'
+    })
+
+    const note = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Gumbo\n\nA classic cajun stew.',
+      inserter: 'test',
+      collection_id: recipes.collection_uuid
+    })
+
+    await stream.sync(1000)
+
+    // First sync: writes recipes/gumbo.md to disk
+    await syncThreePhase(stream, tmpDir, { dryRun: false })
+    expect(fs.existsSync(path.join(tmpDir, 'recipes', 'gumbo.md'))).toBe(true)
+
+    // Remotely rename the note
+    await createNoteVersion(stream, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Seafood Gumbo\n\nA classic cajun stew with shrimp.',
+      inserter: 'remote-client',
+      slug: 'seafood-gumbo'
+    })
+
+    await stream.sync(1000)
+
+    // Second sync
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // Old file gone, new file present
+    expect(fs.existsSync(path.join(tmpDir, 'recipes', 'seafood-gumbo.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'recipes', 'gumbo.md'))).toBe(false)
+
+    // No spurious remote creates
+    const remoteCreates = blockCreates(ops).filter(op => op.target.source === 'remote')
+    expect(remoteCreates).toHaveLength(0)
+  })
+})
