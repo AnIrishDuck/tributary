@@ -1116,6 +1116,72 @@ describe('sync — remote slug changes (moves)', () => {
     }
   })
 
+  it('should gracefully handle upgrade from pre-file_path_map state', async () => {
+    // Simulate an existing synced directory that was set up before the
+    // file_path_map feature existed: the table is empty.
+    const note = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# Old Note\n\nExisting content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // First sync: writes old-note.md to disk and populates file_path_map
+    await syncThreePhase(stream, tmpDir, { dryRun: false })
+    expect(fs.existsSync(path.join(tmpDir, 'old-note.md'))).toBe(true)
+
+    // Simulate pre-upgrade state: clear the file_path_map as if the table
+    // had just been created by the migration on an existing installation
+    await stream.local().exec('DELETE FROM file_path_map')
+
+    // Now a remote slug change arrives
+    await createNoteVersion(stream, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Renamed Note\n\nExisting content.',
+      inserter: 'remote-client',
+      slug: 'renamed-note'
+    })
+
+    await stream.sync(1000)
+
+    // First sync post-"upgrade": map is empty, so the old file can't be
+    // identified by path. This sync won't be perfect — the old file may
+    // produce a spurious create — but it must not crash, and the new file
+    // must appear.
+    const ops1 = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // After this sync, the new slug file must exist and the map is populated
+    expect(fs.existsSync(path.join(tmpDir, 'renamed-note.md'))).toBe(true)
+
+    // Now do another remote rename — this time the map is populated
+    // from the previous sync, so it should work cleanly
+    await createNoteVersion(stream, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Final Name\n\nExisting content.',
+      inserter: 'remote-client',
+      slug: 'final-name'
+    })
+
+    await stream.sync(1000)
+
+    const ops2 = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // This time: no spurious creates, clean update
+    expect(fs.existsSync(path.join(tmpDir, 'final-name.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'renamed-note.md'))).toBe(false)
+
+    const remoteCreates = blockCreates(ops2).filter(op => op.target.source === 'remote')
+    expect(remoteCreates).toHaveLength(0)
+
+    const bUpdates = blockUpdates(ops2)
+    expect(bUpdates).toHaveLength(1)
+    if (bUpdates[0].kind === 'update') {
+      expect(bUpdates[0].target.source).toBe('remote')
+      expect(bUpdates[0].target.uuid).toBe(note.block_uuid)
+    }
+  })
+
   it('should handle remote slug change combined with local content edit', async () => {
     // Create a note
     const note = await createNote(stream, {
