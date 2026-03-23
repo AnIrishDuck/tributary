@@ -1044,14 +1044,21 @@ describe('sync — remote slug changes (moves)', () => {
     expect(fs.existsSync(path.join(tmpDir, 'my-updated-note.md'))).toBe(true)
     expect(fs.existsSync(path.join(tmpDir, 'my-note.md'))).toBe(false)
 
-    // Key assertion: we should NOT see two block creates.
-    // Before the fix, the system would produce:
-    // 1. create remote (pushing old my-note.md as a new note)
-    // 2. create local (writing my-updated-note.md as a new file)
-    // After the fix, the file_path_map should recognise the old file
-    // and there should be no spurious create-remote operation.
+    // No spurious creates — the file_path_map should recognise the old file.
+    // Before the fix the system would produce a create-remote for the old slug
+    // and a create-local for the new slug.
     const remoteCreates = blockCreates(ops).filter(op => op.target.source === 'remote')
     expect(remoteCreates).toHaveLength(0)
+
+    // Should produce a single update where remote wins (body changed remotely)
+    const bUpdates = blockUpdates(ops)
+    expect(bUpdates).toHaveLength(1)
+    const op = bUpdates[0]
+    expect(op.kind).toBe('update')
+    if (op.kind === 'update') {
+      expect(op.target.source).toBe('remote')
+      expect(op.target.uuid).toBe(note.block_uuid)
+    }
   })
 
   it('should track slug changes within a collection', async () => {
@@ -1099,5 +1106,70 @@ describe('sync — remote slug changes (moves)', () => {
     // No spurious remote creates
     const remoteCreates = blockCreates(ops).filter(op => op.target.source === 'remote')
     expect(remoteCreates).toHaveLength(0)
+
+    // Should produce a single update where remote wins
+    const bUpdates = blockUpdates(ops)
+    expect(bUpdates).toHaveLength(1)
+    if (bUpdates[0].kind === 'update') {
+      expect(bUpdates[0].target.source).toBe('remote')
+      expect(bUpdates[0].target.uuid).toBe(note.block_uuid)
+    }
+  })
+
+  it('should handle remote slug change combined with local content edit', async () => {
+    // Create a note
+    const note = await createNote(stream, {
+      block_type: 'scribe/markdown',
+      body: '# My Note\n\nOriginal content.',
+      inserter: 'test'
+    })
+
+    await stream.sync(1000)
+
+    // First sync: writes my-note.md to disk
+    await syncThreePhase(stream, tmpDir, { dryRun: false })
+    expect(fs.existsSync(path.join(tmpDir, 'my-note.md'))).toBe(true)
+
+    // Simulate a remote slug change (only slug, body stays the same)
+    await createNoteVersion(stream, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# My Note\n\nOriginal content.',
+      inserter: 'remote-client',
+      slug: 'my-renamed-note'
+    })
+
+    await stream.sync(1000)
+
+    // Meanwhile, edit the local file content
+    await fs.promises.writeFile(
+      path.join(tmpDir, 'my-note.md'),
+      '# My Note\n\nLocally edited content.',
+      'utf8'
+    )
+
+    // Second sync: should recognise the file, detect the local content change,
+    // and also pick up the slug change for the filesystem rename
+    const ops = await syncThreePhase(stream, tmpDir, { dryRun: false })
+
+    // No spurious creates
+    expect(blockCreates(ops).filter(op => op.target.source === 'remote')).toHaveLength(0)
+
+    // Should produce a single update where local wins (file was just written,
+    // so its mtime is newer than the remote version)
+    const bUpdates = blockUpdates(ops)
+    expect(bUpdates).toHaveLength(1)
+    if (bUpdates[0].kind === 'update') {
+      expect(bUpdates[0].target.source).toBe('local')
+      expect(bUpdates[0].target.uuid).toBe(note.block_uuid)
+    }
+
+    // The file should be at the new slug path (syncSlugsDirectory renames)
+    expect(fs.existsSync(path.join(tmpDir, 'my-renamed-note.md'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'my-note.md'))).toBe(false)
+
+    // The database should have the locally edited content
+    const updated = await getNoteByUuid(stream, note.block_uuid)
+    expect(updated).not.toBeNull()
+    expect(updated!.body).toContain('Locally edited content')
   })
 })

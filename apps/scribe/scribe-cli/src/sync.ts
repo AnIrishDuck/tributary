@@ -736,6 +736,7 @@ async function syncFileToDatabase(
               prior_version_uuid: av.version_uuid,
               collection_id: collectionId,
               insert_datetime: fileMtime,
+              slug: currentNote.slug,
             });
             console.log(`Updated note ${blockUuid} with new version`);
           } else {
