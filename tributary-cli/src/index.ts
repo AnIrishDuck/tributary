@@ -6,6 +6,15 @@ import { executeSQL } from './psql';
 import { logger, info, error as errorLog, warn } from './logger';
 import { getClient } from './util';
 
+function parseAppStreamId(appStreamId: string): [string, string] {
+  const parts = appStreamId.split('/');
+  if (parts.length !== 2) {
+    errorLog('Error: Invalid format. Use app-id/stream-id');
+    process.exit(1);
+  }
+  return [parts[0], parts[1]];
+}
+
 const program = new Command();
 
 program
@@ -95,18 +104,12 @@ keyCmd
   .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
   .action(async (appStreamId: string) => {
     try {
-      // Parse the app-id/stream-id format
-      const parts = appStreamId.split('/');
-      if (parts.length !== 2) {
-        errorLog('Error: Invalid format. Use app-id/stream-id');
-        process.exit(1);
-      }
-      const [appId, streamId] = parts;
-      
+      const [appId, streamId] = parseAppStreamId(appStreamId);
+
       // Get database path from global options or use default
       const options = program.opts();
       const { client, db, server } = await getClient(options);
-      
+
       const keyDetails = await showKey(client, appId, streamId);
       info(`Key: ${streamId}`);
       info(`Public Key: ${keyDetails.publicKey}`);
@@ -122,18 +125,12 @@ keyCmd
   .argument('<app-stream-id>', 'App identifier and stream identifier separated by slash (app-id/stream-id)')
   .action(async (appStreamId: string) => {
     try {
-      // Parse the app-id/stream-id format
-      const parts = appStreamId.split('/');
-      if (parts.length !== 2) {
-        errorLog('Error: Invalid format. Use app-id/stream-id');
-        process.exit(1);
-      }
-      const [appId, streamId] = parts;
-      
+      const [appId, streamId] = parseAppStreamId(appStreamId);
+
       // Get database path from global options or use default
       const options = program.opts();
       const { client, db, server } = await getClient(options);
-      
+
       const base64Key = await exportKey(client, appId, streamId);
       // Print to stdout for piping
       console.log(base64Key);
@@ -193,13 +190,7 @@ program
   .option('-n, --no-sync', 'Disable automatic sync with server before executing command')
   .action(async (appStreamId: string, sql: string | undefined, options: any) => {
     try {
-      // Parse the app-id/stream-id format
-      const parts = appStreamId.split('/');
-      if (parts.length !== 2) {
-        errorLog('Error: Invalid format. Use app-id/stream-id');
-        process.exit(1);
-      }
-      const [appId, streamId] = parts;
+      const [appId, streamId] = parseAppStreamId(appStreamId);
       
       const result = await executeSQL(appId, streamId, sql || '', {
         localDb: options.db,
