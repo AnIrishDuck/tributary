@@ -1,18 +1,16 @@
-# Scribe Plugin System
+# Scribe Plugins
 
-Plugins extend scribe's editor and renderer on a per-library basis. They are remote ES modules loaded at runtime via dynamic `import()`.
+Plugins extend scribe's markdown renderer and CodeMirror editor on a per-library basis. A plugin is an ES module that default-exports a factory function.
 
-> **Plugins are remote code with full access to your decrypted note content.** You must trust the plugin author. Only add plugins from sources you trust. Scribe cannot sandbox plugin code — a plugin has the same capabilities as any JavaScript running on the page.
+## Quick Start
 
-The UI must display this warning when the user adds a new plugin URL to a library. The user must explicitly confirm before the plugin is saved.
+1. Create a package that default-exports a factory function
+2. Publish it as an ES module (npm + esm.sh, your own CDN, etc.)
+3. Add the URL to a library's plugin settings in the scribe UI
 
 ## Plugin Interface
 
-A plugin module default-exports a factory function. The runtime calls it with the user-provided config and receives back a `ScribePlugin`:
-
 ```typescript
-// scribe-react-common/src/plugins/types.ts
-
 import { Extension as MicromarkExtension } from 'micromark-util-types'
 import { HtmlExtension as MicromarkHtmlExtension } from 'micromark-util-types'
 import { Extension as CmExtension } from '@codemirror/state'
@@ -55,111 +53,126 @@ export interface ScribePlugin {
 | `micromark` | Micromark syntax and HTML extensions, merged into the `micromark()` call alongside GFM |
 | `codemirror` | CodeMirror extensions merged into the editor |
 | `transformHtml` | Post-processes rendered HTML after micromark + link resolution. Transforms compose in plugin order |
-| `mounts` | After HTML is in the DOM, the runtime queries for elements matching `selector` and renders `Component` into each. Use `[data-plugin-NAME]` selectors |
-| `Effect` | Invisible React component rendered when the library is active. Unmounted on navigation away. For side effects only (wake lock, shortcuts, etc.) |
+| `mounts` | After rendered HTML is in the DOM, the runtime queries for elements matching `selector` and renders `Component` into each. Use `[data-plugin-NAME]` selectors |
+| `Effect` | Invisible React component rendered when the library is active. Unmounted on navigation away. For side effects only (wake lock, shortcuts, etc.). Receives no props |
 
-## Per-Library Configuration
+### Config
 
-Each library stores an ordered list of plugin entries:
+The factory receives a `PluginConfig` (`Record<string, string>`) — string key/value pairs configured by the user in the library settings UI. Use config to control plugin behavior without requiring separate modules for each variant.
 
-```typescript
-interface PluginEntry {
-  url: string              // ES module URL, e.g. "https://esm.sh/scribe-plugin-wake-lock"
-  config?: PluginConfig    // String key/value pairs passed to the factory
-}
-```
+### API Versioning
 
-Stored in a `library_plugins` table on the home stream's local DB:
+Every plugin must set `apiVersion` to `SCRIBE_PLUGIN_API_VERSION` (currently `1`). The runtime rejects plugins with a mismatched version.
 
-```sql
-CREATE TABLE IF NOT EXISTS library_plugins (
-  stream_id TEXT NOT NULL,
-  plugin_url TEXT NOT NULL,
-  config_json TEXT NOT NULL DEFAULT '{}',
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (stream_id, plugin_url)
-)
-```
-
-## Loading
-
-```typescript
-async function loadPlugin(entry: PluginEntry): Promise<ScribePlugin | null> {
-  try {
-    const mod = await import(/* webpackIgnore: true */ entry.url)
-    const factory: ScribePluginFactory = mod.default
-    const plugin = factory(entry.config ?? {})
-
-    if (plugin.apiVersion !== SCRIBE_PLUGIN_API_VERSION) {
-      console.error(
-        `Plugin "${plugin.name}" targets API v${plugin.apiVersion}, ` +
-        `but scribe requires v${SCRIBE_PLUGIN_API_VERSION}. Skipping.`
-      )
-      return null
-    }
-
-    return plugin
-  } catch (err) {
-    console.error(`Failed to load plugin from ${entry.url}:`, err)
-    return null
-  }
-}
-```
-
-Plugins are loaded when entering a library. The route wrappers (`PkRouteWrapper`, `NamedRouteResolver`) read plugin entries from the DB, call `loadPlugin` for each, and pass the results to a `PluginProvider` context that wraps the library's route subtree.
-
-## Runtime Integration
-
-### Markdown rendering
-
-`renderMarkdown` accepts an optional `plugins` parameter. It merges micromark extensions, then runs `transformHtml` in plugin order:
-
-```typescript
-export function renderMarkdown(
-  content: string,
-  streamPrefix: string,
-  currentSlug?: string,
-  routeBase?: string,
-  plugins?: ScribePlugin[]
-): string
-```
-
-### React mounts
-
-`useMountPlugins(containerRef, plugins)` — after markdown HTML is inserted into the DOM, queries for each plugin's mount selectors and renders React components into matching elements. Cleans up roots on unmount.
-
-### CodeMirror extensions
-
-`EditorPage` merges `plugins.flatMap(p => p.codemirror ?? [])` into the editor's extension array.
-
-### Effect components
-
-`PluginProvider` renders each plugin's `Effect` component (if present). They mount on library enter and unmount on library leave.
-
-### Plugin context
-
-```typescript
-const PluginContext = createContext<ScribePlugin[]>([])
-
-export function PluginProvider({ plugins, children }: { plugins: ScribePlugin[]; children: ReactNode })
-export function usePlugins(): ScribePlugin[]
-```
-
-## API Versioning
-
-Every plugin declares `apiVersion`. Plugins with a mismatched version are skipped at load time.
-
-**Breaking changes** (bump `SCRIBE_PLUGIN_API_VERSION`):
+**Breaking changes** that bump `SCRIBE_PLUGIN_API_VERSION`:
 - Removing or renaming a field on `ScribePlugin`
 - Changing signatures of `transformHtml`, `mounts[].Component`, `Effect`, or the factory
 - Upgrading micromark or CodeMirror major versions
 
-**Non-breaking changes** (no bump needed):
+**Non-breaking changes** (no bump):
 - Adding optional fields to `ScribePlugin`
 - Bug fixes in plugin runtime processing
 - Internal app changes that don't affect the plugin API
 
+## Examples
+
+### Wake Lock (Effect + config)
+
+```typescript
+import { useEffect } from 'react'
+import { ScribePlugin, PluginConfig } from 'scribe-react-common/src/plugins/types'
+
+function WakeLockEffect() {
+  useEffect(() => {
+    let sentinel: WakeLockSentinel | null = null
+    async function acquire() {
+      try { sentinel = await navigator.wakeLock.request('screen') }
+      catch { /* not supported or denied */ }
+    }
+    acquire()
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible') acquire()
+    }
+    document.addEventListener('visibilitychange', onVisChange)
+    return () => {
+      sentinel?.release()
+      document.removeEventListener('visibilitychange', onVisChange)
+    }
+  }, [])
+  return null
+}
+
+export default function wakeLock(config: PluginConfig): ScribePlugin {
+  const mode = config.mode ?? 'always' // "always" | "directive"
+  return {
+    name: 'wake-lock',
+    apiVersion: 1,
+    Effect: mode === 'always' ? WakeLockEffect : undefined,
+  }
+}
+```
+
+Config: `{ "mode": "always" }` keeps screen on for all notes. `{ "mode": "directive" }` only when a `<!-- wake-lock -->` directive is present.
+
+### Guitar Tab Editor (micromark + mounts)
+
+```typescript
+import { ScribePlugin, PluginConfig } from 'scribe-react-common/src/plugins/types'
+import { tabsSyntax, tabsHtml } from './micromark-tabs'
+import { TabEditor } from './TabEditor'
+
+export default function guitarTabs(config: PluginConfig): ScribePlugin {
+  return {
+    name: 'guitar-tabs',
+    apiVersion: 1,
+    micromark: {
+      extensions: [tabsSyntax()],
+      htmlExtensions: [tabsHtml()],
+    },
+    mounts: [{
+      selector: '[data-plugin-tabs]',
+      Component: ({ element }) => {
+        const content = element.getAttribute('data-content') ?? ''
+        return <TabEditor initialContent={content} />
+      },
+    }],
+  }
+}
+```
+
+The micromark extension parses `` ```tabs `` fenced code blocks into `<div data-plugin-tabs data-content="...">` placeholders. The mount replaces each with the React tab editor.
+
+### Math Rendering (micromark only)
+
+```typescript
+import { math as mathSyntax, mathHtml } from 'micromark-extension-math'
+import katex from 'katex'
+import { ScribePlugin, PluginConfig } from 'scribe-react-common/src/plugins/types'
+
+export default function math(config: PluginConfig): ScribePlugin {
+  return {
+    name: 'math',
+    apiVersion: 1,
+    micromark: {
+      extensions: [mathSyntax()],
+      htmlExtensions: [mathHtml({ renderToString: katex.renderToString })],
+    },
+  }
+}
+```
+
+## Testing
+
+A plugin factory returns a plain object. Test each piece independently:
+
+- **Micromark extensions**: input markdown → output HTML
+- **React components**: render with React Testing Library
+- **Effects**: standard React hook testing
+- **Factory**: verify different config values produce expected plugin shapes
+
 ## Plugin-to-Plugin Isolation
+
+Plugins compose but are not aware of each other.
 
 | Conflict | Resolution |
 |---|---|
