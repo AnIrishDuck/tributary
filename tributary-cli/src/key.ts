@@ -20,27 +20,23 @@ export async function saveKeyPair(client: TributaryClient, appId: string, keyPai
   return streamId;
 }
 
+// Resolve a stream ID prefix to a unique full stream ID
+export async function resolveStreamId(client: TributaryClient, streamIdPrefix: string): Promise<string> {
+  const allKeys = await listKeys(client);
+  const matchingKeys = allKeys.filter(key => key.startsWith(streamIdPrefix));
+
+  if (matchingKeys.length === 0) {
+    throw new Error(`No key found with prefix '${streamIdPrefix}'`);
+  } else if (matchingKeys.length > 1) {
+    throw new Error(`Multiple keys found with prefix '${streamIdPrefix}': ${matchingKeys.join(', ')}`);
+  }
+
+  return matchingKeys[0];
+}
+
 // Load a key pair from the database via TributaryClient
 export async function loadKeyPair(client: TributaryClient, appId: string, streamId: string): Promise<KeyPair> {
-  // GOOSE: we should do a prefix search here on the streamId. maybe call it a streamFragment instead.
-  // list keys, find a unique key with the same prefix as the fragment. throw an error listing the
-  // stream ids if multiple streams match the same fragment
-  
-  // List all available keys
-  const allKeys = await listKeys(client);
-  
-  // Filter keys that match the prefix
-  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
-  
-  // Check if we have exactly one match
-  if (matchingKeys.length === 0) {
-    throw new Error(`No key found with prefix '${streamId}'`);
-  } else if (matchingKeys.length > 1) {
-    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
-  }
-  
-  // Use the unique matching key
-  const fullStreamId = matchingKeys[0];
+  const fullStreamId = await resolveStreamId(client, streamId);
   
   // First try to get the stream directly
   const stream = await client.get(appId, fullStreamId);
@@ -64,21 +60,7 @@ export async function listKeys(client: TributaryClient): Promise<string[]> {
 
 // Show details of a specific key
 export async function showKey(client: TributaryClient, appId: string, streamId: string): Promise<{ publicKey: string }> {
-  // List all available keys
-  const allKeys = await listKeys(client);
-  
-  // Filter keys that match the prefix
-  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
-  
-  // Check if we have exactly one match
-  if (matchingKeys.length === 0) {
-    throw new Error(`No key found with prefix '${streamId}'`);
-  } else if (matchingKeys.length > 1) {
-    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
-  }
-  
-  // Use the unique matching key
-  const fullStreamId = matchingKeys[0];
+  const fullStreamId = await resolveStreamId(client, streamId);
   
   // Verify the key exists by trying to get it
   const stream = await client.get(appId, fullStreamId);
@@ -93,33 +75,15 @@ export async function showKey(client: TributaryClient, appId: string, streamId: 
 
 // Export a key as base64 encoded string
 export async function exportKey(client: TributaryClient, appId: string, streamId: string): Promise<string> {
-  // Load the key pair
-  // GOOSE: we should do a prefix search here on the streamId. maybe call it a streamFragment instead.
-  // list keys, find a unique key with the same prefix as the fragment. throw an error listing the
-  // stream ids if multiple streams match the same fragment
-  
-  // List all available keys
-  const allKeys = await listKeys(client);
-  
-  // Filter keys that match the prefix
-  const matchingKeys = allKeys.filter(key => key.startsWith(streamId));
-  
-  // Check if we have exactly one match
-  if (matchingKeys.length === 0) {
-    throw new Error(`No key found with prefix '${streamId}'`);
-  } else if (matchingKeys.length > 1) {
-    throw new Error(`Multiple keys found with prefix '${streamId}': ${matchingKeys.join(', ')}`);
-  }
-  
-  // Use the unique matching key
-  const fullStreamId = matchingKeys[0];
-  
+  const fullStreamId = await resolveStreamId(client, streamId);
+
   // Verify the key exists by trying to get it
   const stream = await client.get(appId, fullStreamId);
   if (!stream) {
     throw new Error(`Key with stream ID '${fullStreamId}' not found for app '${appId}'`);
   }
-  
+
+  // loadKeyPair with the full ID avoids a redundant prefix search
   const keyPair = await loadKeyPair(client, appId, fullStreamId);
   // Return the secret key as base64
   return base64url.encode(Buffer.from(keyPair.secretKey));
