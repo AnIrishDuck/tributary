@@ -1,6 +1,29 @@
 // Server interface for tributary-server communication
 // This interface allows us to create both real and fake implementations for testing
 
+/** Blob metadata without the data payload */
+export interface BlobMetadata {
+  id: string;
+  pubkey: string;
+  hash: string;
+  priorHash: string;
+  signature: string;
+  sequenceNumber: number;
+  createdAt: Date;
+}
+
+/** Full blob including the data payload */
+export interface BlobData extends BlobMetadata {
+  data: Uint8Array;
+}
+
+/** Blob subset returned by the Arrow batch endpoint */
+export interface ArrowBlob {
+  sequenceNumber: number;
+  hash: string;
+  data: Uint8Array;
+}
+
 export interface Server {
   /**
    * Store an encrypted blob with signature verification
@@ -30,16 +53,7 @@ export interface Server {
   retrieveBlob(
     pubkey: string,
     id: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    data: Uint8Array;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null>;
+  ): Promise<BlobData | null>;
   
   /**
    * Get the latest blob metadata for a given public key
@@ -48,15 +62,7 @@ export interface Server {
    */
   getLatestBlobMetadata(
     pubkey: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null>;
+  ): Promise<BlobMetadata | null>;
   
   /**
    * Get all blob metadata for a given public key, ordered by sequence number
@@ -70,15 +76,7 @@ export interface Server {
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      id: string;
-      pubkey: string;
-      hash: string;
-      priorHash: string;
-      signature: string;
-      sequenceNumber: number;
-      createdAt: Date;
-    }>;
+    blobs: BlobMetadata[];
     totalCount: number;
   }>;
 
@@ -95,11 +93,7 @@ export interface Server {
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      sequenceNumber: number;
-      hash: string;
-      data: Uint8Array;
-    }>;
+    blobs: ArrowBlob[];
     totalCount: number;
   }>;
 

@@ -5,7 +5,7 @@ export { TributaryLocal } from './tributaryLocal.js';
 export { TributaryServer } from './tributaryServer.js';
 export { FakeServer } from './fakeServer.js';
 export { createTestServer, createTestClient, createTestDb } from './testUtils.js';
-export type { Server } from './server.js';
+export type { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
 export type { SyncStatus } from './tributaryStream.js';
 export type { StreamStorageEstimate, QuotaEstimate } from './storage.js';
 export { estimateStreamStorageBytes, estimateQuota } from './storage.js';

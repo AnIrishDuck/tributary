@@ -1,5 +1,5 @@
 // Implementation of Server interface that communicates with tributary-server
-import { Server } from './server.js';
+import { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
 import { warn } from './logger.js';
 
 // Import base64url functions
@@ -7,6 +7,27 @@ import * as base64url from 'urlsafe-base64';
 
 // Import Apache Arrow for blob batch retrieval
 import { tableFromIPC } from 'apache-arrow';
+
+/** Map a raw JSON blob from the API (snake_case) to a BlobMetadata (camelCase). */
+function mapRawBlob(blob: {
+  id: string;
+  pubkey: string;
+  hash: string;
+  prior_hash: string;
+  signature: string;
+  sequence_number: number;
+  created_at: string;
+}): BlobMetadata {
+  return {
+    id: blob.id,
+    pubkey: blob.pubkey,
+    hash: blob.hash,
+    priorHash: blob.prior_hash,
+    signature: blob.signature,
+    sequenceNumber: blob.sequence_number,
+    createdAt: new Date(blob.created_at)
+  };
+}
 
 export class TributaryServer implements Server {
   private baseUrl: string;
@@ -96,7 +117,7 @@ export class TributaryServer implements Server {
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: data as any
+      body: data as BodyInit
     });
 
     if (response.ok) {
@@ -115,16 +136,7 @@ export class TributaryServer implements Server {
   async retrieveBlob(
     pubkey: string,
     id: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    data: Uint8Array;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null> {
+  ): Promise<BlobData | null> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
     
     const headers: Record<string, string> = {};
@@ -138,19 +150,9 @@ export class TributaryServer implements Server {
     
     if (response.ok) {
       const blob = await response.json();
-      
-      // Convert data from array of numbers to Uint8Array
-      const data = new Uint8Array(blob.data);
-      
       return {
-        id: blob.id,
-        pubkey: blob.pubkey,
-        data,
-        hash: blob.hash,
-        priorHash: blob.prior_hash,
-        signature: blob.signature,
-        sequenceNumber: blob.sequence_number,
-        createdAt: new Date(blob.created_at)
+        ...mapRawBlob(blob),
+        data: new Uint8Array(blob.data)
       };
     } else if (response.status === 404) {
       return null;
@@ -161,15 +163,7 @@ export class TributaryServer implements Server {
   
   async getLatestBlobMetadata(
     pubkey: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null> {
+  ): Promise<BlobMetadata | null> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/latest`;
     
     const headers: Record<string, string> = {};
@@ -184,16 +178,7 @@ export class TributaryServer implements Server {
       
       if (response.ok) {
         const blob = await response.json();
-        
-        return {
-          id: blob.id,
-          pubkey: blob.pubkey,
-          hash: blob.hash,
-          priorHash: blob.prior_hash,
-          signature: blob.signature,
-          sequenceNumber: blob.sequence_number,
-          createdAt: new Date(blob.created_at)
-        };
+        return mapRawBlob(blob);
       } else if (response.status === 404) {
         // No blobs found for this pubkey, return null
         return null;
@@ -201,7 +186,8 @@ export class TributaryServer implements Server {
         throw new Error(`Failed to retrieve latest blob metadata: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      throw new Error(`Failed to retrieve latest blob metadata: ${(error as Error).message}`);
+      if (error instanceof Error) throw error;
+      throw new Error(`Failed to retrieve latest blob metadata: ${String(error)}`);
     }
   }
 
@@ -214,15 +200,7 @@ export class TributaryServer implements Server {
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      id: string;
-      pubkey: string;
-      hash: string;
-      priorHash: string;
-      signature: string;
-      sequenceNumber: number;
-      createdAt: Date;
-    }>;
+    blobs: BlobMetadata[];
     totalCount: number;
   }> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/all`;
@@ -252,16 +230,8 @@ export class TributaryServer implements Server {
       if (response.ok) {
         const result = await response.json();
         
-        const blobs = result.blobs.map((blob: any) => ({
-          id: blob.id,
-          pubkey: blob.pubkey,
-          hash: blob.hash,
-          priorHash: blob.prior_hash,
-          signature: blob.signature,
-          sequenceNumber: blob.sequence_number,
-          createdAt: new Date(blob.created_at)
-        }));
-        
+        const blobs = result.blobs.map(mapRawBlob);
+
         return {
           blobs,
           totalCount: result.total_count
@@ -270,19 +240,11 @@ export class TributaryServer implements Server {
         throw new Error(`Failed to retrieve blob metadata: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      throw new Error(`Failed to retrieve blob metadata: ${(error as Error).message}`);
+      if (error instanceof Error) throw error;
+      throw new Error(`Failed to retrieve blob metadata: ${String(error)}`);
     }
   }
 
-  /**
-   * Get multiple blobs with data in Apache Arrow IPC format
-   * This is more efficient than fetching blobs one-by-one
-   * 
-   * @param pubkey The public key of the stream
-   * @param startSequence Optional: Fetch blobs with sequence_number > this value
-   * @param max Optional: Maximum number of blobs to return (default: 10)
-   * @returns Array of blobs with their data and the total count
-   */
   async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
     const url = `${this.baseUrl}/config`;
     const headers: Record<string, string> = {};
@@ -349,16 +311,16 @@ export class TributaryServer implements Server {
     return true;
   }
 
+  /**
+   * Get multiple blobs with data in Apache Arrow IPC format.
+   * More efficient than fetching blobs one-by-one.
+   */
   async getBlobsArrow(
     pubkey: string,
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      sequenceNumber: number;
-      hash: string;
-      data: Uint8Array;
-    }>;
+    blobs: ArrowBlob[];
     totalCount: number;
   }> {
     const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/blobs`;
@@ -409,11 +371,7 @@ export class TributaryServer implements Server {
       
       // Extract blobs from the table
       // Arrow schema: seq (UInt64), hash (Utf8), data (Binary)
-      const blobs: Array<{
-        sequenceNumber: number;
-        hash: string;
-        data: Uint8Array;
-      }> = [];
+      const blobs: ArrowBlob[] = [];
       
       // Iterate through rows and extract data
       for (const row of table) {
@@ -431,7 +389,8 @@ export class TributaryServer implements Server {
         totalCount
       };
     } catch (error) {
-      throw new Error(`Failed to retrieve blobs via Arrow: ${(error as Error).message}`);
+      if (error instanceof Error) throw error;
+      throw new Error(`Failed to retrieve blobs via Arrow: ${String(error)}`);
     }
   }
 }
