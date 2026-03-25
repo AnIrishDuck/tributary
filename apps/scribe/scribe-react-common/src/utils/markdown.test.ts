@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSlugLinksInHtml, renderMarkdown } from './markdown'
 import type { ScribePlugin } from '../plugins/types'
+import type { HtmlExtension } from 'micromark-util-types'
 
 const testPrefix = '_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0'
 
@@ -153,15 +154,13 @@ describe('renderMarkdown with plugins', () => {
   }
 
   it('should apply plugin micromark extensions', () => {
-    // Use a micromark syntax extension that treats `==text==` as highlighted text.
-    // We simulate this with an HTML extension that wraps <code> in <mark>.
+    // Use a micromark HTML extension that wraps <code> in <mark>.
+    const htmlExt: HtmlExtension = {
+      enter: { codeText() { this.tag('<mark>'); return undefined } },
+      exit: { codeText() { this.tag('</mark>'); return undefined } }
+    }
     const plugin = makePlugin({
-      micromark: {
-        htmlExtensions: [{
-          enter: { codeText() { this.tag('<mark>') } },
-          exit: { codeText() { this.tag('</mark>') } }
-        }]
-      }
+      micromark: { htmlExtensions: [htmlExt] }
     })
     const result = renderMarkdown('`hello`', testPrefix, undefined, undefined, [plugin])
     expect(result).toContain('<mark>')
@@ -169,12 +168,11 @@ describe('renderMarkdown with plugins', () => {
   })
 
   it('should apply plugin HTML extensions', () => {
+    const htmlExt: HtmlExtension = {
+      enter: { emphasis() { this.tag('<em class="plugin">'); return undefined } }
+    }
     const plugin = makePlugin({
-      micromark: {
-        htmlExtensions: [{
-          enter: { emphasis() { this.tag('<em class="plugin">') } }
-        }]
-      }
+      micromark: { htmlExtensions: [htmlExt] }
     })
     const result = renderMarkdown('*emphasized*', testPrefix, undefined, undefined, [plugin])
     expect(result).toContain('<em class="plugin">')
@@ -194,14 +192,13 @@ describe('renderMarkdown with plugins', () => {
   })
 
   it('should compose multiple plugins extensions correctly', () => {
+    const htmlExt: HtmlExtension = {
+      enter: { codeText() { this.tag('<mark>'); return undefined } },
+      exit: { codeText() { this.tag('</mark>'); return undefined } }
+    }
     const plugin1 = makePlugin({
       name: 'plugin-1',
-      micromark: {
-        htmlExtensions: [{
-          enter: { codeText() { this.tag('<mark>') } },
-          exit: { codeText() { this.tag('</mark>') } }
-        }]
-      }
+      micromark: { htmlExtensions: [htmlExt] }
     })
     const plugin2 = makePlugin({
       name: 'plugin-2',
