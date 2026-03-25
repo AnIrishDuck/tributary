@@ -1,6 +1,6 @@
 // Fake implementation of Server interface for testing
 // This implementation MUST implement the same hash and signature validations as tributary-server
-import { Server } from './server.js';
+import { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
 import { computeHash } from './hashUtils.js';
 
 // Import base64url functions
@@ -41,16 +41,7 @@ export class FakeServer implements Server {
     return true;
   }
 
-  private blobs: Map<string, {
-    id: string;
-    pubkey: string;
-    data: Uint8Array;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  }> = new Map();
+  private blobs: Map<string, BlobData> = new Map();
 
   async storeBlob(
     pubkey: string,
@@ -109,16 +100,7 @@ export class FakeServer implements Server {
   async retrieveBlob(
     pubkey: string,
     id: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    data: Uint8Array;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null> {
+  ): Promise<BlobData | null> {
     const key = `${pubkey}:${id}`;
     const blob = this.blobs.get(key);
     
@@ -130,16 +112,7 @@ export class FakeServer implements Server {
   }
 
   // Method for testing - get all stored blobs
-  getAllBlobs(): Array<{
-    id: string;
-    pubkey: string;
-    data: Uint8Array;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  }> {
+  getAllBlobs(): BlobData[] {
     return Array.from(this.blobs.values());
   }
 
@@ -184,25 +157,9 @@ export class FakeServer implements Server {
   
   async getLatestBlobMetadata(
     pubkey: string
-  ): Promise<{
-    id: string;
-    pubkey: string;
-    hash: string;
-    priorHash: string;
-    signature: string;
-    sequenceNumber: number;
-    createdAt: Date;
-  } | null> {
+  ): Promise<BlobMetadata | null> {
     let latestSequence = -1;
-    let latestBlob: {
-      id: string;
-      pubkey: string;
-      hash: string;
-      priorHash: string;
-      signature: string;
-      sequenceNumber: number;
-      createdAt: Date;
-    } | null = null;
+    let latestBlob: BlobMetadata | null = null;
     
     for (const blob of this.blobs.values()) {
       if (blob.pubkey === pubkey && blob.sequenceNumber > latestSequence) {
@@ -219,15 +176,7 @@ export class FakeServer implements Server {
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      id: string;
-      pubkey: string;
-      hash: string;
-      priorHash: string;
-      signature: string;
-      sequenceNumber: number;
-      createdAt: Date;
-    }>;
+    blobs: BlobMetadata[];
     totalCount: number;
   }> {
     // Filter blobs by pubkey
@@ -265,11 +214,7 @@ export class FakeServer implements Server {
     startSequence?: number,
     max?: number
   ): Promise<{
-    blobs: Array<{
-      sequenceNumber: number;
-      hash: string;
-      data: Uint8Array;
-    }>;
+    blobs: ArrowBlob[];
     totalCount: number;
   }> {
     // Filter blobs by pubkey
