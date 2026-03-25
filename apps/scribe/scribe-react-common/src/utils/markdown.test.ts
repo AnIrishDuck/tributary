@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSlugLinksInHtml, renderMarkdown } from './markdown'
+import type { ScribePlugin } from '../plugins/types'
 
 const testPrefix = '_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0'
 
@@ -143,5 +144,92 @@ describe('renderMarkdown', () => {
   it('should preserve already-resolved /#n/ links in markdown', () => {
     const result = renderMarkdown('[Recipes](/#n/recipes/soup)', testPrefix, undefined, '/n/my-library')
     expect(result).toContain('href="/#n/recipes/soup"')
+  })
+})
+
+describe('renderMarkdown with plugins', () => {
+  function makePlugin(overrides: Partial<ScribePlugin>): ScribePlugin {
+    return { name: 'test-plugin', apiVersion: 1, ...overrides }
+  }
+
+  it('should apply plugin micromark extensions', () => {
+    // Use a micromark syntax extension that treats `==text==` as highlighted text.
+    // We simulate this with an HTML extension that wraps <code> in <mark>.
+    const plugin = makePlugin({
+      micromark: {
+        htmlExtensions: [{
+          enter: { codeText() { this.tag('<mark>') } },
+          exit: { codeText() { this.tag('</mark>') } }
+        }]
+      }
+    })
+    const result = renderMarkdown('`hello`', testPrefix, undefined, undefined, [plugin])
+    expect(result).toContain('<mark>')
+    expect(result).toContain('</mark>')
+  })
+
+  it('should apply plugin HTML extensions', () => {
+    const plugin = makePlugin({
+      micromark: {
+        htmlExtensions: [{
+          enter: { emphasis() { this.tag('<em class="plugin">') } }
+        }]
+      }
+    })
+    const result = renderMarkdown('*emphasized*', testPrefix, undefined, undefined, [plugin])
+    expect(result).toContain('<em class="plugin">')
+  })
+
+  it('should call transformHtml in plugin order', () => {
+    const plugin1 = makePlugin({
+      name: 'plugin-1',
+      transformHtml: (html) => html.replace('Hello', 'Hello from 1')
+    })
+    const plugin2 = makePlugin({
+      name: 'plugin-2',
+      transformHtml: (html) => html.replace('Hello from 1', 'Hello from 1 and 2')
+    })
+    const result = renderMarkdown('Hello', testPrefix, undefined, undefined, [plugin1, plugin2])
+    expect(result).toContain('Hello from 1 and 2')
+  })
+
+  it('should compose multiple plugins extensions correctly', () => {
+    const plugin1 = makePlugin({
+      name: 'plugin-1',
+      micromark: {
+        htmlExtensions: [{
+          enter: { codeText() { this.tag('<mark>') } },
+          exit: { codeText() { this.tag('</mark>') } }
+        }]
+      }
+    })
+    const plugin2 = makePlugin({
+      name: 'plugin-2',
+      transformHtml: (html) => html.replace('<mark>', '<mark class="highlight">')
+    })
+    const result = renderMarkdown('`code`', testPrefix, undefined, undefined, [plugin1, plugin2])
+    expect(result).toContain('<mark class="highlight">')
+    expect(result).toContain('</mark>')
+  })
+
+  it('should not change behavior when no plugins provided', () => {
+    const withoutPlugins = renderMarkdown('# Hello\n\n[link](my-note)', testPrefix)
+    const withEmptyPlugins = renderMarkdown('# Hello\n\n[link](my-note)', testPrefix, undefined, undefined, [])
+    expect(withEmptyPlugins).toBe(withoutPlugins)
+  })
+
+  it('should apply transformHtml after slug link resolution', () => {
+    const plugin = makePlugin({
+      transformHtml: (html) => {
+        // Verify slug links are already resolved when transformHtml runs
+        if (html.includes(`/#/pk/${testPrefix}/my-note`)) {
+          return html.replace('<p>', '<p class="transformed">')
+        }
+        return html
+      }
+    })
+    const result = renderMarkdown('[link](my-note)', testPrefix, undefined, undefined, [plugin])
+    expect(result).toContain('<p class="transformed">')
+    expect(result).toContain(`/#/pk/${testPrefix}/my-note`)
   })
 })
