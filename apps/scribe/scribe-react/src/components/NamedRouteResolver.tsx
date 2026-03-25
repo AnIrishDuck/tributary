@@ -3,6 +3,7 @@ import { useParams, Outlet } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { RouteContextProvider } from 'scribe-react-common/src/context/routeContext'
+import { PluginProvider } from 'scribe-react-common/src/context/pluginContext'
 import { resolveLibrarySlug, LibrarySlugResult } from 'scribe-data'
 import LibraryConflictPage from '../pages/LibraryConflictPage'
 
@@ -97,7 +98,9 @@ const NamedRouteResolver: React.FC = () => {
       prefix={state.prefix}
       namedBase={`/n/${librarySlug}`}
     >
-      <Outlet />
+      <PluginProvider plugins={[]}>
+        <Outlet />
+      </PluginProvider>
     </RouteContextProvider>
   )
 }

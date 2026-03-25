@@ -4,10 +4,12 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import React from 'react'
 import PkRouteWrapper from '../src/components/PkRouteWrapper'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
 
 /** Test child that renders the route context values for assertions */
 function RouteContextDisplay() {
   const ctx = useRouteContext()
+  const plugins = usePlugins()
   return (
     <div>
       <span data-testid="paradigm">{ctx.paradigm}</span>
@@ -15,6 +17,7 @@ function RouteContextDisplay() {
       <span data-testid="root-path">{ctx.buildPath()}</span>
       <span data-testid="slug-path">{ctx.buildPath('my-note')}</span>
       <span data-testid="nested-path">{ctx.buildPath('collection/my-note')}</span>
+      <span data-testid="plugin-count">{plugins.length}</span>
     </div>
   )
 }
@@ -73,6 +76,13 @@ describe('PkRouteWrapper', () => {
     renderAtPkRoute(testPrefix)
     await waitFor(() => {
       expect(screen.getByTestId('nested-path')).toHaveTextContent(`/pk/${testPrefix}/collection/my-note`)
+    })
+  })
+
+  it('should provide PluginProvider with empty plugins array to children', async () => {
+    renderAtPkRoute(testPrefix)
+    await waitFor(() => {
+      expect(screen.getByTestId('plugin-count')).toHaveTextContent('0')
     })
   })
 })

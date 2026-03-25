@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { PencilIcon, ArrowLeftIcon, ArrowRightIcon, ClockIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
@@ -9,6 +9,8 @@ import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
+import { useMountPlugins } from 'scribe-react-common/src/plugins/useMountPlugins'
 import VersionFooter from '../components/VersionFooter'
 
 interface NoteViewPageProps {
@@ -29,6 +31,8 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   const { setFloatingAction } = useBottomNav()
   const { client } = useTributary()
   const routeCtx = useRouteContext()
+  const plugins = usePlugins()
+  const contentRef = useRef<HTMLDivElement>(null)
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
 
@@ -52,6 +56,8 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
     }
     loadVersionInfo()
   }, [blockUuid, versionUuid, client, prefix])
+
+  useMountPlugins(contentRef, plugins)
 
   // Compute parent collection path from slugPath (remove last segment which is the note)
   const parentSlugPath = slugPath.split('/').slice(0, -1).join('/')
@@ -140,8 +146,9 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
+            ref={contentRef}
             className="prose prose-base max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, '')) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, ''), plugins) }}
           />
         </div>
 
