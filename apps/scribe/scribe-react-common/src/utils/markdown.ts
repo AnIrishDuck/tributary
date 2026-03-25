@@ -1,6 +1,7 @@
 import { micromark } from 'micromark'
 import { gfm, gfmHtml } from 'micromark-extension-gfm'
 import { isSlugLink, isAbsoluteInternalLink, resolveLink } from './links'
+import type { ScribePlugin } from '../plugins/types'
 
 /**
  * Resolve slug links in micromark HTML output.
@@ -42,11 +43,24 @@ export function renderMarkdown(
   content: string,
   streamPrefix: string,
   currentSlug?: string,
-  routeBase?: string
+  routeBase?: string,
+  plugins?: ScribePlugin[]
 ): string {
-  const html = micromark(content, {
-    extensions: [gfm()],
-    htmlExtensions: [gfmHtml()]
+  const pluginExtensions = (plugins ?? []).flatMap(p => p.micromark?.extensions ?? [])
+  const pluginHtmlExtensions = (plugins ?? []).flatMap(p => p.micromark?.htmlExtensions ?? [])
+
+  let html = micromark(content, {
+    extensions: [gfm(), ...pluginExtensions],
+    htmlExtensions: [gfmHtml(), ...pluginHtmlExtensions]
   })
-  return resolveSlugLinksInHtml(html, streamPrefix, currentSlug, routeBase)
+
+  html = resolveSlugLinksInHtml(html, streamPrefix, currentSlug, routeBase)
+
+  for (const plugin of plugins ?? []) {
+    if (plugin.transformHtml) {
+      html = plugin.transformHtml(html)
+    }
+  }
+
+  return html
 }
