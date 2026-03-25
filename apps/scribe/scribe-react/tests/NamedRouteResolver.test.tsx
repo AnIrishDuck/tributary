@@ -7,17 +7,20 @@ import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { createTestTributaryClient, TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
 import NamedRouteResolver from '../src/components/NamedRouteResolver'
 
 /** Test child that renders route context values for assertions */
 function RouteContextDisplay() {
   const ctx = useRouteContext()
+  const plugins = usePlugins()
   return (
     <div>
       <span data-testid="paradigm">{ctx.paradigm}</span>
       <span data-testid="prefix">{ctx.prefix}</span>
       <span data-testid="root-path">{ctx.buildPath()}</span>
       <span data-testid="slug-path">{ctx.buildPath('my-note')}</span>
+      <span data-testid="plugin-count">{plugins.length}</span>
     </div>
   )
 }
@@ -105,6 +108,17 @@ describe('NamedRouteResolver', () => {
     await waitFor(() => {
       expect(screen.getByText(/Multiple libraries match/)).toBeInTheDocument()
     }, { timeout: 5000 })
+  })
+
+  it('should provide PluginProvider with empty plugins array when resolved', async () => {
+    const { client, streamId } = await createClientWithLibrary('Plugin Test Lib')
+    renderNamedRoute(client, 'plugin-test-lib')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('paradigm')).toHaveTextContent('named')
+    }, { timeout: 5000 })
+
+    expect(screen.getByTestId('plugin-count')).toHaveTextContent('0')
   })
 
   it('should handle library names with special characters in slug', async () => {

@@ -16,6 +16,7 @@ import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
 
 export interface EditorPageProps {
   prefix: string
@@ -38,6 +39,7 @@ export interface EditorPageProps {
 
 const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlockUuid, draftId, cancelPath, initialTitle, initialBody, collectionLabel, noteSlugPath, ancestors }) => {
   const routeCtx = useRouteContext()
+  const plugins = usePlugins()
   const defaultContent = initialBody ? initialBody : initialTitle ? `# ${initialTitle}\n\n` : '# New Note\n\nStart writing here...'
   const [content, setContent] = useState<string>(defaultContent)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -506,7 +508,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                       content,
                       prefix,
                       noteSlugPath,
-                      routeCtx.buildPath().replace(/\/$/, '')
+                      routeCtx.buildPath().replace(/\/$/, ''),
+                      plugins
                     ),
                   }}
                 />
@@ -523,6 +526,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                 extensions={[
                   markdown({ base: markdownLanguage, codeLanguages: languages }),
                   EditorView.lineWrapping,
+                  ...plugins.flatMap(p => p.codemirror ?? []),
                 ]}
                 onChange={(value) => setContent(value)}
               />
