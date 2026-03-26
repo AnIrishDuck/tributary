@@ -37,8 +37,8 @@ export function resolveSlugLinksInHtml(
 /**
  * Resolve wikilink placeholder URLs in HTML output.
  *
- * Rewrites `<a href="wikilink:Title">` tags to `titled?t=` route URLs,
- * following the same pattern as `search?q=` (a child route with query param).
+ * Rewrites `<a href="wikilink:Title">` tags to `&titled?t=` route URLs.
+ * Uses `&` prefix to avoid collisions with user-defined slugs.
  */
 export function resolveWikilinksInHtml(
   html: string,
@@ -48,7 +48,7 @@ export function resolveWikilinksInHtml(
     /<a href="wikilink:([^"]*)" class="wikilink">/g,
     (_match, rawTitle: string) => {
       const title = rawTitle.replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-      return `<a href="/#${routeBase}/titled?t=${encodeURIComponent(title)}" class="wikilink">`
+      return `<a href="/#${routeBase}/&titled?t=${encodeURIComponent(title)}" class="wikilink">`
     }
   )
 }

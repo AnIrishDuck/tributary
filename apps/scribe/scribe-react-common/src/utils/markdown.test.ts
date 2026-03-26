@@ -152,13 +152,13 @@ describe('resolveWikilinksInHtml', () => {
   it('should resolve wikilink: URLs to &titled routes', () => {
     const html = '<a href="wikilink:My Note" class="wikilink">My Note</a>'
     const result = resolveWikilinksInHtml(html, '/n/my-library')
-    expect(result).toBe('<a href="/#/n/my-library/titled?t=My%20Note" class="wikilink">My Note</a>')
+    expect(result).toBe('<a href="/#/n/my-library/&titled?t=My%20Note" class="wikilink">My Note</a>')
   })
 
   it('should encode title for URL', () => {
     const html = '<a href="wikilink:Note &amp; More" class="wikilink">Note &amp; More</a>'
     const result = resolveWikilinksInHtml(html, '/pk/abc')
-    expect(result).toContain('titled?t=Note%20%26%20More')
+    expect(result).toContain('&titled?t=Note%20%26%20More')
   })
 
   it('should not modify non-wikilink anchors', () => {
@@ -171,20 +171,20 @@ describe('resolveWikilinksInHtml', () => {
 describe('renderMarkdown with wikilinks', () => {
   it('should render [[Title]] as &titled link', () => {
     const result = renderMarkdown('[[My Note]]', testPrefix)
-    expect(result).toContain(`href="/#/pk/${testPrefix}/titled?t=My%20Note"`)
+    expect(result).toContain(`href="/#/pk/${testPrefix}/&titled?t=My%20Note"`)
     expect(result).toContain('class="wikilink"')
     expect(result).toContain('>My Note</a>')
   })
 
   it('should render [[Title|Display]] with display text', () => {
     const result = renderMarkdown('[[My Note|click here]]', testPrefix)
-    expect(result).toContain(`href="/#/pk/${testPrefix}/titled?t=My%20Note"`)
+    expect(result).toContain(`href="/#/pk/${testPrefix}/&titled?t=My%20Note"`)
     expect(result).toContain('>click here</a>')
   })
 
   it('should use routeBase for wikilink resolution', () => {
     const result = renderMarkdown('[[My Note]]', testPrefix, undefined, '/n/recipes')
-    expect(result).toContain('href="/#/n/recipes/titled?t=My%20Note"')
+    expect(result).toContain('href="/#/n/recipes/&titled?t=My%20Note"')
   })
 
   it('should render wikilinks alongside regular links', () => {
