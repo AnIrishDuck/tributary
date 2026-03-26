@@ -127,7 +127,11 @@ async function handleInitUpload(
 
     // Create TUS upload session with Supabase Storage
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+
+    console.log('TUS init debug: SUPABASE_URL length =', supabaseUrl.length,
+      ', SERVICE_ROLE_KEY length =', serviceRoleKey.length,
+      ', key prefix =', serviceRoleKey.slice(0, 10) + '...');
 
     const tusResponse = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
       method: 'POST',
@@ -217,7 +221,7 @@ async function handleUploadChunk(
 
     // Forward chunk to Supabase Storage TUS endpoint
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const uploadOffset = chunkIndex * BLOB_CHUNK_SIZE;
     const tusUrl = upload.tus_upload_url || `${supabaseUrl}/storage/v1/upload/resumable`;
@@ -303,7 +307,7 @@ async function handleDownload(
 
     // Fetch from Supabase Storage
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const storageHeaders: Record<string, string> = {
       'Authorization': `Bearer ${serviceRoleKey}`,
