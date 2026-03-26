@@ -1,6 +1,6 @@
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, ImageBlockBody, NoteSlug } from './types'
-import { createNote, createNoteVersion, getLatestNoteVersion } from './note.js'
+import { createNote, createNotes, createNoteVersion, getLatestNoteVersion } from './note.js'
 import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
 
 /**
@@ -57,6 +57,54 @@ export async function createImageBlock(
     collection_id: data.collectionId,
     slug: data.slug,
   })
+}
+
+/**
+ * Create multiple image blocks in a single SQL statement.
+ *
+ * All blocks are inserted in one INSERT, producing a single stream entry.
+ *
+ * @param db The TributaryStream database instance
+ * @param items Array of image block data
+ * @returns Array of inserted note records (same order as input)
+ */
+export async function createImageBlocks(
+  db: TributaryStream,
+  items: Array<{
+    blobHash: string
+    contentType: string
+    altText?: string
+    width?: number
+    height?: number
+    fileName?: string
+    slug: string
+    title?: string
+    collectionId?: string | null
+    inserter: string
+  }>
+): Promise<Note[]> {
+  if (items.length === 0) return []
+
+  const noteItems = items.map(data => {
+    const body: ImageBlockBody = {
+      blobHash: data.blobHash,
+      contentType: data.contentType,
+      title: data.title,
+      altText: data.altText,
+      width: data.width,
+      height: data.height,
+      fileName: data.fileName,
+    }
+    return {
+      block_type: 'scribe/image' as const,
+      body: JSON.stringify(body),
+      inserter: data.inserter,
+      collection_id: data.collectionId,
+      slug: data.slug,
+    }
+  })
+
+  return createNotes(db, noteItems)
 }
 
 /**

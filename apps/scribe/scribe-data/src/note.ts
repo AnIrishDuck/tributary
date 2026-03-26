@@ -92,6 +92,97 @@ export async function createNote(
 }
 
 /**
+ * Create multiple notes in a single SQL statement.
+ *
+ * All notes are inserted in one INSERT, producing a single stream entry.
+ * If any item omits collection_id (or passes null), the library root UUID
+ * is resolved once and reused for all such items.
+ *
+ * @param db The TributaryStream database instance
+ * @param items Array of note data to insert
+ * @returns Array of inserted note records (same order as input)
+ */
+export async function createNotes(
+  db: TributaryStream,
+  items: Array<{
+    block_uuid?: string
+    block_type: string
+    body: string
+    inserter: string
+    prior_version_uuid?: string | null
+    collection_id?: string | null
+    insert_datetime?: string
+    slug?: string
+  }>
+): Promise<Note[]> {
+  if (items.length === 0) return []
+
+  const now = new Date()
+
+  // Resolve library root once if any item needs it
+  let libraryId: string | null = null
+  const needsLibrary = items.some(d => (d.collection_id ?? null) === null)
+  if (needsLibrary) {
+    const library = await getLibrary(db)
+    if (library) {
+      libraryId = library.collection_uuid
+    }
+  }
+
+  const notes: Note[] = items.map(noteData => {
+    const blockUuid = noteData.block_uuid || uuidv4()
+    let collection_id = noteData.collection_id ?? null
+    if (collection_id === null && libraryId) {
+      collection_id = libraryId
+    }
+
+    let slug: string
+    if (noteData.slug !== undefined) {
+      slug = noteData.slug
+    } else {
+      const title = extractTitleFromMarkdown(noteData.body)
+      slug = title ? titleToSlug(title) : blockUuid
+    }
+
+    return {
+      block_uuid: blockUuid,
+      block_type: noteData.block_type,
+      version_uuid: uuidv4(),
+      prior_version_uuid: noteData.prior_version_uuid !== undefined ? noteData.prior_version_uuid : null,
+      insert_datetime: noteData.insert_datetime ?? now.toISOString(),
+      inserter: noteData.inserter,
+      body: noteData.body,
+      collection_id,
+      slug,
+    }
+  })
+
+  // Build multi-row INSERT: VALUES ($1,...,$9), ($10,...,$18), ...
+  const cols = 9
+  const valueClauses: string[] = []
+  const params: any[] = []
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i]
+    const base = i * cols
+    valueClauses.push(
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`
+    )
+    params.push(
+      n.block_uuid, n.block_type, n.version_uuid, n.prior_version_uuid,
+      n.insert_datetime, n.inserter, n.body, n.collection_id, n.slug
+    )
+  }
+
+  await db.exec(
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug)
+     VALUES ${valueClauses.join(', ')}`,
+    params
+  )
+
+  return notes
+}
+
+/**
  * Create a new version of an existing note
  * 
  * @param db The TributaryStream database instance
