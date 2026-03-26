@@ -281,29 +281,29 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 const hasCollision = collidingSlugs?.has(note.slug)
                 const isImage = note.block_type === 'scribe/image'
 
-                // Color scheme: amber for drafts, violet for images, blue for notes
-                const colorScheme = hasDraft ? 'amber' : isImage ? 'violet' : 'blue'
+                // Color scheme: amber for drafts, green for images, blue for notes
+                const colorScheme = hasDraft ? 'amber' : isImage ? 'green' : 'blue'
                 const borderClass = hasDraft
                   ? 'border border-amber-200 hover:border-amber-300'
                   : hasCollision
                     ? 'border border-orange-200 hover:border-orange-300'
                     : isImage
-                      ? 'border border-gray-100 hover:border-violet-200'
+                      ? 'border border-gray-100 hover:border-green-200'
                       : 'border border-gray-100 hover:border-blue-200'
                 const hoverTextClass = colorScheme === 'amber'
                   ? 'group-hover:text-amber-600'
-                  : colorScheme === 'violet'
-                    ? 'group-hover:text-violet-600'
+                  : colorScheme === 'green'
+                    ? 'group-hover:text-green-600'
                     : 'group-hover:text-blue-600'
                 const iconBgClass = colorScheme === 'amber'
                   ? 'bg-amber-50 group-hover:bg-amber-100'
-                  : colorScheme === 'violet'
-                    ? 'bg-violet-50 group-hover:bg-violet-100'
+                  : colorScheme === 'green'
+                    ? 'bg-green-50 group-hover:bg-green-100'
                     : 'bg-blue-50 group-hover:bg-blue-100'
                 const slugBadgeClass = colorScheme === 'amber'
                   ? 'bg-amber-50 text-amber-700'
-                  : colorScheme === 'violet'
-                    ? 'bg-violet-50 text-violet-700'
+                  : colorScheme === 'green'
+                    ? 'bg-green-50 text-green-700'
                     : 'bg-blue-50 text-blue-700'
 
                 return (
@@ -325,7 +325,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                               {hasDraft ? (
                                 <PencilSquareIcon className="w-6 h-6 text-amber-600" />
                               ) : isImage ? (
-                                <PhotoIcon className="w-6 h-6 text-violet-600" />
+                                <PhotoIcon className="w-6 h-6 text-green-600" />
                               ) : (
                                 <DocumentTextIcon className="w-6 h-6 text-blue-600" />
                               )}
