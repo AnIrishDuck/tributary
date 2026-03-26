@@ -23,11 +23,14 @@ export function buildUploadPlan(
   entries: FolderFileEntry[],
   currentCollectionId: string | null,
 ): BulkUploadPlan {
-  // Extract unique non-empty folder paths
+  // Extract unique non-empty folder paths, including all intermediate ancestors
   const folderPaths = new Set<string>()
   for (const entry of entries) {
     if (entry.folderPath !== '') {
-      folderPaths.add(entry.folderPath)
+      const segments = entry.folderPath.split('/')
+      for (let i = 1; i <= segments.length; i++) {
+        folderPaths.add(segments.slice(0, i).join('/'))
+      }
     }
   }
 

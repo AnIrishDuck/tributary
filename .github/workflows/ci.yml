@@ -15,6 +15,7 @@ jobs:
       scribe-react-note: ${{ steps.filter.outputs.scribe-react-note }}
       scribe-react-listing: ${{ steps.filter.outputs.scribe-react-listing }}
       scribe-react: ${{ steps.filter.outputs.scribe-react }}
+      scribe-react-img: ${{ steps.filter.outputs.scribe-react-img }}
       scribe-cli: ${{ steps.filter.outputs.scribe-cli }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +41,8 @@ jobs:
               - 'apps/scribe/scribe-react-listing/**'
             scribe-react:
               - 'apps/scribe/scribe-react/**'
+            scribe-react-img:
+              - 'apps/scribe/scribe-react-img/**'
             scribe-cli:
               - 'apps/scribe/scribe-cli/**'
 
@@ -212,6 +215,30 @@ jobs:
         working-directory: apps/scribe/scribe-react
       - run: npm test
         working-directory: apps/scribe/scribe-react
+
+  test-scribe-react-img:
+    needs: changes
+    if: >-
+      needs.changes.outputs.scribe-react-img == 'true' ||
+      needs.changes.outputs.scribe-react-common == 'true' ||
+      needs.changes.outputs.scribe-data == 'true' ||
+      needs.changes.outputs.tributary-client == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+        working-directory: tributary-client
+      - run: npm run build
+        working-directory: apps/scribe/scribe-data
+      - run: npm run typecheck
+        working-directory: apps/scribe/scribe-react-img
+      - run: npm test
+        working-directory: apps/scribe/scribe-react-img
 
   test-scribe-cli:
     needs: changes
