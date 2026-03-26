@@ -11,6 +11,22 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Scribe" />
     <title>Scribe</title>
+    <!--
+      Import map: makes react available as a bare specifier so that both the
+      host app and dynamically-loaded plugins resolve to the same React
+      instance.  Plugins are ES modules loaded via import() at runtime — they
+      externalize react in their builds and rely on this map for resolution.
+    -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.3.1",
+        "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+        "react-dom": "https://esm.sh/react-dom@18.3.1",
+        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
+      }
+    }
+    </script>
   </head>
   <body>
     <script>globalThis.global = globalThis;</script>

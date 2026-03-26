@@ -161,6 +161,23 @@ export default function math(config: PluginConfig): ScribePlugin {
 }
 ```
 
+## Hosting
+
+Plugins are loaded via dynamic `import()`, which requires the server to respond with CORS headers (`Access-Control-Allow-Origin`) and a JavaScript content type. Not all file hosts support this — notably, **GitHub Gist raw URLs do not serve CORS headers** and will fail silently.
+
+Hosts that work:
+
+| Host | How |
+|---|---|
+| **npm + esm.sh** | Publish to npm, use `https://esm.sh/your-package` as the plugin URL |
+| **GitHub Pages** | Push the built JS to a `gh-pages` branch or `/docs` folder |
+| **Cloudflare Pages / Vercel / Netlify** | Any static site host with default CORS support |
+| **Your own server** | Serve with `Access-Control-Allow-Origin: *` and `Content-Type: application/javascript` |
+
+### React as a shared dependency
+
+Plugins that use React must **externalize** it in their build (e.g. `rollupOptions: { external: ['react', 'react/jsx-runtime'] }`). The host app provides React via an import map so that both the host and all plugins share a single React instance — this is required for hooks to work. See `scribe-react-plugin-wake-lock` for a working example.
+
 ## Testing
 
 A plugin factory returns a plain object. Test each piece independently:
