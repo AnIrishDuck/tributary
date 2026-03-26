@@ -12,7 +12,7 @@ Tributary blob support (see `plans/blobs.md` at the repo root) must be implement
 
 - **Image blocks**: Reuse the existing `block` table with `block_type = 'scribe/image'` and store blob metadata (hash, content-type, dimensions) as JSON in the `body` field.
 - **Slug**: Every image has a mandatory slug (like notes). Slugs are derived from the user-provided slug in the add/edit dialog.
-- **Title**: Optional — displayed in breadcrumbs and listings when present.
+- **Title**: Optional — displayed beneath the image on the image view page.
 - **FAB menu**: The current single FAB button becomes a FAB speed-dial menu. "Add Note" is the default action (prior behavior); "Add Image" is a second option.
 - **Shared slug infrastructure**: The breadcrumb menu (with title editing and move) and the move function are extracted from note-specific code into `scribe-react-common` so they work identically for notes and images.
 - **Collision deduplication**: Images appear in the `slug_collision` table and `SlugCollision` disambiguation page alongside notes and collections.
