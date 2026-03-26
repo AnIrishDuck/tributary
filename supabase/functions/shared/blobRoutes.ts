@@ -129,27 +129,42 @@ async function handleInitUpload(
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
-    console.log('TUS init debug: SUPABASE_URL length =', supabaseUrl.length,
-      ', SERVICE_ROLE_KEY length =', serviceRoleKey.length,
-      ', key prefix =', serviceRoleKey.slice(0, 10) + '...');
+    // Debug: log all SUPABASE_* env var names and key diagnostics
+    const supabaseEnvKeys = Object.keys(Deno.env.toObject()).filter(k => k.startsWith('SUPABASE'));
+    console.log('[blob-upload] Available SUPABASE_* env vars:', supabaseEnvKeys.join(', '));
+    console.log('[blob-upload] SUPABASE_URL =', supabaseUrl);
+    console.log('[blob-upload] SERVICE_ROLE_KEY: length =', serviceRoleKey.length,
+      ', prefix =', JSON.stringify(serviceRoleKey.slice(0, 20)),
+      ', suffix =', JSON.stringify(serviceRoleKey.slice(-10)));
 
-    const tusResponse = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+    const tusUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
+    const tusHeaders: Record<string, string> = {
+      'Authorization': `Bearer ${serviceRoleKey}`,
+      'Upload-Length': totalSize.toString(),
+      'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
+      'Tus-Resumable': '1.0.0',
+    };
+
+    console.log('[blob-upload] TUS request: POST', tusUrl);
+    console.log('[blob-upload] TUS headers:', JSON.stringify({
+      ...tusHeaders,
+      'Authorization': `Bearer ${serviceRoleKey.slice(0, 20)}...`,
+    }));
+
+    const tusResponse = await fetch(tusUrl, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Upload-Length': totalSize.toString(),
-        'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
-        'Tus-Resumable': '1.0.0',
-      },
+      headers: tusHeaders,
     });
 
     if (!tusResponse.ok) {
       const errText = await tusResponse.text();
-      console.error('TUS init failed:', tusResponse.status, errText);
+      console.error('[blob-upload] TUS init failed:', tusResponse.status, errText);
+      console.error('[blob-upload] TUS response headers:', JSON.stringify(Object.fromEntries(tusResponse.headers.entries())));
       return errorResponse('Failed to create upload session', 502);
     }
 
     const tusUploadUrl = tusResponse.headers.get('Location') || '';
+    console.log('[blob-upload] TUS init success, upload URL:', tusUploadUrl);
 
     // Track the upload in our database
     const created = await db.createBlobUpload({
