@@ -35,14 +35,16 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const routeCtx = useRouteContext()
   const isRoot = !collection
 
-  // Set the floating action buttons for "Add Note" and "Add Image"
+  // Set the floating action buttons for "Add Note", "Add Image", and "Add Collection"
   useEffect(() => {
     const base = slugPath ? `${slugPath}/` : ''
     const newNoteUrl = routeCtx.buildPath(`${base}+note`)
     const newImageUrl = routeCtx.buildPath(`${base}+image`)
+    const newCollectionUrl = routeCtx.buildPath(`${base}+collection`)
     setFloatingAction([
       { icon: PlusIcon, label: 'Add Note', to: newNoteUrl },
       { icon: PhotoIcon, label: 'Add Image', to: newImageUrl },
+      { icon: FolderPlusIcon, label: 'Add Collection', to: newCollectionUrl },
     ])
     return () => setFloatingAction(null)
   }, [routeCtx, slugPath, setFloatingAction])
@@ -72,10 +74,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   const handleNewNote = () => {
     navigate(routeCtx.buildPath(slugPath ? `${slugPath}/+note` : '+note'))
-  }
-
-  const handleNewCollection = () => {
-    navigate(routeCtx.buildPath(slugPath ? `${slugPath}/+collection` : '+collection'))
   }
 
   const handleBack = () => {
@@ -123,22 +121,12 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {isRoot && (
-                <button
-                  onClick={() => navigate(routeCtx.buildPath('search'))}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-                >
-                  <MagnifyingGlassIcon className="w-4 h-4 md:mr-1.5" />
-                  <span className="hidden md:inline">Search</span>
-                </button>
-              )}
-
               <button
-                onClick={handleNewCollection}
+                onClick={() => navigate(routeCtx.buildPath('search'))}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
-                <FolderPlusIcon className="w-4 h-4 md:mr-1.5" />
-                <span className="hidden md:inline">New Collection</span>
+                <MagnifyingGlassIcon className="w-4 h-4 md:mr-1.5" />
+                <span className="hidden md:inline">Search</span>
               </button>
             </div>
           </div>
