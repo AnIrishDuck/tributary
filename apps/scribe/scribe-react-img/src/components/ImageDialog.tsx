@@ -55,6 +55,7 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
   const [slug, setSlug] = useState('')
   const [title, setTitle] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
+  const [titleTouched, setTitleTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -67,10 +68,14 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
     }
     setFile(selected)
     setError(null)
+    const derived = fileNameToSlug(selected.name)
     if (!slugTouched) {
-      setSlug(fileNameToSlug(selected.name))
+      setSlug(derived)
     }
-  }, [slugTouched])
+    if (!titleTouched) {
+      setTitle(slugTouched ? slug : derived)
+    }
+  }, [slugTouched, titleTouched, slug])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -229,7 +234,7 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
               id="image-title"
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => { setTitleTouched(true); setTitle(e.target.value) }}
               placeholder="A descriptive title"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
