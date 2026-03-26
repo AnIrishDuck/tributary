@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream } from 'tributary-client'
-import { createCollections } from './collection.js'
+import { createCollections, getLibrary } from './collection.js'
 import { createImageBlocks } from './image.js'
 import type { Note } from './types.js'
 
@@ -29,6 +29,21 @@ export interface BulkUploadPlan {
 }
 
 /**
+ * Resolve the effective root collection ID. When rootCollectionId is null
+ * (user is at the library root), look up the library's root collection so
+ * sub-collections are created as children of it rather than as a second root
+ * (which would violate the collection_one_root unique constraint).
+ */
+async function resolveRootCollectionId(
+  stream: TributaryStream,
+  rootCollectionId: string | null,
+): Promise<string | undefined> {
+  if (rootCollectionId !== null) return rootCollectionId
+  const library = await getLibrary(stream.local())
+  return library?.collection_uuid
+}
+
+/**
  * Create sub-collections for a bulk upload plan in a single SQL statement.
  * Collections must be sorted parents-first so that parent UUIDs are available
  * when resolving children.
@@ -42,6 +57,8 @@ export async function ensureBulkCollections(
 ): Promise<Map<string, string>> {
   if (plan.collections.length === 0) return new Map()
 
+  const resolvedRootId = await resolveRootCollectionId(stream, plan.rootCollectionId)
+
   // Pre-assign UUIDs so child entries can reference their parent's UUID
   const collectionMap = new Map<string, string>()
   for (const entry of plan.collections) {
@@ -50,7 +67,7 @@ export async function ensureBulkCollections(
 
   const items = plan.collections.map(entry => {
     const parentUuid = entry.parentFolderPath === null
-      ? plan.rootCollectionId ?? undefined
+      ? resolvedRootId
       : collectionMap.get(entry.parentFolderPath)
 
     return {
@@ -80,9 +97,11 @@ export async function createBulkImageBlocks(
 ): Promise<Note[]> {
   if (plan.images.length === 0) return []
 
+  const resolvedRootId = await resolveRootCollectionId(stream, plan.rootCollectionId)
+
   const items = plan.images.map(entry => {
     const collectionId = entry.folderPath === ''
-      ? plan.rootCollectionId ?? undefined
+      ? resolvedRootId
       : collectionMap.get(entry.folderPath)
 
     return {

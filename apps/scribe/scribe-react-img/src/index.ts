@@ -1,4 +1,5 @@
 export { default as ImageDialog } from './components/ImageDialog'
+export { default as BulkUploadDialog } from './components/BulkUploadDialog'
 export { default as ImageAddPage } from './pages/ImageAddPage'
 export { default as ImageViewPage } from './pages/ImageViewPage'
 export { readDroppedItems } from './utils/readFolderEntries'
