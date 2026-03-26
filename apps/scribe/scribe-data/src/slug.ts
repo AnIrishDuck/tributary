@@ -1,14 +1,23 @@
 import { TributaryLocal } from 'tributary-client'
-import { CollectionSlug, NoteSlug } from './types'
+import { CollectionSlug, NoteSlug, BlockSlugInfo } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
 import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
 
+function tryParseTitle(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body)
+    return parsed.altText || parsed.fileName || null
+  } catch {
+    return null
+  }
+}
+
 export interface ResolveResult {
-  type: 'note' | 'collection' | 'collision'
+  type: 'note' | 'collection' | 'collision' | 'image'
   entity: any
   ancestors: CollectionSlug[]
-  /** Present when type is 'collision': the matching notes and collections. */
-  collisions?: { notes: NoteSlug[]; collections: CollectionSlug[] }
+  /** Present when type is 'collision': the matching notes, images, and collections. */
+  collisions?: { notes: BlockSlugInfo[]; collections: CollectionSlug[] }
 }
 
 /**
@@ -89,34 +98,36 @@ export async function resolveSlugPath(
     currentCollectionId = collection.collection_uuid
   }
 
-  // Resolve the last segment: look up both notes and collections
+  // Resolve the last segment: look up both notes/images and collections
   const lastSlug = segments[segments.length - 1]
 
-  const matchingNotes = await getNotesBySlugInCollection(db, lastSlug, currentCollectionId)
+  const matchingBlocks = await getNotesBySlugInCollection(db, lastSlug, currentCollectionId)
   const matchingCollection = await getCollectionBySlugUnderParent(db, lastSlug, currentParentUuid)
 
   const matchingCollections: CollectionSlug[] = matchingCollection ? [matchingCollection] : []
-  const totalMatches = matchingNotes.length + matchingCollections.length
+  const totalMatches = matchingBlocks.length + matchingCollections.length
 
   if (totalMatches === 0) {
     return null
   }
 
-  // Collision: multiple notes, or a note and a collection share the slug
+  // Collision: multiple blocks, or a block and a collection share the slug
   if (totalMatches > 1) {
     return {
       type: 'collision',
       entity: null,
       ancestors,
-      collisions: { notes: matchingNotes, collections: matchingCollections }
+      collisions: { notes: matchingBlocks, collections: matchingCollections }
     }
   }
 
   // Exactly one match
-  if (matchingNotes.length === 1) {
+  if (matchingBlocks.length === 1) {
+    const block = matchingBlocks[0]
+    const isImage = block.block_type === 'scribe/image'
     return {
-      type: 'note',
-      entity: matchingNotes[0],
+      type: isImage ? 'image' : 'note',
+      entity: block,
       ancestors
     }
   }
@@ -194,8 +205,8 @@ export interface SlugSuggestion {
   slug_path: string
   /** The display title of the entity */
   title: string
-  /** Whether this is a 'note' or 'collection' */
-  type: 'note' | 'collection'
+  /** Whether this is a 'note', 'image', or 'collection' */
+  type: 'note' | 'image' | 'collection'
 }
 
 /**
@@ -204,8 +215,8 @@ export interface SlugSuggestion {
 export interface SuggestSlugsOptions {
   /** Maximum number of suggestions to return. Defaults to 5. */
   limit?: number
-  /** Filter to only notes or only collections. Defaults to undefined (both). */
-  slug_type?: 'note' | 'collection'
+  /** Filter to only notes, images, or collections. Defaults to undefined (all). */
+  slug_type?: 'note' | 'image' | 'collection'
 }
 
 /**
@@ -279,7 +290,7 @@ export async function suggestSlugs(
     if (remaining > 0) {
       const likePattern = searchPrefix + '%'
       const noteResult = await db.query(
-        `SELECT b.block_uuid, b.slug, b.body
+        `SELECT b.block_uuid, b.slug, b.body, b.block_type
          FROM block b
          INNER JOIN authoritative_version av
            ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -290,10 +301,13 @@ export async function suggestSlugs(
       )
 
       for (const row of (noteResult.rows || []) as any[]) {
+        const isImage = row.block_type === 'scribe/image'
         suggestions.push({
           slug_path: pathPrefix + row.slug,
-          title: extractTitleFromMarkdown(row.body) || '',
-          type: 'note'
+          title: isImage
+            ? (tryParseTitle(row.body) || '')
+            : (extractTitleFromMarkdown(row.body) || ''),
+          type: isImage ? 'image' : 'note'
         })
       }
     }

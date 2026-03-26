@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { Note, NoteSlug, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
+import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
 import { getLibrary } from './collection.js'
 
 
@@ -64,6 +64,19 @@ export function slugToTitle(slug: string): string {
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+/**
+ * Try to extract a display title from an image block's JSON body.
+ * Returns altText or fileName if present, otherwise null.
+ */
+function tryParseImageTitle(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body)
+    return parsed.altText || parsed.fileName || null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -574,7 +587,7 @@ export async function getNotesBySlugInCollection(
   db: TributaryLocal,
   slug: string,
   collectionId: string | null
-): Promise<NoteSlug[]> {
+): Promise<BlockSlugInfo[]> {
   let resolvedId = collectionId
   if (resolvedId === null) {
     const library = await getLibrary(db)
@@ -586,7 +599,7 @@ export async function getNotesBySlugInCollection(
   let result
   if (resolvedId === null) {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body
+      `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
        WHERE b.slug = $1 AND b.collection_id IS NULL`,
@@ -594,7 +607,7 @@ export async function getNotesBySlugInCollection(
     )
   } else {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body
+      `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
        WHERE b.slug = $1 AND b.collection_id = $2`,
@@ -605,7 +618,10 @@ export async function getNotesBySlugInCollection(
   return (result.rows || []).map((row: any) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
-    title: extractTitleFromMarkdown(row.body) || ''
+    title: row.block_type === 'scribe/image'
+      ? (tryParseImageTitle(row.body) || '')
+      : (extractTitleFromMarkdown(row.body) || ''),
+    block_type: row.block_type || 'scribe/markdown',
   }))
 }
 

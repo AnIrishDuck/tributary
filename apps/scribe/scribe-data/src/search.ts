@@ -166,6 +166,7 @@ export async function indexSearchVectors(
   if (blockUuids && blockUuids.length > 0) {
     // Fast path: caller already knows which notes need indexing (e.g. from indexSlugs).
     // Just fetch their authoritative content directly -- no scan required.
+    // Skip non-markdown blocks (e.g. scribe/image) which have JSON bodies unsuitable for FTS.
     const placeholders = blockUuids.map((_, i) => `$${i + 1}`).join(', ')
     const result = await localDb.query(`
       SELECT
@@ -177,11 +178,13 @@ export async function indexSearchVectors(
         ON b.block_uuid = av.block_uuid
         AND b.version_uuid = av.version_uuid
       WHERE b.block_uuid IN (${placeholders})
+        AND (b.block_type IS NULL OR b.block_type = 'scribe/markdown')
     `, blockUuids)
 
     unindexedNotes = (result.rows || []) as UnindexedSearchNote[]
   } else {
-    // Fallback: scan for notes that are authoritative but not yet search-indexed
+    // Fallback: scan for notes that are authoritative but not yet search-indexed.
+    // Skip non-markdown blocks (e.g. scribe/image) which have JSON bodies unsuitable for FTS.
     const result = await localDb.query(`
       SELECT
         b.block_uuid,
@@ -193,8 +196,9 @@ export async function indexSearchVectors(
         AND b.version_uuid = av.version_uuid
       LEFT JOIN block_search_index bsi
         ON b.block_uuid = bsi.block_uuid
-      WHERE bsi.block_uuid IS NULL
-        OR bsi.version_uuid != av.version_uuid
+      WHERE (bsi.block_uuid IS NULL
+        OR bsi.version_uuid != av.version_uuid)
+        AND (b.block_type IS NULL OR b.block_type = 'scribe/markdown')
       ORDER BY b.insert_datetime ASC
       LIMIT $1
     `, [limit])
