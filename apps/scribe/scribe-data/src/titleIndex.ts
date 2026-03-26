@@ -2,13 +2,14 @@ import { TributaryLocal } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
 
 /**
- * Try to extract a display title from an image block's JSON body.
- * Returns title, altText, or fileName if present, otherwise null.
+ * Try to extract the title from an image block's JSON body.
+ * Only uses the explicit title field — altText and fileName are display
+ * fallbacks used elsewhere but not indexed for wikilink resolution.
  */
 function tryParseImageTitle(body: string): string | null {
   try {
     const parsed = JSON.parse(body)
-    return parsed.title || parsed.altText || parsed.fileName || null
+    return parsed.title || null
   } catch {
     return null
   }

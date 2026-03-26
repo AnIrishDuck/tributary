@@ -314,63 +314,18 @@ describe('title index', () => {
     expect(altResults).toHaveLength(0)
   })
 
-  test('image blocks without title fall back to altText then fileName', async () => {
+  test('image blocks without title are not indexed', async () => {
     const root = await createCollection(syncedDb, {
       title: 'My Library',
       inserter: 'test-user'
     })
 
-    // No title, has altText
-    await createImageBlock(syncedDb, {
-      blobHash: 'def456',
-      contentType: 'image/jpeg',
-      altText: 'Beach vacation',
-      fileName: 'vacation.jpg',
-      slug: 'vacation',
-      inserter: 'test-user',
-      collection_id: root.collection_uuid
-    })
-
-    await indexSlugs(localDb)
-    await rebuildTitleIndex(localDb)
-
-    const results = await lookupByTitle(localDb, 'Beach vacation')
-    expect(results).toHaveLength(1)
-    expect(results[0].entity_type).toBe('image')
-  })
-
-  test('image blocks with only fileName use fileName as title', async () => {
-    const root = await createCollection(syncedDb, {
-      title: 'My Library',
-      inserter: 'test-user'
-    })
-
-    await createImageBlock(syncedDb, {
-      blobHash: 'xyz789',
-      contentType: 'image/jpeg',
-      fileName: 'holiday.jpg',
-      slug: 'holiday',
-      inserter: 'test-user',
-      collection_id: root.collection_uuid
-    })
-
-    await indexSlugs(localDb)
-    await rebuildTitleIndex(localDb)
-
-    const results = await lookupByTitle(localDb, 'holiday.jpg')
-    expect(results).toHaveLength(1)
-    expect(results[0].entity_type).toBe('image')
-  })
-
-  test('image blocks without title, altText, or fileName are not indexed', async () => {
-    const root = await createCollection(syncedDb, {
-      title: 'My Library',
-      inserter: 'test-user'
-    })
-
+    // Has altText and fileName but no title — should not be indexed
     await createImageBlock(syncedDb, {
       blobHash: 'ghi789',
       contentType: 'image/png',
+      altText: 'Some alt text',
+      fileName: 'photo.png',
       slug: 'unnamed',
       inserter: 'test-user',
       collection_id: root.collection_uuid
@@ -379,7 +334,6 @@ describe('title index', () => {
     await indexSlugs(localDb)
     await rebuildTitleIndex(localDb)
 
-    // Only the root collection exists, but it's excluded (root)
     const result = await localDb.query('SELECT * FROM title_index', [])
     expect(result.rows).toHaveLength(0)
   })
