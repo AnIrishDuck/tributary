@@ -44,7 +44,7 @@ export class FakeServer implements Server {
 
   // Blob object storage (content-addressed encrypted blobs)
   private blobUploads: Map<string, {
-    params: { chunkCount: number; totalSize: number; domain: string };
+    params: { chunkCount: number; totalSize: number; domain?: string };
     chunks: Map<number, Uint8Array>;
   }> = new Map();
   private completedBlobs: Map<string, {
