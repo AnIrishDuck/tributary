@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router'
-import { ClipboardDocumentIcon, BookmarkIcon, QuestionMarkCircleIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { ClipboardDocumentIcon, BookmarkIcon, QuestionMarkCircleIcon, CheckIcon, PlusIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
-import { getLibraryDisplayName, getLibraryStats, LibraryStats, StreamStorageEstimate } from 'scribe-data'
+import { getLibraryDisplayName, getLibraryStats, getLibraryPlugins, setLibraryPlugins, LibraryStats, StreamStorageEstimate, PluginEntry } from 'scribe-data'
+import { AddPluginModal } from '../components/AddPluginModal'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -28,6 +29,9 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
   const [copied, setCopied] = useState(false)
   const [bookmarkletCopied, setBookmarkletCopied] = useState(false)
   const [showMobileHelp, setShowMobileHelp] = useState(false)
+  const [plugins, setPlugins] = useState<PluginEntry[]>([])
+  const [showAddPlugin, setShowAddPlugin] = useState(false)
+  const [pluginSaving, setPluginSaving] = useState(false)
 
   useEffect(() => {
     if (prefix) {
@@ -63,8 +67,12 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
         setStats(libraryStats)
 
         if (stream) {
-          const storage = await stream.estimateStorage()
+          const [storage, libraryPlugins] = await Promise.all([
+            stream.estimateStorage(),
+            getLibraryPlugins(stream),
+          ])
           setStorageEstimate(storage)
+          setPlugins(libraryPlugins)
         }
       } catch (err) {
         console.error('Failed to load library settings:', err)
@@ -75,6 +83,47 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
 
     load()
   }, [client, prefix, librarySyncStatusDep])
+
+  const savePlugins = useCallback(async (newPlugins: Array<{ plugin_url: string; config_json?: string }>) => {
+    if (!client || !prefix) return
+    setPluginSaving(true)
+    try {
+      const stream = await client.get('scribe', prefix)
+      if (!stream) return
+      await setLibraryPlugins(stream, newPlugins)
+      await stream.sync(1000)
+      const updated = await getLibraryPlugins(stream)
+      setPlugins(updated)
+    } catch (err) {
+      console.error('Failed to save plugins:', err)
+    } finally {
+      setPluginSaving(false)
+    }
+  }, [client, prefix])
+
+  const handleAddPlugin = useCallback(async (url: string, configJson: string) => {
+    const newPlugins = [
+      ...plugins.map(p => ({ plugin_url: p.plugin_url, config_json: p.config_json })),
+      { plugin_url: url, config_json: configJson }
+    ]
+    await savePlugins(newPlugins)
+  }, [plugins, savePlugins])
+
+  const handleRemovePlugin = useCallback(async (index: number) => {
+    const newPlugins = plugins
+      .filter((_, i) => i !== index)
+      .map(p => ({ plugin_url: p.plugin_url, config_json: p.config_json }))
+    await savePlugins(newPlugins)
+  }, [plugins, savePlugins])
+
+  const handleMovePlugin = useCallback(async (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1
+    if (newIndex < 0 || newIndex >= plugins.length) return
+    const reordered = [...plugins]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(newIndex, 0, moved)
+    await savePlugins(reordered.map(p => ({ plugin_url: p.plugin_url, config_json: p.config_json })))
+  }, [plugins, savePlugins])
 
   const handleCopyShareLink = async () => {
     if (!client) return
@@ -195,7 +244,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
             </button>
           </div>
 
-          <div className="px-8 py-6">
+          <div className="px-8 py-6 border-b border-gray-100">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Bookmarklet</h2>
             <div className="flex items-center gap-2">
               <a
@@ -235,6 +284,67 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
               </ol>
             )}
           </div>
+
+          <div className="px-8 py-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Plugins</h2>
+            {plugins.length === 0 ? (
+              <p className="text-sm text-gray-500 mb-4">No plugins configured for this library.</p>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {plugins.map((plugin, index) => (
+                  <div key={plugin.plugin_url} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 font-mono truncate">{plugin.plugin_url}</p>
+                      {plugin.config_json !== '{}' && (
+                        <p className="text-xs text-gray-500 font-mono truncate">{plugin.config_json}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleMovePlugin(index, 'up')}
+                        disabled={index === 0 || pluginSaving}
+                        title="Move up"
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronUpIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleMovePlugin(index, 'down')}
+                        disabled={index === plugins.length - 1 || pluginSaving}
+                        title="Move down"
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronDownIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleRemovePlugin(index)}
+                        disabled={pluginSaving}
+                        title="Remove plugin"
+                        className="p-1 text-red-400 hover:text-red-600 disabled:opacity-30 transition-colors"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setShowAddPlugin(true)}
+              disabled={pluginSaving}
+              className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Add plugin
+            </button>
+          </div>
+
+          <AddPluginModal
+            isOpen={showAddPlugin}
+            onClose={() => setShowAddPlugin(false)}
+            onConfirm={handleAddPlugin}
+            existingUrls={plugins.map(p => p.plugin_url)}
+          />
         </div>
       </div>
     </div>
