@@ -63,6 +63,31 @@ describe('ImageDialog', () => {
     expect(slugInput.value).toBe('my-vacation-photo')
   })
 
+  it('defaults title to the derived slug on file selection', async () => {
+    renderDialog()
+
+    const file = new File(['image data'], 'My Vacation Photo.png', { type: 'image/png' })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement
+    expect(titleInput.value).toBe('my-vacation-photo')
+  })
+
+  it('does not override title if user has already typed one', async () => {
+    renderDialog()
+
+    const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement
+    await userEvent.type(titleInput, 'My custom title')
+
+    const file = new File(['image data'], 'photo.png', { type: 'image/png' })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    expect(titleInput.value).toBe('My custom title')
+  })
+
   it('validates slug format — spaces become hyphens, special chars stripped', async () => {
     renderDialog()
 
