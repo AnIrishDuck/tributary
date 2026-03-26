@@ -5,6 +5,7 @@ import React from 'react'
 import PkRouteWrapper from '../src/components/PkRouteWrapper'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
+import { createTestTributaryClient, TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 
 /** Test child that renders the route context values for assertions */
 function RouteContextDisplay() {
@@ -26,6 +27,7 @@ describe('PkRouteWrapper', () => {
   const testPrefix = '_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0'
 
   function renderAtPkRoute(prefix: string) {
+    const { client } = createTestTributaryClient()
     const routes = [
       {
         path: '/pk/:prefix',
@@ -41,7 +43,11 @@ describe('PkRouteWrapper', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: [`/pk/${prefix}/`],
     })
-    return render(<RouterProvider router={router} />)
+    return render(
+      <TributaryProvider client={client}>
+        <RouterProvider router={router} />
+      </TributaryProvider>
+    )
   }
 
   it('should provide pk paradigm to child routes', async () => {
