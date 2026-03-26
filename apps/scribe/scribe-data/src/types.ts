@@ -275,6 +275,15 @@ export type LibrarySlugResult =
   | { type: 'conflict'; matches: Array<{ libraryId: string; libraryTitle: string | null }> }
   | { type: 'not_found' }
 
+/**
+ * A plugin entry stored in the library_plugins synced table.
+ */
+export interface PluginEntry {
+  plugin_url: string
+  config_json: string
+  sort_order: number
+}
+
 // Re-export search types from search.ts
 export type {
   SearchOptions,

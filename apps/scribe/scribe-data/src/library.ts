@@ -1,9 +1,9 @@
 import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { syncedMigrations, localMigrations } from './migrations.js'
+import { syncedMigrations, localMigrations, migrateAddPlugins } from './migrations.js'
 import { createCollection, getLibrary, getLinkedLibraries } from './collection.js'
-import { LinkedLibrary } from './types.js'
+import { LinkedLibrary, PluginEntry } from './types.js'
 
 /**
  * Internal helper: run synced + local migrations and create the root collection.
@@ -208,6 +208,60 @@ export async function seedLinkedLibrariesCache(
        VALUES ($1, $2, NULL, 0, 0, NULL, $3)
        ON CONFLICT (stream_id) DO NOTHING`,
       [col.linked_stream_id, col.title, now]
+    )
+  }
+}
+
+/**
+ * Get all plugin entries for a library, ordered by sort_order.
+ *
+ * @param stream The TributaryStream for the library
+ * @returns Array of plugin entries sorted by sort_order
+ */
+export async function getLibraryPlugins(
+  stream: TributaryStream
+): Promise<PluginEntry[]> {
+  // Check if the table exists (read-only, no blob created)
+  let tableExists = true
+  try {
+    await stream.query('SELECT 1 FROM library_plugins LIMIT 0', [])
+  } catch {
+    tableExists = false
+  }
+
+  if (!tableExists) {
+    // Existing library created before the plugin system — create the table once
+    await migrateAddPlugins(stream)
+  }
+
+  const result = await stream.query(
+    `SELECT plugin_url, config_json, sort_order
+     FROM library_plugins
+     ORDER BY sort_order`,
+    []
+  )
+  return (result.rows || []) as PluginEntry[]
+}
+
+/**
+ * Replace all plugin entries for a library.
+ * Deletes existing entries and inserts the new list, preserving order.
+ *
+ * @param stream The TributaryStream for the library
+ * @param entries The plugin entries to store (order determines sort_order)
+ */
+export async function setLibraryPlugins(
+  stream: TributaryStream,
+  entries: Array<{ plugin_url: string; config_json?: string }>
+): Promise<void> {
+  await stream.exec(`DELETE FROM library_plugins`)
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+    await stream.exec(
+      `INSERT INTO library_plugins (plugin_url, config_json, sort_order)
+       VALUES ($1, $2, $3)`,
+      [entry.plugin_url, entry.config_json ?? '{}', i]
     )
   }
 }

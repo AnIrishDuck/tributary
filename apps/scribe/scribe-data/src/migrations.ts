@@ -58,6 +58,23 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
     CREATE INDEX IF NOT EXISTS collection_slug_parent
     ON collection (slug, parent_collection_uuid)
   `)
+
+  await migrateAddPlugins(stream)
+}
+
+/**
+ * Create the library_plugins synced table if it does not already exist.
+ * Factored out so it can be called both from syncedMigrations (new libraries)
+ * and lazily from getLibraryPlugins (existing libraries created before plugins).
+ */
+export async function migrateAddPlugins(stream: TributaryStream): Promise<void> {
+  await stream.exec(`
+    CREATE TABLE IF NOT EXISTS library_plugins (
+      plugin_url TEXT NOT NULL PRIMARY KEY,
+      config_json TEXT NOT NULL DEFAULT '{}',
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `)
 }
 
 /**
@@ -178,6 +195,7 @@ export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): 
   await localDb.exec('DROP TABLE IF EXISTS block_tag')
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
+  await syncedDb.exec('DROP TABLE IF EXISTS library_plugins')
   await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')
 }
