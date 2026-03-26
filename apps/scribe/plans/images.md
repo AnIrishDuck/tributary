@@ -9,9 +9,9 @@ Editor integration (inline `![alt](slug)` rendering and insertion) is covered se
 Tributary blob support (see `plans/blobs.md` at the repo root):
 - **Prompt 1 (done)**: Chunking, encryption, and merkle helpers in `tributary-client/src/tributaryBlob.ts` — `chunkData`, `encryptChunk`, `decryptChunk`, `computeChunkHash`, `buildChunkTree`, `getChunkProof`, `verifyChunkProof`.
 - **Prompt 2 (not started)**: Blob server API — TUS upload proxy edge function, `blobs` metadata table, download endpoint. Required before images can be uploaded.
-- **Prompt 3 (not started)**: `TributaryBlob` class — high-level `upload(data, domain)` and `download(rootHash)` methods, `Server` interface extensions, `FakeServer` blob support. Required for the image save flow and for rendering images on the view page.
+- **Prompt 3 (not started)**: `TributaryBlob` class — high-level `upload(data)` and `download(rootHash)` methods, `Server` interface extensions, `FakeServer` blob support. Required for the image save flow and for rendering images on the view page.
 
-Prompts 1-3 of this plan (data layer, shared slug infra, FAB menu) can proceed in parallel with blob implementation since they don't depend on blob upload/download. Prompt 4 (image dialog with upload) and Prompt 5 (image view with blob fetching) require blobs Prompts 2-3 to be complete.
+Prompts 1-3 and 6 of this plan (data layer, shared slug infra, FAB menu, CLI compat) can proceed in parallel with blob implementation since they don't depend on blob upload/download. Prompt 4 (image dialog with upload) and Prompt 5 (image view with blob fetching) require blobs Prompts 2-3 to be complete.
 
 ## Design Decisions
 
@@ -201,7 +201,7 @@ interface ImageDialogProps {
 
 **Save flow**:
 1. Read file as `Uint8Array`, extract dimensions via an offscreen `<img>` element
-2. Upload via `TributaryBlob.upload(data, domain)` — this chunks, encrypts, builds the merkle tree, and uploads all chunks to the blob server. Returns the root hash.
+2. Upload via `TributaryBlob.upload(data)` — this chunks, encrypts, builds the merkle tree, and uploads all chunks to the blob server. Returns the root hash.
 3. Create image block via `createImageBlock()` with `{ blobHash: rootHash, contentType, width, height, slug, title, collectionId }`
 4. Sync and re-index
 5. Navigate to the new image's slug path
@@ -262,6 +262,38 @@ interface ImageDialogProps {
 
 ---
 
+## Prompt 6: Scribe CLI — Gracefully Ignore Image Blocks (`scribe-cli`)
+
+**Goal**: Ensure `scribe-cli` (sync, diff, list) does not break when a library contains image blocks. Images are not synced to disk — they are silently skipped.
+
+### Context
+
+The CLI currently assumes all blocks are `scribe/markdown`. Several places will break with image blocks:
+- `getAllNotesWithTitles()` returns all blocks (no `block_type` filter), so image blocks will appear in the note list. Their JSON body will be passed to `extractTitleFromMarkdown()` and written to `.md` files.
+- `sync.ts` hardcodes `block_type: 'scribe/markdown'` when creating new blocks from local files (lines 709, 729).
+- `sync.ts` writes `note.body` as UTF-8 text (line 588) — image block bodies are JSON metadata, not markdown.
+
+The fix is straightforward: filter image blocks out at the query level so the sync logic never sees them.
+
+### Files to modify
+- **Modify** `apps/scribe/scribe-data/src/indexing.ts` — Add a `block_type` filter to `getAllNotesWithTitles()`: `WHERE b.block_type = 'scribe/markdown'` (or `b.block_type IS NULL` for backwards compat with blocks created before the type column). Also update `getNotesInCollectionWithSlugs()` with the same filter.
+- **Modify** `apps/scribe/scribe-cli/src/sync.ts` — No changes needed if the query filter is in place. But add a defensive check: if a block's `block_type` is not `'scribe/markdown'` (and not null), skip it with a debug log.
+
+### What to implement
+- `getAllNotesWithTitles()` and `getNotesInCollectionWithSlugs()` gain a `WHERE b.block_type IS NULL OR b.block_type = 'scribe/markdown'` clause. This ensures image blocks are invisible to any consumer of these functions (CLI sync, listing pages that show note counts, etc.).
+- The CLI `computeSyncOperations()` adds a guard: if an unexpected block_type is encountered, skip it rather than crashing.
+- `cleanDirectory()` continues to only manage `.md` files — image blocks have no on-disk representation, so no cleanup needed.
+
+### Test coverage
+- `getAllNotesWithTitles()` excludes image blocks
+- CLI sync completes without error when the library contains image blocks
+- Image blocks are not written to disk
+- Existing markdown notes continue to sync normally
+
+### Estimated size: ~30 LOC code + ~50 LOC tests
+
+---
+
 ## Verification
 
 After all prompts are complete:
@@ -276,6 +308,7 @@ After all prompts are complete:
    - Create a note with the same slug as an image — collision warning appears in listing
    - Navigate to the colliding slug — disambiguation page shows both the note and the image
    - Verify `SlugActionBar` renders identically for notes and images (breadcrumbs, move, history)
+   - Run `scribe-cli sync` on a library containing image blocks — completes without error, images are skipped, markdown notes sync normally
 
 ## Key Files Reference
 - `tributary-client/src/tributaryBlob.ts` — blob chunking, encryption, merkle helpers (implemented)
@@ -289,3 +322,5 @@ After all prompts are complete:
 - `apps/scribe/scribe-react-common/src/context/bottomNavContext.tsx` — FAB context to extend
 - `apps/scribe/scribe-react-listing/src/pages/SlugViewPage.tsx` — main router to extend
 - `apps/scribe/scribe-react-listing/src/pages/SlugCollision.tsx` — collision page to extend
+- `apps/scribe/scribe-cli/src/sync.ts` — CLI sync logic that must skip image blocks
+- `apps/scribe/scribe-data/src/indexing.ts` — `getAllNotesWithTitles` / `getNotesInCollectionWithSlugs` to add block_type filter
