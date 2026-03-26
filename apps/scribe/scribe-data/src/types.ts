@@ -29,6 +29,7 @@ export type NoteType = 'scribe/markdown'
 export interface ImageBlockBody {
   blobHash: string
   contentType: string
+  title?: string
   altText?: string
   width?: number
   height?: number

@@ -68,12 +68,12 @@ export function slugToTitle(slug: string): string {
 
 /**
  * Try to extract a display title from an image block's JSON body.
- * Returns altText or fileName if present, otherwise null.
+ * Returns title, altText, or fileName if present, otherwise null.
  */
 function tryParseImageTitle(body: string): string | null {
   try {
     const parsed = JSON.parse(body)
-    return parsed.altText || parsed.fileName || null
+    return parsed.title || parsed.altText || parsed.fileName || null
   } catch {
     return null
   }
@@ -318,7 +318,7 @@ export async function getNoteSlugByUuid(
   if (blockType === 'scribe/image') {
     try {
       const parsed = JSON.parse(row.body)
-      title = parsed.altText || parsed.fileName || ''
+      title = parsed.title || parsed.altText || parsed.fileName || ''
     } catch {
       title = ''
     }
@@ -481,7 +481,7 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
     if (blockType === 'scribe/image') {
       try {
         const parsed = JSON.parse(row.body)
-        title = parsed.altText || parsed.fileName || ''
+        title = parsed.title || parsed.altText || parsed.fileName || ''
       } catch {
         title = ''
       }
@@ -547,7 +547,7 @@ export async function getNotesInCollectionWithSlugs(
     if (blockType === 'scribe/image') {
       try {
         const parsed = JSON.parse(row.body)
-        title = parsed.altText || parsed.fileName || ''
+        title = parsed.title || parsed.altText || parsed.fileName || ''
       } catch {
         title = ''
       }

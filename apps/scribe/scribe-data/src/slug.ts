@@ -6,7 +6,7 @@ import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing
 function tryParseTitle(body: string): string | null {
   try {
     const parsed = JSON.parse(body)
-    return parsed.altText || parsed.fileName || null
+    return parsed.title || parsed.altText || parsed.fileName || null
   } catch {
     return null
   }

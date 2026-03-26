@@ -43,6 +43,7 @@ export async function createImageBlock(
   const body: ImageBlockBody = {
     blobHash: data.blobHash,
     contentType: data.contentType,
+    title: data.title,
     altText: data.altText,
     width: data.width,
     height: data.height,
@@ -72,6 +73,7 @@ export async function updateImageBlock(
   updates: {
     blobHash?: string
     contentType?: string
+    title?: string
     altText?: string
     width?: number
     height?: number
@@ -91,6 +93,7 @@ export async function updateImageBlock(
   const newBody: ImageBlockBody = {
     blobHash: updates.blobHash ?? existingBody.blobHash,
     contentType: updates.contentType ?? existingBody.contentType,
+    title: updates.title !== undefined ? updates.title : existingBody.title,
     altText: updates.altText !== undefined ? updates.altText : existingBody.altText,
     width: updates.width !== undefined ? updates.width : existingBody.width,
     height: updates.height !== undefined ? updates.height : existingBody.height,
@@ -150,7 +153,7 @@ export async function getImageBySlug(
     note: {
       block_uuid: row.block_uuid,
       slug: row.slug,
-      title: body.altText || body.fileName || '',
+      title: body.title || body.altText || body.fileName || '',
     },
     body,
   }
