@@ -50,6 +50,7 @@ Plugins are loaded via dynamic `import()`, which requires the hosting server to 
 
 - **npm + esm.sh** — publish to npm, then use `https://esm.sh/your-package` as the plugin URL
 - **Any static host with CORS** — Cloudflare Pages, Vercel, Netlify, etc.
+- **localhost** (local testing only) — `npx serve dist` and use `http://localhost:3000/wake-lock.js`
 
 ## Using in scribe
 
