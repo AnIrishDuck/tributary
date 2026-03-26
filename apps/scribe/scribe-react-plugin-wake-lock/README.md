@@ -33,10 +33,22 @@ npm test
 
 Plugins are loaded via dynamic `import()`, which requires the hosting server to serve files with CORS headers (`Access-Control-Allow-Origin`) and `Content-Type: application/javascript`. GitHub Gist raw URLs do **not** support CORS and will not work.
 
-Options that work:
+### GitHub Pages (simplest)
+
+1. Create a new public GitHub repo
+2. Copy the built file into it and push:
+   ```sh
+   npm run build
+   cp dist/wake-lock.js /path/to/your-repo/
+   cd /path/to/your-repo
+   git add wake-lock.js && git commit -m "publish" && git push
+   ```
+3. Enable GitHub Pages: repo Settings > Pages > deploy from `main` branch
+4. Your plugin URL is `https://<username>.github.io/<repo>/wake-lock.js`
+
+### Other options
 
 - **npm + esm.sh** — publish to npm, then use `https://esm.sh/your-package` as the plugin URL
-- **GitHub Pages** — push `dist/wake-lock.js` to a `gh-pages` branch or `/docs` folder
 - **Any static host with CORS** — Cloudflare Pages, Vercel, Netlify, etc.
 
 ## Using in scribe
