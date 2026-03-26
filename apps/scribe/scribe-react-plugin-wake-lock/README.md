@@ -29,10 +29,21 @@ Produces `dist/wake-lock.js` — a standalone ES module with `react` and `react/
 npm test
 ```
 
+## Publishing
+
+For small single-file bundles, you can publish via a GitHub gist:
+
+```sh
+npm run build
+gh gist create --public dist/wake-lock.js
+```
+
+Use the **raw** URL from the gist (the `gist.githubusercontent.com` URL, not the HTML page) as the plugin URL in scribe. For larger plugins with multiple files, host the built output on a CDN or static file server.
+
 ## Using in scribe
 
-1. Build the plugin (or host the built file on any URL)
-2. In a scribe library's plugin settings, add the URL to `dist/wake-lock.js`
+1. Build and publish the plugin (see above)
+2. In a scribe library's plugin settings, add the raw URL
 3. Optionally set config `{"top": "false"}` to place the button at the bottom
 
 ## How it works (for plugin authors)
