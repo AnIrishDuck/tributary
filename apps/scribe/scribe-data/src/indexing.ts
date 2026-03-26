@@ -705,6 +705,10 @@ export async function indexAll(
   // Rebuild slug collision cache (cheap — few rows)
   await rebuildSlugCollisions(localDb)
 
+  // Rebuild the title index for wikilink resolution (cheap — few rows)
+  const { rebuildTitleIndex } = await import('./titleIndex.js')
+  await rebuildTitleIndex(localDb)
+
   // Then index search vectors only for the notes that were just processed,
   // avoiding a redundant full-table scan to find unindexed notes.
   const searchResult = await indexSearchVectors(localDb, {
