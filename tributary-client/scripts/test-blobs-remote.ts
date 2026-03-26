@@ -40,7 +40,7 @@ async function run() {
 
   // Upload
   console.log('1. Uploading blob...')
-  const rootHash = await blob.upload(testData, 'manual-test')
+  const rootHash = await blob.upload(testData, 'https://manual-test.local')
   console.log(`   Root hash: ${rootHash}`)
   console.log()
 
