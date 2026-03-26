@@ -14,7 +14,7 @@ import {
   buildChunkTree,
   getChunkProof,
   verifyChunkProof,
-} from '../src/tributaryBlob.js'
+} from '../src/blobHelpers.js'
 
 // Import the actual server-side function (no Deno deps in this file)
 import { verifyMerkleProof } from '../../supabase/functions/shared/merkleProof.ts'

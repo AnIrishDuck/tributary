@@ -1,98 +1,132 @@
 import nacl from 'tweetnacl'
-import { MerkleTree } from 'merkletreejs'
-import SHA256 from 'crypto-js/sha256.js'
-import { computeHash } from './hashUtils.js'
+import {
+  BLOB_CHUNK_SIZE,
+  chunkData,
+  encryptChunk,
+  decryptChunk,
+  computeChunkHash,
+  buildChunkTree,
+  getChunkProof,
+  deriveEncryptionKey,
+} from './blobHelpers.js'
+import type { Server, ObjectBlobMetadata } from './server.js'
 
-export const BLOB_CHUNK_SIZE = 6 * 1024 * 1024 // 6MB
+/** Size of an encrypted chunk for a full plaintext chunk */
+const ENCRYPTED_CHUNK_SIZE =
+  BLOB_CHUNK_SIZE + nacl.secretbox.nonceLength + nacl.secretbox.overheadLength
 
-/**
- * Split data into chunks of at most BLOB_CHUNK_SIZE bytes.
- * Returns at least one chunk (empty Uint8Array for empty input).
- */
-export function chunkData(data: Uint8Array): Uint8Array[] {
-  if (data.length === 0) {
-    return [new Uint8Array(0)]
+export class TributaryBlob {
+  private server: Server
+  private readKey: Uint8Array
+
+  /**
+   * Create a TributaryBlob instance for uploading/downloading blobs
+   * encrypted with the given stream's read key.
+   *
+   * @param server - Server interface for blob storage
+   * @param readKey - Uint8Array read key (stream's private key first 32 bytes),
+   *                  used to derive the nacl.secretbox encryption key.
+   *                  Same derivation as TributaryStream: SHA256(readKey) → 32 bytes.
+   */
+  constructor(server: Server, readKey: Uint8Array) {
+    this.server = server
+    this.readKey = readKey
   }
-  const chunks: Uint8Array[] = []
-  for (let offset = 0; offset < data.length; offset += BLOB_CHUNK_SIZE) {
-    chunks.push(data.slice(offset, offset + BLOB_CHUNK_SIZE))
+
+  /**
+   * Encrypt and upload a blob. Returns the root hash (content address).
+   *
+   * Flow:
+   * 1. Chunk the plaintext data into 6MB pieces
+   * 2. Encrypt each chunk (nacl.secretbox with random nonce)
+   * 3. Hash each encrypted chunk → leaf hashes
+   * 4. Build merkle tree from leaf hashes → root hash
+   * 5. Call server.initBlobUpload(rootHash, { chunkCount, totalSize, domain })
+   * 6. For each chunk in order: get merkle proof,
+   *    call server.uploadBlobChunk(rootHash, index, encryptedChunk, proof)
+   * 7. Return root hash
+   */
+  async upload(data: Uint8Array, domain?: string): Promise<string> {
+    const encryptionKey = await deriveEncryptionKey(this.readKey)
+
+    // 1. Chunk
+    const chunks = chunkData(data)
+
+    // 2. Encrypt each chunk
+    const encryptedChunks = chunks.map(c => encryptChunk(c, encryptionKey))
+
+    // 3. Hash each encrypted chunk
+    const chunkHashes = await Promise.all(
+      encryptedChunks.map(ec => computeChunkHash(ec))
+    )
+
+    // 4. Build merkle tree
+    const { root, tree } = buildChunkTree(chunkHashes)
+
+    // 5. Compute total encrypted size
+    let totalSize = 0
+    for (const ec of encryptedChunks) totalSize += ec.length
+
+    // 6. Init upload
+    await this.server.initBlobUpload(root, {
+      chunkCount: encryptedChunks.length,
+      totalSize,
+      domain: domain || '',
+    })
+
+    // 7. Upload each chunk with proof
+    for (let i = 0; i < encryptedChunks.length; i++) {
+      const proof = getChunkProof(tree, chunkHashes[i])
+      await this.server.uploadBlobChunk(root, i, encryptedChunks[i], proof)
+    }
+
+    return root
   }
-  return chunks
-}
 
-/**
- * Encrypt a chunk using nacl.secretbox with a random nonce.
- * Returns nonce (24 bytes) || ciphertext.
- */
-export function encryptChunk(chunk: Uint8Array, encryptionKey: Uint8Array): Uint8Array {
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-  const ciphertext = nacl.secretbox(chunk, nonce, encryptionKey)
-  const result = new Uint8Array(nonce.length + ciphertext.length)
-  result.set(nonce)
-  result.set(ciphertext, nonce.length)
-  return result
-}
+  /**
+   * Download and decrypt a blob by root hash.
+   * Downloads the full encrypted blob, splits into encrypted chunks
+   * (using known chunk size), decrypts each, reassembles.
+   * Throws if decryption fails.
+   */
+  async download(rootHash: string): Promise<Uint8Array> {
+    const encryptionKey = await deriveEncryptionKey(this.readKey)
 
-/**
- * Decrypt a chunk encrypted with encryptChunk.
- * Expects nonce (24 bytes) || ciphertext.
- */
-export function decryptChunk(encrypted: Uint8Array, encryptionKey: Uint8Array): Uint8Array {
-  const nonce = encrypted.slice(0, nacl.secretbox.nonceLength)
-  const ciphertext = encrypted.slice(nacl.secretbox.nonceLength)
-  const plaintext = nacl.secretbox.open(ciphertext, nonce, encryptionKey)
-  if (plaintext === null) {
-    throw new Error('Failed to decrypt chunk (wrong key or corrupted data)')
+    const blobData = await this.server.downloadBlob(rootHash)
+    if (blobData === null) {
+      throw new Error(`Blob not found: ${rootHash}`)
+    }
+
+    // Split into encrypted chunks
+    const encryptedChunks: Uint8Array[] = []
+    let offset = 0
+    while (offset < blobData.length) {
+      const end = Math.min(offset + ENCRYPTED_CHUNK_SIZE, blobData.length)
+      encryptedChunks.push(blobData.slice(offset, end))
+      offset = end
+    }
+
+    // Decrypt each chunk
+    const plainChunks = encryptedChunks.map(ec => decryptChunk(ec, encryptionKey))
+
+    // Reassemble
+    let totalSize = 0
+    for (const pc of plainChunks) totalSize += pc.length
+
+    const result = new Uint8Array(totalSize)
+    offset = 0
+    for (const pc of plainChunks) {
+      result.set(pc, offset)
+      offset += pc.length
+    }
+
+    return result
   }
-  return plaintext
-}
 
-/**
- * Compute SHA256 hash of a chunk, returning hex string.
- */
-export async function computeChunkHash(chunk: Uint8Array): Promise<string> {
-  return computeHash(chunk)
-}
-
-/**
- * Build a merkle tree from chunk hashes.
- * Returns the root hash (hex) and the MerkleTree instance.
- */
-export function buildChunkTree(chunkHashes: string[]): { root: string; tree: MerkleTree } {
-  const leaves = chunkHashes.map(h => Buffer.from(h, 'hex'))
-  const tree = new MerkleTree(leaves, SHA256)
-  const root = tree.getRoot().toString('hex')
-  return { root, tree }
-}
-
-export interface ProofEntry {
-  position: 'left' | 'right'
-  data: string // hex-encoded hash
-}
-
-/**
- * Get the merkle proof for a chunk hash.
- * Returns array of { position, data } entries needed for verification.
- */
-export function getChunkProof(tree: MerkleTree, chunkHash: string): ProofEntry[] {
-  const leaf = Buffer.from(chunkHash, 'hex')
-  const proof = tree.getProof(leaf)
-  return proof.map((p: { position: string; data: Buffer }) => ({
-    position: p.position as 'left' | 'right',
-    data: p.data.toString('hex'),
-  }))
-}
-
-/**
- * Verify that a chunk hash belongs to a merkle tree with the given root.
- */
-export function verifyChunkProof(root: string, chunkHash: string, proof: ProofEntry[]): boolean {
-  const leaf = Buffer.from(chunkHash, 'hex')
-  const rootBuf = Buffer.from(root, 'hex')
-  const tree = new MerkleTree([], SHA256)
-  const proofObjects = proof.map(p => ({
-    position: p.position,
-    data: Buffer.from(p.data, 'hex'),
-  }))
-  return tree.verify(proofObjects, leaf, rootBuf)
+  /**
+   * Get metadata for a blob (size, domain, created date).
+   */
+  async getMetadata(rootHash: string): Promise<ObjectBlobMetadata | null> {
+    return this.server.getBlobObjectMetadata(rootHash)
+  }
 }

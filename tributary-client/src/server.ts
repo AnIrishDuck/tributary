@@ -24,6 +24,15 @@ export interface ArrowBlob {
   data: Uint8Array;
 }
 
+/** Metadata for a content-addressed blob object (from blob object storage) */
+export interface ObjectBlobMetadata {
+  rootHash: string;
+  domain: string;
+  size: number;
+  chunkCount: number;
+  createdAt: Date;
+}
+
 export interface Server {
   /**
    * Store an encrypted blob with signature verification
@@ -117,4 +126,43 @@ export interface Server {
    * @returns Promise resolving to success status
    */
   deleteAccountConfig(key: string): Promise<boolean>;
+
+  // Blob object storage operations (content-addressed encrypted blobs)
+
+  /**
+   * Initialize a blob upload session
+   * @param rootHash Merkle root hash (content address)
+   * @param params Upload parameters
+   * @returns Promise resolving to upload session info
+   */
+  initBlobUpload(rootHash: string, params: {
+    chunkCount: number;
+    totalSize: number;
+    domain?: string;
+  }): Promise<{ tusUploadUrl: string }>;
+
+  /**
+   * Upload a single chunk with merkle proof verification
+   * @param rootHash Merkle root hash of the blob
+   * @param chunkIndex Zero-based chunk index
+   * @param data Encrypted chunk data
+   * @param proof Merkle proof entries
+   * @returns Promise resolving to success status
+   */
+  uploadBlobChunk(rootHash: string, chunkIndex: number,
+    data: Uint8Array, proof: Array<{ position: 'left' | 'right'; data: string }>): Promise<boolean>;
+
+  /**
+   * Get metadata for a blob object
+   * @param rootHash Merkle root hash
+   * @returns Promise resolving to metadata or null if not found
+   */
+  getBlobObjectMetadata(rootHash: string): Promise<ObjectBlobMetadata | null>;
+
+  /**
+   * Download the full assembled blob data
+   * @param rootHash Merkle root hash
+   * @returns Promise resolving to blob data or null if not found
+   */
+  downloadBlob(rootHash: string): Promise<Uint8Array | null>;
 }

@@ -85,11 +85,10 @@ build-cli:
 build-client:
 	@echo "Building tributary-client..."
 	cd tributary-client && npm run build
-	cd kysely-tributary && npm run build
 
 # Convenience target to ensure all dependencies are built
 .PHONY: build-all
-build-all: build-cli build-client
+build-all: build-client build-cli
 	@echo "Ensuring all components are built..."
 
 # Clean test databases that might be left over

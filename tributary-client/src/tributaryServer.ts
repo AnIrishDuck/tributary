@@ -1,5 +1,5 @@
 // Implementation of Server interface that communicates with tributary-server
-import { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
+import { Server, BlobMetadata, BlobData, ArrowBlob, ObjectBlobMetadata } from './server.js';
 import { warn } from './logger.js';
 
 // Import base64url functions
@@ -392,5 +392,116 @@ export class TributaryServer implements Server {
       if (error instanceof Error) throw error;
       throw new Error(`Failed to retrieve blobs via Arrow: ${String(error)}`);
     }
+  }
+
+  // Blob object storage methods
+
+  private blobBaseUrl?: string;
+
+  /**
+   * Set the base URL for the blob object storage edge function.
+   * This is separate from the main tributary-server URL.
+   */
+  setBlobBaseUrl(url: string) {
+    this.blobBaseUrl = url.replace(/\/$/, '');
+  }
+
+  private getBlobUrl(path: string): string {
+    const base = this.blobBaseUrl || this.baseUrl;
+    return `${base}/blob${path}`;
+  }
+
+  async initBlobUpload(rootHash: string, params: {
+    chunkCount: number;
+    totalSize: number;
+    domain?: string;
+  }): Promise<{ tusUploadUrl: string }> {
+    const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/upload`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        chunkCount: params.chunkCount,
+        totalSize: params.totalSize,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to init blob upload: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    return { tusUploadUrl: result.tusUploadUrl };
+  }
+
+  async uploadBlobChunk(rootHash: string, chunkIndex: number,
+    data: Uint8Array, proof: Array<{ position: 'left' | 'right'; data: string }>): Promise<boolean> {
+    const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/chunk/${chunkIndex}`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'X-Merkle-Proof': JSON.stringify(proof),
+    };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers,
+      body: data as BodyInit,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to upload blob chunk: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    return true;
+  }
+
+  async getBlobObjectMetadata(rootHash: string): Promise<ObjectBlobMetadata | null> {
+    const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}`);
+    const headers: Record<string, string> = {};
+    const authHeader = this.getAuthHeader();
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(url, { headers });
+
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(`Failed to get blob metadata: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return {
+      rootHash: result.rootHash,
+      domain: result.domain,
+      size: result.size,
+      chunkCount: result.chunkCount,
+      createdAt: new Date(result.createdAt),
+    };
+  }
+
+  async downloadBlob(rootHash: string): Promise<Uint8Array | null> {
+    const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/data`);
+    const headers: Record<string, string> = {};
+    const authHeader = this.getAuthHeader();
+    if (authHeader) headers['Authorization'] = authHeader;
+
+    const response = await fetch(url, { headers });
+
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(`Failed to download blob: ${response.status} ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
   }
 }
