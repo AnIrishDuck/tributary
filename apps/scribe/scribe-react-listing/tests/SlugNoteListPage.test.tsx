@@ -63,8 +63,10 @@ describe('SlugNoteListPage', () => {
     // Should show the note inside the collection
     expect(screen.getByText('Pasta')).toBeInTheDocument()
 
-    // Should show "New Collection" button (icon-only on mobile, text visible on desktop)
-    expect(screen.getByRole('button', { name: /New Collection/ })).toBeInTheDocument()
+    // Should show the FAB speed-dial menu (which includes Add Collection)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument()
+    })
   })
 
   it('should render image blocks with photo icon distinguishing them from notes', async () => {
