@@ -13,9 +13,27 @@ export type NoteUuid = string
 export type VersionUuid = string
 
 /**
+ * Type of block content
+ */
+export type BlockType = 'scribe/markdown' | 'scribe/image'
+
+/**
  * Type of note - currently only scribe/markdown is supported
+ * @deprecated Use BlockType instead
  */
 export type NoteType = 'scribe/markdown'
+
+/**
+ * Metadata stored in the body field of a scribe/image block (JSON-serialized).
+ */
+export interface ImageBlockBody {
+  blobHash: string
+  contentType: string
+  altText?: string
+  width?: number
+  height?: number
+  fileName?: string
+}
 
 /**
  * Unique identifier for a collection (UUID format)
@@ -282,6 +300,14 @@ export interface PluginEntry {
   plugin_url: string
   config_json: string
   sort_order: number
+}
+
+/**
+ * Extended note slug info that includes block_type.
+ * Used by slug resolution to distinguish notes from images.
+ */
+export interface BlockSlugInfo extends NoteSlug {
+  block_type: string
 }
 
 // Re-export search types from search.ts
