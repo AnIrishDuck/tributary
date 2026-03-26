@@ -216,4 +216,32 @@ describe('bulk image upload', () => {
     expect(abImg).not.toBeNull()
     expect(abImg!.body.blobHash).toBe('h3')
   })
+
+  test('rootCollectionId null: resolves library root and creates sub-collections under it', async () => {
+    const plan: BulkUploadPlan = {
+      collections: [
+        { folderPath: 'photos', title: 'Photos', slug: 'photos', parentFolderPath: null },
+      ],
+      images: [
+        { blobHash: 'hash-root', contentType: 'image/png', fileName: 'logo.png', slug: 'logo', folderPath: '' },
+        { blobHash: 'hash-sub', contentType: 'image/jpeg', fileName: 'beach.jpg', slug: 'beach', folderPath: 'photos' },
+      ],
+      rootCollectionId: null,
+    }
+
+    const collectionMap = await ensureBulkCollections(syncedDb, plan, 'test-user')
+    expect(collectionMap.size).toBe(1)
+
+    // The "photos" collection should be a child of the library root, not a new root
+    const photosUuid = collectionMap.get('photos')!
+    const photosCol = await getCollectionByUuid(syncedDb, photosUuid)
+    expect(photosCol).not.toBeNull()
+    expect(photosCol!.parent_collection_uuid).toBe(rootCollectionId)
+
+    // Images should also be assigned correctly
+    const blocks = await createBulkImageBlocks(syncedDb, plan, collectionMap, 'test-user')
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0].collection_id).toBe(rootCollectionId)
+    expect(blocks[1].collection_id).toBe(photosUuid)
+  })
 })
