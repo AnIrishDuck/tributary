@@ -140,7 +140,6 @@ async function handleInitUpload(
     const tusUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
     const tusHeaders: Record<string, string> = {
       'apikey': serviceRoleKey,
-      'Authorization': `Bearer ${serviceRoleKey}`,
       'Upload-Length': totalSize.toString(),
       'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
       'Tus-Resumable': '1.0.0',
@@ -246,7 +245,6 @@ async function handleUploadChunk(
       method: 'PATCH',
       headers: {
         'apikey': serviceRoleKey,
-        'Authorization': `Bearer ${serviceRoleKey}`,
         'Upload-Offset': uploadOffset.toString(),
         'Content-Type': 'application/offset+octet-stream',
         'Tus-Resumable': '1.0.0',
@@ -328,7 +326,6 @@ async function handleDownload(
 
     const storageHeaders: Record<string, string> = {
       'apikey': serviceRoleKey,
-      'Authorization': `Bearer ${serviceRoleKey}`,
     };
 
     // Pass through Range header for partial content support
