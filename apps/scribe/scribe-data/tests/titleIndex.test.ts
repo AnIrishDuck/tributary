@@ -4,6 +4,7 @@ import { rebuildTitleIndex, lookupByTitle } from '../src/titleIndex.js'
 import { indexSlugs, indexAll } from '../src/indexing.js'
 import { createNote } from '../src/note.js'
 import { createCollection } from '../src/collection.js'
+import { createImageBlock } from '../src/image.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
@@ -279,6 +280,77 @@ describe('title index', () => {
   test('lookupByTitle returns empty array for non-existent title', async () => {
     const results = await lookupByTitle(localDb, 'Does Not Exist')
     expect(results).toHaveLength(0)
+  })
+
+  test('image blocks are indexed by altText', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user'
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'abc123',
+      contentType: 'image/png',
+      altText: 'Sunset Photo',
+      fileName: 'sunset.png',
+      slug: 'sunset-photo',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid
+    })
+
+    await indexSlugs(localDb)
+    await rebuildTitleIndex(localDb)
+
+    const results = await lookupByTitle(localDb, 'Sunset Photo')
+    expect(results).toHaveLength(1)
+    expect(results[0].entity_type).toBe('image')
+    expect(results[0].slug_path).toBe('sunset-photo')
+    expect(results[0].title).toBe('Sunset Photo')
+  })
+
+  test('image blocks without altText fall back to fileName', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user'
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'def456',
+      contentType: 'image/jpeg',
+      fileName: 'vacation.jpg',
+      slug: 'vacation',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid
+    })
+
+    await indexSlugs(localDb)
+    await rebuildTitleIndex(localDb)
+
+    const results = await lookupByTitle(localDb, 'vacation.jpg')
+    expect(results).toHaveLength(1)
+    expect(results[0].entity_type).toBe('image')
+  })
+
+  test('image blocks without altText or fileName are not indexed', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user'
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'ghi789',
+      contentType: 'image/png',
+      slug: 'unnamed',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid
+    })
+
+    await indexSlugs(localDb)
+    await rebuildTitleIndex(localDb)
+
+    // Only the root collection exists, but it's excluded (root)
+    const result = await localDb.query('SELECT * FROM title_index', [])
+    expect(result.rows).toHaveLength(0)
   })
 
   test('collections nested multiple levels produce correct slug_path', async () => {

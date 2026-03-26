@@ -2,6 +2,19 @@ import { TributaryLocal } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
 
 /**
+ * Try to extract a display title from an image block's JSON body.
+ * Returns altText or fileName if present, otherwise null.
+ */
+function tryParseImageTitle(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body)
+    return parsed.altText || parsed.fileName || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Result of a title lookup in the title index.
  */
 export interface TitleLookupResult {
@@ -59,18 +72,23 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   // Phase 2: Gather all entries for the title index
   const entries: Array<{ title: string; entity_type: string; entity_uuid: string; slug_path: string }> = []
 
-  // 2a: Authoritative notes with titles
-  const notesResult = await db.query(
-    `SELECT b.block_uuid, b.slug, b.body, b.collection_id
+  // 2a: Authoritative blocks (notes and images) with titles
+  const blocksResult = await db.query(
+    `SELECT b.block_uuid, b.slug, b.body, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av
-       ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-     WHERE b.block_type = 'scribe/markdown'`,
+       ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid`,
     []
   )
 
-  for (const row of (notesResult.rows || []) as any[]) {
-    const title = extractTitleFromMarkdown(row.body)
+  for (const row of (blocksResult.rows || []) as any[]) {
+    const blockType = row.block_type || 'scribe/markdown'
+    let title: string | null
+    if (blockType === 'scribe/image') {
+      title = tryParseImageTitle(row.body)
+    } else {
+      title = extractTitleFromMarkdown(row.body)
+    }
     if (!title) continue
 
     const collectionPath = row.collection_id
@@ -80,7 +98,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
 
     entries.push({
       title,
-      entity_type: 'note',
+      entity_type: blockType === 'scribe/image' ? 'image' : 'note',
       entity_uuid: row.block_uuid,
       slug_path: slugPath
     })
