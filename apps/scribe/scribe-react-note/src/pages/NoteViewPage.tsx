@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { PencilIcon, ArrowLeftIcon, ArrowRightIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
-import { Link } from 'react-router'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
-import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
-import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
+import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
@@ -33,7 +31,6 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   const routeCtx = useRouteContext()
   const plugins = usePlugins()
   const contentRef = useRef<HTMLDivElement>(null)
-  const [showMoveModal, setShowMoveModal] = useState(false)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
 
   // Fetch version position info when props are available
@@ -80,7 +77,6 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   }
 
   const handleMoved = (newSlugPath: string) => {
-    setShowMoveModal(false)
     navigate(routeCtx.buildPath(newSlugPath))
   }
 
@@ -121,28 +117,16 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
         )}
 
         {/* Breadcrumbs + Move button */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1 min-w-0">
-            <Breadcrumbs ancestors={ancestors} prefix={prefix} allLinks trailingSlug={slugPath.split('/').pop()} />
-          </div>
-          {!readOnly && (
-            <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
-              <Link
-                to={routeCtx.buildPath(`${slugPath}&history`)}
-                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-              >
-                <ClockIcon className="w-4 h-4" />
-              </Link>
-              <button
-                onClick={() => setShowMoveModal(true)}
-                aria-label="Move"
-                className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-              >
-                <ArrowRightIcon className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
+        <SlugActionBar
+          ancestors={ancestors}
+          prefix={prefix}
+          slugPath={slugPath}
+          entityType="note"
+          entityId={blockUuid}
+          showHistory
+          readOnly={readOnly}
+          onMoved={handleMoved}
+        />
 
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <div
@@ -165,15 +149,6 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
         )}
       </div>
 
-      <MoveModal
-        isOpen={showMoveModal}
-        onClose={() => setShowMoveModal(false)}
-        entityType="note"
-        entityId={blockUuid}
-        currentSlugPath={slugPath}
-        prefix={prefix}
-        onMoved={handleMoved}
-      />
     </div>
   )
 }

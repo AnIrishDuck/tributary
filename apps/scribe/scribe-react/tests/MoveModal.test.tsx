@@ -156,9 +156,9 @@ describe('MoveModal', () => {
       const input = screen.getByLabelText('Target path')
       fireEvent.change(input, { target: { value: '/target-note/source-note' } })
 
-      // Should show "is a note, not a collection" warning
+      // Should show "is not a collection" warning
       await waitFor(() => {
-        expect(screen.getByText(/is a note, not a collection/)).toBeInTheDocument()
+        expect(screen.getByText(/is not a collection/)).toBeInTheDocument()
       }, { timeout: 5000 })
 
       // Move button inside modal should be disabled
