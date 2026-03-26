@@ -31,14 +31,13 @@ npm test
 
 ## Publishing
 
-For small single-file bundles, you can publish via a GitHub gist:
+Plugins are loaded via dynamic `import()`, which requires the hosting server to serve files with CORS headers (`Access-Control-Allow-Origin`) and `Content-Type: application/javascript`. GitHub Gist raw URLs do **not** support CORS and will not work.
 
-```sh
-npm run build
-gh gist create --public dist/wake-lock.js
-```
+Options that work:
 
-Use the **raw** URL from the gist (the `gist.githubusercontent.com` URL, not the HTML page) as the plugin URL in scribe. For larger plugins with multiple files, host the built output on a CDN or static file server.
+- **npm + esm.sh** — publish to npm, then use `https://esm.sh/your-package` as the plugin URL
+- **GitHub Pages** — push `dist/wake-lock.js` to a `gh-pages` branch or `/docs` folder
+- **Any static host with CORS** — Cloudflare Pages, Vercel, Netlify, etc.
 
 ## Using in scribe
 
