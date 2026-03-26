@@ -1,13 +1,16 @@
 import { createContext, useContext } from 'react'
 
-export interface FloatingAction {
+export interface FloatingActionItem {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   label: string
   to: string
 }
 
+/** @deprecated Use FloatingActionItem instead */
+export type FloatingAction = FloatingActionItem
+
 interface BottomNavContextValue {
-  setFloatingAction: (action: FloatingAction | null) => void
+  setFloatingAction: (action: FloatingActionItem | FloatingActionItem[] | null) => void
 }
 
 const BottomNavContext = createContext<BottomNavContextValue | null>(null)

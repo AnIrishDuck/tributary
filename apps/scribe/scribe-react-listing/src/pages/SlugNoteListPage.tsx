@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
@@ -35,10 +35,15 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const routeCtx = useRouteContext()
   const isRoot = !collection
 
-  // Set the floating action button to "New Note" for this collection
+  // Set the floating action buttons for "Add Note" and "Add Image"
   useEffect(() => {
-    const newNoteUrl = routeCtx.buildPath(slugPath ? `${slugPath}/+note` : '+note')
-    setFloatingAction({ icon: PlusIcon, label: 'New Note', to: newNoteUrl })
+    const base = slugPath ? `${slugPath}/` : ''
+    const newNoteUrl = routeCtx.buildPath(`${base}+note`)
+    const newImageUrl = routeCtx.buildPath(`${base}+image`)
+    setFloatingAction([
+      { icon: PlusIcon, label: 'Add Note', to: newNoteUrl },
+      { icon: PhotoIcon, label: 'Add Image', to: newImageUrl },
+    ])
     return () => setFloatingAction(null)
   }, [routeCtx, slugPath, setFloatingAction])
 
