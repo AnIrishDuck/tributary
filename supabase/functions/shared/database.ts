@@ -3,6 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { Blob, BlobMetadata, CollectionInfo, AccountConfigEntry } from './models.ts';
+import { BlobObject, BlobUpload } from './blobModels.ts';
 
 // Helper function to convert hex string to Uint8Array
 function hexStringToUint8Array(hexString: string): Uint8Array {
@@ -362,6 +363,141 @@ export class Database {
       return false;
     }
 
+    return true;
+  }
+
+  // --- Blob Object operations (content-addressed encrypted blobs) ---
+
+  async createBlobUpload(upload: Omit<BlobUpload, 'created_at' | 'chunks_uploaded'>): Promise<boolean> {
+    const { error } = await this.client
+      .from('blob_uploads')
+      .insert({
+        root_hash: upload.root_hash,
+        owner_id: upload.owner_id,
+        domain: upload.domain,
+        size: upload.size,
+        chunk_count: upload.chunk_count,
+        tus_upload_url: upload.tus_upload_url,
+        chunks_uploaded: 0,
+      });
+
+    if (error) {
+      console.error('Database error in createBlobUpload:', error);
+      return false;
+    }
+    return true;
+  }
+
+  async getBlobUpload(rootHash: string): Promise<BlobUpload | null> {
+    const { data, error } = await this.client
+      .from('blob_uploads')
+      .select('*')
+      .eq('root_hash', rootHash)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      console.error('Database error in getBlobUpload:', error);
+      return null;
+    }
+
+    if (data && typeof data.created_at === 'string') {
+      data.created_at = new Date(data.created_at);
+    }
+    return data as BlobUpload;
+  }
+
+  async incrementBlobUploadChunks(rootHash: string): Promise<number> {
+    // Use raw RPC to atomically increment
+    const { data, error } = await this.client
+      .from('blob_uploads')
+      .select('chunks_uploaded')
+      .eq('root_hash', rootHash)
+      .single();
+
+    if (error || !data) {
+      console.error('Database error in incrementBlobUploadChunks (read):', error);
+      return -1;
+    }
+
+    const newCount = data.chunks_uploaded + 1;
+    const { error: updateError } = await this.client
+      .from('blob_uploads')
+      .update({ chunks_uploaded: newCount })
+      .eq('root_hash', rootHash);
+
+    if (updateError) {
+      console.error('Database error in incrementBlobUploadChunks (update):', updateError);
+      return -1;
+    }
+
+    return newCount;
+  }
+
+  async completeBlobUpload(rootHash: string): Promise<boolean> {
+    // Get the upload record
+    const upload = await this.getBlobUpload(rootHash);
+    if (!upload) return false;
+
+    // Insert into blob_objects
+    const { error: insertError } = await this.client
+      .from('blob_objects')
+      .insert({
+        root_hash: upload.root_hash,
+        owner_id: upload.owner_id,
+        domain: upload.domain,
+        size: upload.size,
+        chunk_count: upload.chunk_count,
+      });
+
+    if (insertError) {
+      console.error('Database error in completeBlobUpload (insert):', insertError);
+      return false;
+    }
+
+    // Delete the upload record
+    const { error: deleteError } = await this.client
+      .from('blob_uploads')
+      .delete()
+      .eq('root_hash', rootHash);
+
+    if (deleteError) {
+      console.error('Database error in completeBlobUpload (delete):', deleteError);
+      // Not fatal — the blob_object was created
+    }
+
+    return true;
+  }
+
+  async getBlobObject(rootHash: string): Promise<BlobObject | null> {
+    const { data, error } = await this.client
+      .from('blob_objects')
+      .select('*')
+      .eq('root_hash', rootHash)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      console.error('Database error in getBlobObject:', error);
+      return null;
+    }
+
+    if (data && typeof data.created_at === 'string') {
+      data.created_at = new Date(data.created_at);
+    }
+    return data as BlobObject;
+  }
+
+  async deleteBlobUpload(rootHash: string): Promise<boolean> {
+    const { error } = await this.client
+      .from('blob_uploads')
+      .delete()
+      .eq('root_hash', rootHash);
+
+    if (error) {
+      console.error('Database error in deleteBlobUpload:', error);
+      return false;
+    }
     return true;
   }
 }
