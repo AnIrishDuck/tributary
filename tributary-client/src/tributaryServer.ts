@@ -38,9 +38,11 @@ export class TributaryServer implements Server {
   /**
    * @param baseUrl The functions root URL (e.g. https://xxx.supabase.co/functions/v1).
    *               Stream endpoints are at {baseUrl}/stream/... and blob endpoints at {baseUrl}/blob/...
+   *               For backwards compatibility, a trailing /stream is stripped automatically.
    */
   constructor(baseUrl: string, authKey?: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash if present
+    // Normalize: strip trailing slash, then strip trailing /stream for backwards compat
+    this.baseUrl = baseUrl.replace(/\/$/, '').replace(/\/stream$/, '');
     this.authKey = authKey;
   }
 
