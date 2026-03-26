@@ -17,6 +17,7 @@ import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
 import LibrarySettingsPage from './LibrarySettingsPage'
 import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
+import ImageAddPage from 'scribe-react-img/src/pages/ImageAddPage'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -41,6 +42,7 @@ type PageMode =
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; collidingSlugs: Set<string>; slugPath: string; libraryName: string }
   | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
   | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; initialBody?: string; collectionLabel: string; ancestors: Collection[] }
+  | { type: 'newImage'; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
@@ -162,6 +164,30 @@ const SlugViewPage: React.FC = () => {
 
           const bodyParam = searchParams.get('body') || undefined
           setMode({ type: 'newNote', collectionId, parentSlugPath, initialBody: bodyParam, collectionLabel, ancestors: noteAncestors })
+          return
+        }
+
+        // --- Handle +image (new image creation) ---
+        if (lastSegment === '+image') {
+          const parentSegments = segments.slice(0, -1)
+          let collectionId: string | undefined = undefined
+          let collectionLabel = libraryName
+          const parentSlugPath = parentSegments.join('/')
+          let imageAncestors: Collection[] = []
+
+          if (parentSegments.length > 0) {
+            const library = await getLibrary(localDb)
+            if (!library) throw new Error('Library not found')
+            const resolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (!resolved || resolved.type !== 'collection') {
+              throw new Error('Parent path does not resolve to a collection')
+            }
+            collectionId = resolved.entity.collection_uuid
+            collectionLabel = resolved.entity.title || libraryName
+            imageAncestors = await getCollectionAncestors(localDb, resolved.entity.collection_uuid)
+          }
+
+          setMode({ type: 'newImage', collectionId, parentSlugPath, collectionLabel, ancestors: imageAncestors })
           return
         }
 
@@ -662,6 +688,18 @@ const SlugViewPage: React.FC = () => {
         cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         initialTitle={mode.initialTitle}
         initialBody={mode.initialBody}
+        collectionLabel={mode.collectionLabel}
+        ancestors={mode.ancestors}
+      />
+    )
+  }
+
+  if (mode.type === 'newImage') {
+    return (
+      <ImageAddPage
+        prefix={prefix || ''}
+        collectionId={mode.collectionId}
+        cancelPath={routeCtx.buildPath(mode.parentSlugPath || undefined)}
         collectionLabel={mode.collectionLabel}
         ancestors={mode.ancestors}
       />

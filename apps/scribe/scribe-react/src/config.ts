@@ -5,9 +5,9 @@
 const DEFAULT_SESSION_EXPIRY_SECONDS = 7 * 24 * 60 * 60
 
 export const CONFIG = {
-  // API URL for the tributary server
-  // In production, this should be set via import.meta.env.VITE_API_URL
-  API_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+  // Functions root URL — stream endpoints at {url}/stream, blob endpoints at {url}/blob.
+  // In production, set via import.meta.env.VITE_API_URL (e.g. https://xxx.supabase.co/functions/v1)
+  API_URL: import.meta.env.VITE_API_URL || 'http://localhost:54321/functions/v1',
 
   // Optional API key for server authentication (e.g., Supabase anon key)
   API_KEY: import.meta.env.VITE_API_KEY || undefined,
