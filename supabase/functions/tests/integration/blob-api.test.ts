@@ -13,8 +13,9 @@ import { type Authenticator } from '../../shared/routes.ts';
 
 // --- Helpers ---
 
-// Must be a valid UUID since the DB column is UUID type
-const TEST_USER_ID = '00000000-0000-4000-a000-' + Date.now().toString().padStart(12, '0');
+// Must be a valid UUID since the DB column is UUID type.
+// Service role key bypasses RLS, so this doesn't need to match a real auth user.
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Fake authenticator that always succeeds with a fixed user ID
 const fakeAuth: Authenticator = async (_req) => ({ userId: TEST_USER_ID });
