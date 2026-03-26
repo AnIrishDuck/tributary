@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSlugLinksInHtml, renderMarkdown } from './markdown'
+import { resolveSlugLinksInHtml, resolveWikilinksInHtml, renderMarkdown } from './markdown'
 import type { ScribePlugin } from '../plugins/types'
 import type { HtmlExtension } from 'micromark-util-types'
 
@@ -145,6 +145,57 @@ describe('renderMarkdown', () => {
   it('should preserve already-resolved /#n/ links in markdown', () => {
     const result = renderMarkdown('[Recipes](/#n/recipes/soup)', testPrefix, undefined, '/n/my-library')
     expect(result).toContain('href="/#n/recipes/soup"')
+  })
+})
+
+describe('resolveWikilinksInHtml', () => {
+  it('should resolve wikilink: URLs to &titled routes', () => {
+    const html = '<a href="wikilink:My Note" class="wikilink">My Note</a>'
+    const result = resolveWikilinksInHtml(html, '/n/my-library')
+    expect(result).toBe('<a href="/#/n/my-library/&titled?t=My%20Note" class="wikilink">My Note</a>')
+  })
+
+  it('should encode title for URL', () => {
+    const html = '<a href="wikilink:Note &amp; More" class="wikilink">Note &amp; More</a>'
+    const result = resolveWikilinksInHtml(html, '/pk/abc')
+    expect(result).toContain('&titled?t=Note%20%26%20More')
+  })
+
+  it('should not modify non-wikilink anchors', () => {
+    const html = '<a href="https://example.com">Example</a>'
+    const result = resolveWikilinksInHtml(html, '/pk/abc')
+    expect(result).toBe(html)
+  })
+})
+
+describe('renderMarkdown with wikilinks', () => {
+  it('should render [[Title]] as &titled link', () => {
+    const result = renderMarkdown('[[My Note]]', testPrefix)
+    expect(result).toContain(`href="/#/pk/${testPrefix}/&titled?t=My%20Note"`)
+    expect(result).toContain('class="wikilink"')
+    expect(result).toContain('>My Note</a>')
+  })
+
+  it('should render [[Title|Display]] with display text', () => {
+    const result = renderMarkdown('[[My Note|click here]]', testPrefix)
+    expect(result).toContain(`href="/#/pk/${testPrefix}/&titled?t=My%20Note"`)
+    expect(result).toContain('>click here</a>')
+  })
+
+  it('should use routeBase for wikilink resolution', () => {
+    const result = renderMarkdown('[[My Note]]', testPrefix, undefined, '/n/recipes')
+    expect(result).toContain('href="/#/n/recipes/&titled?t=My%20Note"')
+  })
+
+  it('should render wikilinks alongside regular links', () => {
+    const result = renderMarkdown('[[Wiki]] and [Regular](slug)', testPrefix)
+    expect(result).toContain('class="wikilink"')
+    expect(result).toContain(`/#/pk/${testPrefix}/slug`)
+  })
+
+  it('should not parse empty wikilinks', () => {
+    const result = renderMarkdown('[[]]', testPrefix)
+    expect(result).not.toContain('wikilink')
   })
 })
 

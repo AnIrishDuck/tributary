@@ -1,6 +1,7 @@
 import { micromark } from 'micromark'
 import { gfm, gfmHtml } from 'micromark-extension-gfm'
 import { isSlugLink, isAbsoluteInternalLink, resolveLink } from './links'
+import { wikilinkSyntax, wikilinkHtml } from '../wikilink/syntax'
 import type { ScribePlugin } from '../plugins/types'
 
 /**
@@ -34,6 +35,24 @@ export function resolveSlugLinksInHtml(
 }
 
 /**
+ * Resolve wikilink placeholder URLs in HTML output.
+ *
+ * Rewrites `<a href="wikilink:Title">` tags to `&titled?t=` route URLs.
+ */
+export function resolveWikilinksInHtml(
+  html: string,
+  routeBase: string
+): string {
+  return html.replace(
+    /<a href="wikilink:([^"]*)" class="wikilink">/g,
+    (_match, rawTitle: string) => {
+      const title = rawTitle.replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+      return `<a href="/#${routeBase}/&titled?t=${encodeURIComponent(title)}" class="wikilink">`
+    }
+  )
+}
+
+/**
  * Render markdown to HTML with GFM support and slug link resolution.
  *
  * @param routeBase - Optional route base for link resolution (e.g. "/n/my-library").
@@ -50,11 +69,12 @@ export function renderMarkdown(
   const pluginHtmlExtensions = (plugins ?? []).flatMap(p => p.micromark?.htmlExtensions ?? [])
 
   let html = micromark(content, {
-    extensions: [gfm(), ...pluginExtensions],
-    htmlExtensions: [gfmHtml(), ...pluginHtmlExtensions]
+    extensions: [gfm(), wikilinkSyntax(), ...pluginExtensions],
+    htmlExtensions: [gfmHtml(), wikilinkHtml(), ...pluginHtmlExtensions]
   })
 
   html = resolveSlugLinksInHtml(html, streamPrefix, currentSlug, routeBase)
+  html = resolveWikilinksInHtml(html, routeBase || `/pk/${streamPrefix}`)
 
   for (const plugin of plugins ?? []) {
     if (plugin.transformHtml) {
