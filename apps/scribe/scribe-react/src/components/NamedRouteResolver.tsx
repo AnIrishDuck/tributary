@@ -4,6 +4,7 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { RouteContextProvider } from 'scribe-react-common/src/context/routeContext'
 import { PluginProvider } from 'scribe-react-common/src/context/pluginContext'
+import { useLibraryPlugins } from 'scribe-react-common/src/plugins/useLibraryPlugins'
 import { resolveLibrarySlug, LibrarySlugResult } from 'scribe-data'
 import LibraryConflictPage from '../pages/LibraryConflictPage'
 
@@ -24,6 +25,9 @@ const NamedRouteResolver: React.FC = () => {
     | { type: 'conflict'; matches: Array<{ libraryId: string; libraryTitle: string | null }> }
     | { type: 'not_found' }
   >({ type: 'loading' })
+
+  const resolvedPrefix = state.type === 'resolved' ? state.prefix : undefined
+  const plugins = useLibraryPlugins(client, resolvedPrefix)
 
   useEffect(() => {
     const resolve = async () => {
@@ -98,7 +102,7 @@ const NamedRouteResolver: React.FC = () => {
       prefix={state.prefix}
       namedBase={`/n/${librarySlug}`}
     >
-      <PluginProvider plugins={[]}>
+      <PluginProvider plugins={plugins}>
         <Outlet />
       </PluginProvider>
     </RouteContextProvider>
