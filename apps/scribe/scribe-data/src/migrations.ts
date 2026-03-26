@@ -59,7 +59,15 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
     ON collection (slug, parent_collection_uuid)
   `)
 
-  // Create the library_plugins table for per-library plugin configuration
+  await migrateAddPlugins(stream)
+}
+
+/**
+ * Create the library_plugins synced table if it does not already exist.
+ * Factored out so it can be called both from syncedMigrations (new libraries)
+ * and lazily from getLibraryPlugins (existing libraries created before plugins).
+ */
+export async function migrateAddPlugins(stream: TributaryStream): Promise<void> {
   await stream.exec(`
     CREATE TABLE IF NOT EXISTS library_plugins (
       plugin_url TEXT NOT NULL PRIMARY KEY,
