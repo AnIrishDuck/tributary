@@ -1,15 +1,16 @@
 # Plan: Tributary Blobs
 
-Content-addressed immutable binary objects with merkle-tree-verified multipart uploads, stored encrypted as single objects in Supabase Storage.
+Content-addressed immutable binary objects with merkle-tree-verified multipart uploads, stored encrypted in Supabase Storage.
 
 ## Design Decisions
 
-- **Chunk size**: 4 MB per chunk (before encryption)
-- **Storage**: One Supabase Storage object per blob, keyed by the blob's root hash. Chunks are assembled server-side into a single object during multipart upload.
-- **Merkle tree**: Used as the **multipart upload verification protocol**. The client builds the tree locally from encrypted chunk hashes. Each chunk upload includes the merkle proof (sibling hashes back to the root) so the server can independently verify every chunk belongs to the claimed blob before accepting it. We use [`merkletreejs`](https://github.com/merkletreejs/merkletreejs) (SHA256, ~97k weekly downloads) rather than rolling our own.
-- **Database**: Simple `blobs` metadata table tracking creator, domain, size, and hash. No chunk-level tracking — the merkle tree is ephemeral to the upload process.
-- **Encryption**: Each chunk is encrypted with `nacl.secretbox` (XSalsa20-Poly1305) using an encryption key derived from the stream's read key, matching the existing stream encryption pattern. Nonce is prepended to each encrypted chunk.
-- **Content addressing**: The root hash of the merkle tree (computed over encrypted chunk hashes) serves as the blob's content address. Since encryption uses a random nonce per chunk, the same plaintext produces different root hashes on each upload — this is acceptable.
+- **Chunk size**: 6 MB per chunk (before encryption). Aligned with Supabase Storage's TUS chunk size requirement.
+- **Upload protocol**: [TUS](https://tus.io/) (resumable upload protocol), which Supabase Storage natively supports. Our edge function is a **thin auth + verification proxy** around Supabase's TUS endpoint. It authenticates the user, verifies merkle proofs, enforces quotas, and forwards chunks to Storage using the service_role key. It does not buffer or assemble data itself — Supabase handles that.
+- **Storage**: One Supabase Storage object per blob at `tributary-blobs/{root_hash}`. Supabase TUS auto-assembles chunks into the final object when the upload completes.
+- **Merkle tree**: Each chunk upload includes a merkle proof (sibling hashes back to the root) so the edge function can verify every chunk belongs to the claimed blob before forwarding it to Storage. We use [`merkletreejs`](https://github.com/merkletreejs/merkletreejs) (SHA256, ~97k weekly downloads) rather than rolling our own.
+- **Database**: Simple `blobs` metadata table tracking creator, domain, size, and root hash. Inserted after upload completes. No chunk-level tracking.
+- **Encryption**: Each chunk is encrypted with `nacl.secretbox` (XSalsa20-Poly1305) using an encryption key derived from the stream's read key. Nonce is prepended to each encrypted chunk. Server only sees ciphertext.
+- **Content addressing**: The root hash of the merkle tree (computed over encrypted chunk hashes) is the blob's content address and Storage key.
 
 ---
 
@@ -23,8 +24,8 @@ Content-addressed immutable binary objects with merkle-tree-verified multipart u
 - **Modify** `tributary-client/package.json` - Add `merkletreejs` dependency
 
 ### What to implement
-- `CHUNK_SIZE = 4 * 1024 * 1024` (4MB)
-- `chunkData(data: Uint8Array): Uint8Array[]` — Split data into ≤ CHUNK_SIZE pieces
+- `BLOB_CHUNK_SIZE = 6 * 1024 * 1024` (6MB)
+- `chunkData(data: Uint8Array): Uint8Array[]` — Split data into ≤ BLOB_CHUNK_SIZE pieces
 - `encryptChunk(chunk: Uint8Array, encryptionKey: Uint8Array): Uint8Array` — `nonce || nacl.secretbox(chunk, nonce, key)` with random 24-byte nonce
 - `decryptChunk(encrypted: Uint8Array, encryptionKey: Uint8Array): Uint8Array` — Split nonce, decrypt
 - `computeChunkHash(chunk: Uint8Array): Promise<string>` — SHA256 hex via `computeHash` from `hashUtils.ts`
@@ -46,14 +47,14 @@ Content-addressed immutable binary objects with merkle-tree-verified multipart u
 
 ## Prompt 2: Blob Server API (`supabase/functions/`)
 
-**Goal**: Edge function endpoint for multipart upload of encrypted blobs with per-chunk merkle proof verification. Each blob is stored as a single Supabase Storage object, assembled from verified chunks. Blob metadata is tracked in a simple database table.
+**Goal**: Thin edge function proxy around Supabase Storage's TUS endpoint. Handles auth, merkle proof verification, quota enforcement, and blob metadata. Does **not** buffer or assemble blob data — Supabase TUS handles that natively.
 
 ### Files to create/modify
 - **Create** `supabase/functions/blob/index.ts` - Edge function entry point
 - **Create** `supabase/functions/shared/blobRoutes.ts` - Route handlers
 - **Create** `supabase/functions/shared/blobModels.ts` - Type definitions
 - **Create** `supabase/migrations/YYYYMMDD_blobs.sql` - Migration for blobs metadata table
-- **Modify** `supabase/functions/shared/crypto.ts` - Add `verifyMerkleProof` (verify a chunk hash + proof against a root using `merkletreejs`)
+- **Modify** `supabase/functions/shared/crypto.ts` - Add `verifyMerkleProof` (verify chunk hash + proof against root)
 
 ### Database schema
 ```sql
@@ -66,28 +67,59 @@ CREATE TABLE blobs (
 );
 ```
 
-### Storage model
+### Upload protocol (TUS proxy)
 
-- **One Supabase Storage object per blob** at `tributary-blobs/{root_hash}` containing the full encrypted blob data.
-- During multipart upload, the server assembles chunks into the final object. Each chunk upload includes the merkle proof so the server can verify the chunk belongs to the claimed root hash before accepting it.
-- The server does **not** persist the merkle tree or chunk manifest. The tree is ephemeral — it exists only during the upload process.
+The edge function proxies TUS protocol calls to `{SUPABASE_URL}/storage/v1/upload/resumable`, authenticating with the service_role key. The client never talks to Supabase Storage directly.
 
-### API endpoints
-- `POST /blob/{root_hash}/init` — Initialize a multipart upload. Body: `{ chunkCount, chunkSize, totalSize, domain }`. Server creates upload session state (in-memory or temporary storage). Returns upload ID.
-- `PUT /blob/{root_hash}/chunk/{index}` — Upload an encrypted chunk. Body: raw binary. Headers: `X-Merkle-Proof` (JSON array of sibling hashes). Server hashes the chunk, verifies the proof against `root_hash`, and accepts the chunk. Server appends/stores chunk data for later assembly.
-- `POST /blob/{root_hash}/finalize` — Finalize the upload. Server assembles all chunks into a single Storage object at `tributary-blobs/{root_hash}`, inserts the `blobs` DB row, and cleans up temporary state.
-- `GET /blob/{root_hash}` — Get blob metadata from the `blobs` table.
-- `GET /blob/{root_hash}/data` — Download the full encrypted blob from Supabase Storage. Supports HTTP Range requests for partial reads.
-- Auth: all endpoints require Supabase JWT (same pattern as stream endpoints).
+**`POST /blob/{root_hash}/upload`** — Create TUS upload session.
+- Client sends: `{ chunkCount, totalSize, domain }`
+- Edge function:
+  1. Authenticates user (JWT, same as stream endpoints)
+  2. Checks quota (optional, future)
+  3. Creates TUS upload via `POST /storage/v1/upload/resumable` with headers:
+     - `Authorization: Bearer {service_role_key}`
+     - `Upload-Length: {totalSize}`
+     - `Upload-Metadata: bucketName {base64("tributary-blobs")}, objectName {base64(root_hash)}`
+     - `Tus-Resumable: 1.0.0`
+  4. Stores `{ root_hash, tus_upload_id, owner_id, domain, size, chunk_count }` in a `blob_uploads` temporary table (or the `blobs` table with a `status` column)
+  5. Returns `{ tusUploadId }` to client
+
+**`PATCH /blob/{root_hash}/chunk/{index}`** — Upload a chunk (TUS PATCH proxy).
+- Client sends: raw binary body + `X-Merkle-Proof` header (JSON array of proof hashes)
+- Edge function:
+  1. Authenticates user
+  2. Hashes the chunk data (SHA256)
+  3. Verifies the merkle proof: chunk hash + proof → root hash matches `{root_hash}`
+  4. Forwards to TUS endpoint via `PATCH /storage/v1/upload/resumable` with headers:
+     - `Authorization: Bearer {service_role_key}`
+     - `Upload-Offset: {index * BLOB_CHUNK_SIZE}` (computed from chunk index)
+     - `Content-Type: application/offset+octet-stream`
+     - `Tus-Resumable: 1.0.0`
+  5. Returns success
+
+**On final chunk**: When TUS auto-completes (Upload-Offset reaches Upload-Length), the Storage object is assembled. The edge function inserts the `blobs` DB row at this point (detects completion from the TUS response offset matching total size).
+
+### Read endpoints
+
+**`GET /blob/{root_hash}`** — Blob metadata from the `blobs` table.
+
+**`GET /blob/{root_hash}/data`** — Proxy download from Supabase Storage.
+- Edge function fetches `tributary-blobs/{root_hash}` from Storage using service_role key
+- Streams the response back to the client
+- Supports HTTP Range headers (pass through to Storage)
+
+### Auth
+- All endpoints require Supabase JWT (same `authenticateUser` pattern as stream endpoints)
+- Edge function uses `SUPABASE_SERVICE_ROLE_KEY` for all Storage and DB operations
 
 ### Test coverage
 - Integration tests using the route handler directly (same pattern as existing `api.test.ts`)
-- Init + upload all chunks + finalize → blob exists in storage and DB
+- Init + upload all chunks → blob exists in storage and DB
 - Reject chunk with invalid merkle proof
 - Reject chunk with hash that doesn't match proof
-- Idempotent init
 - Download returns correct full encrypted blob
 - Metadata returns correct blob info
+- Auth required on all endpoints
 
 ### Estimated size: ~350 LOC code + ~200 LOC tests
 
@@ -124,20 +156,21 @@ class TributaryBlob {
    * Encrypt and upload a blob. Returns the root hash (content address).
    *
    * Flow:
-   * 1. Chunk the plaintext data
+   * 1. Chunk the plaintext data into 6MB pieces
    * 2. Encrypt each chunk (nacl.secretbox with random nonce)
    * 3. Hash each encrypted chunk → leaf hashes
    * 4. Build merkle tree from leaf hashes → root hash
-   * 5. Call server.initBlobUpload(rootHash, { chunkCount, chunkSize, totalSize, domain })
-   * 6. For each chunk: get merkle proof, call server.uploadBlobChunk(rootHash, index, data, proof)
-   * 7. Call server.finalizeBlobUpload(rootHash)
-   * 8. Return root hash
+   * 5. Call server.initBlobUpload(rootHash, { chunkCount, totalSize, domain })
+   * 6. For each chunk in order: get merkle proof,
+   *    call server.uploadBlobChunk(rootHash, index, encryptedChunk, proof)
+   * 7. Return root hash
    */
   async upload(data: Uint8Array, domain: string): Promise<string>
 
   /**
    * Download and decrypt a blob by root hash.
-   * Downloads the full encrypted blob, splits into chunks, decrypts each.
+   * Downloads the full encrypted blob, splits into encrypted chunks
+   * (using known chunk size), decrypts each, reassembles.
    * Throws if decryption fails.
    */
   async download(rootHash: string): Promise<Uint8Array>
@@ -165,15 +198,12 @@ interface Server {
   // Blob operations
   initBlobUpload(rootHash: string, params: {
     chunkCount: number,
-    chunkSize: number,
     totalSize: number,
     domain: string,
-  }): Promise<boolean>
+  }): Promise<{ tusUploadId: string }>
 
   uploadBlobChunk(rootHash: string, chunkIndex: number,
     data: Uint8Array, proof: string[]): Promise<boolean>
-
-  finalizeBlobUpload(rootHash: string): Promise<boolean>
 
   getBlobMetadata(rootHash: string): Promise<BlobMetadata | null>
 
@@ -183,10 +213,9 @@ interface Server {
 
 ### `FakeServer` implementation
 - In-memory `Map<string, { params, chunks: Map<number, Uint8Array> }>` for in-progress uploads.
-- In-memory `Map<string, { metadata: BlobMetadata, data: Uint8Array }>` for finalized blobs.
-- `initBlobUpload`: Stores upload params.
-- `uploadBlobChunk`: Verifies merkle proof against root hash (using `merkletreejs`), verifies chunk hash matches proof leaf, stores chunk.
-- `finalizeBlobUpload`: Assembles chunks into single blob, inserts metadata, clears upload state.
+- In-memory `Map<string, { metadata: BlobMetadata, data: Uint8Array }>` for completed blobs.
+- `initBlobUpload`: Stores upload params, returns fake tusUploadId.
+- `uploadBlobChunk`: Verifies merkle proof against root hash (using `merkletreejs`), verifies chunk hash matches proof leaf, stores chunk. On final chunk, auto-assembles and moves to completed map.
 - `downloadBlob`: Returns full assembled blob data.
 - `getBlobMetadata`: Returns metadata.
 
@@ -197,7 +226,7 @@ interface Server {
 - Download with wrong read key fails decryption
 - FakeServer rejects chunk with bad merkle proof
 - FakeServer rejects chunk with wrong data (hash mismatch)
-- Metadata returns correct info after finalization
+- Metadata returns correct info after upload completes
 
 ### Estimated size: ~250 LOC code + ~200 LOC tests
 
@@ -210,5 +239,6 @@ interface Server {
 - `tributary-client/src/fakeServer.ts` - `FakeServer` to extend for testing
 - `tributary-client/src/tributaryServer.ts` - real HTTP server implementation
 - `supabase/functions/shared/crypto.ts` - server-side crypto utilities
-- `supabase/functions/shared/routes.ts` - pattern for route handlers
-- `supabase/functions/shared/database.ts` - pattern for DB operations
+- `supabase/functions/shared/routes.ts` - route handler pattern + `authenticateUser`
+- `supabase/functions/shared/database.ts` - DB operations pattern
+- `supabase/functions/stream/index.ts` - edge function entry point pattern
