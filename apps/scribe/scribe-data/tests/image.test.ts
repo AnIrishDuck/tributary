@@ -12,6 +12,8 @@ import {
   rebuildSlugCollisions,
   getCollidingSlugs,
   getNoteSlugByUuid,
+  getAllNotesWithTitles,
+  getNotesInCollectionWithSlugs,
 } from '../src/indexing.js'
 import { resolveSlugPath } from '../src/slug.js'
 import { createNote } from '../src/note.js'
@@ -238,6 +240,159 @@ describe('scribe-data image blocks', () => {
     expect(result!.type).toBe('collision')
     expect(result!.collisions).toBeDefined()
     expect(result!.collisions!.notes).toHaveLength(2) // both note and image are blocks
+  })
+
+  test('getNoteSlugByUuid returns block_type for image blocks', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user',
+    })
+
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashSlugByUuid',
+      contentType: 'image/png',
+      altText: 'Hero image',
+      fileName: 'hero.png',
+      slug: 'hero',
+      inserter: 'test-user',
+      collectionId: root.collection_uuid,
+    })
+
+    await indexSlugs(localDb)
+
+    const result = await getNoteSlugByUuid(localDb, image.block_uuid)
+    expect(result).not.toBeNull()
+    expect(result!.block_type).toBe('scribe/image')
+    expect(result!.slug).toBe('hero')
+    // Title should come from altText or fileName, not markdown extraction
+    expect(result!.title).toBe('Hero image')
+  })
+
+  test('getNoteSlugByUuid uses fileName when altText is absent', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashFileName',
+      contentType: 'image/jpeg',
+      fileName: 'vacation.jpg',
+      slug: 'vacation',
+      inserter: 'test-user',
+    })
+
+    await indexSlugs(localDb)
+
+    const result = await getNoteSlugByUuid(localDb, image.block_uuid)
+    expect(result).not.toBeNull()
+    expect(result!.title).toBe('vacation.jpg')
+  })
+
+  test('getAllNotesWithTitles includes image blocks with block_type', async () => {
+    // Create a markdown note
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# My Note\n\nSome text.',
+      inserter: 'test-user',
+      slug: 'my-note',
+    })
+
+    // Create an image block
+    await createImageBlock(syncedDb, {
+      blobHash: 'hashAll',
+      contentType: 'image/png',
+      fileName: 'photo.png',
+      slug: 'photo',
+      inserter: 'test-user',
+    })
+
+    await indexSlugs(localDb)
+
+    const all = await getAllNotesWithTitles(localDb)
+    expect(all.length).toBe(2)
+
+    const note = all.find(n => n.slug === 'my-note')
+    const image = all.find(n => n.slug === 'photo')
+
+    expect(note).toBeDefined()
+    expect(note!.block_type).toBe('scribe/markdown')
+    expect(note!.title).toBe('My Note')
+
+    expect(image).toBeDefined()
+    expect(image!.block_type).toBe('scribe/image')
+    expect(image!.title).toBe('photo.png')
+  })
+
+  test('getNotesInCollectionWithSlugs includes block_type for images', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user',
+    })
+
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Recipe\n\nA recipe.',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid,
+      slug: 'recipe',
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'hashCol',
+      contentType: 'image/jpeg',
+      altText: 'Food photo',
+      slug: 'food-photo',
+      inserter: 'test-user',
+      collectionId: root.collection_uuid,
+    })
+
+    await indexSlugs(localDb)
+
+    const items = await getNotesInCollectionWithSlugs(localDb, root.collection_uuid)
+    expect(items.length).toBe(2)
+
+    const note = items.find(n => n.slug === 'recipe')
+    const image = items.find(n => n.slug === 'food-photo')
+
+    expect(note).toBeDefined()
+    expect(note!.block_type).toBe('scribe/markdown')
+
+    expect(image).toBeDefined()
+    expect(image!.block_type).toBe('scribe/image')
+    expect(image!.title).toBe('Food photo')
+  })
+
+  test('collision data includes both notes and images with block_type', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user',
+    })
+
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Banner\n\nText content.',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid,
+      slug: 'banner',
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'hashCollision',
+      contentType: 'image/png',
+      slug: 'banner',
+      inserter: 'test-user',
+      collectionId: root.collection_uuid,
+    })
+
+    await indexSlugs(localDb)
+
+    const result = await resolveSlugPath(localDb, ['banner'], root.collection_uuid)
+    expect(result).not.toBeNull()
+    expect(result!.type).toBe('collision')
+
+    const notes = result!.collisions!.notes
+    expect(notes).toHaveLength(2)
+
+    const markdownBlock = notes.find((n: any) => n.block_type === 'scribe/markdown')
+    const imageBlock = notes.find((n: any) => n.block_type === 'scribe/image')
+    expect(markdownBlock).toBeDefined()
+    expect(imageBlock).toBeDefined()
   })
 
   test('resolveSlugPath returns type note for a markdown block', async () => {
