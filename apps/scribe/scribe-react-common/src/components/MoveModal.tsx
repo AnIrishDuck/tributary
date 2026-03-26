@@ -5,7 +5,7 @@ import { useTributary } from '../context/tributaryContext'
 export interface MoveModalProps {
   isOpen: boolean
   onClose: () => void
-  entityType: 'note' | 'collection'
+  entityType: 'note' | 'collection' | 'image'
   entityId: string
   currentSlugPath: string
   prefix: string
@@ -98,7 +98,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
         if (parentSegments.length === 0) {
           // Target is at library root
-          if (entityType === 'note') {
+          if (entityType === 'note' || entityType === 'image') {
             targetUuid = null
           } else {
             targetUuid = library.collection_uuid
@@ -116,7 +116,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           }
           if (parentResult.type !== 'collection') {
             const parentPath = '/' + parentSegments.join('/')
-            setValidation({ status: 'invalid', message: `Parent path "${parentPath}" is a note, not a collection` })
+            setValidation({ status: 'invalid', message: `Parent path "${parentPath}" is not a collection` })
             return
           }
 
@@ -127,7 +127,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         if (cancelled) return
 
         // Check for collision at the target location
-        const collisionCollectionId = entityType === 'note' ? targetUuid : targetParentUuid
+        const collisionCollectionId = (entityType === 'note' || entityType === 'image') ? targetUuid : targetParentUuid
         const hasCollision = await checkMoveCollision(
           localDb, entitySlug, collisionCollectionId, targetParentUuid, entityId
         )
@@ -171,7 +171,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
       const newSlug = validation.newSlug
       const slugChanged = newSlug !== currentSlug ? newSlug : undefined
 
-      if (entityType === 'note') {
+      if (entityType === 'note' || entityType === 'image') {
         await moveNote(stream, entityId, validation.targetUuid, 'web-ui', slugChanged)
       } else {
         if (!validation.targetUuid) throw new Error('Invalid target for collection move')
@@ -203,7 +203,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">
-            Move {entityType === 'note' ? 'Note' : 'Collection'}
+            Move {entityType === 'collection' ? 'Collection' : entityType === 'image' ? 'Image' : 'Note'}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <XMarkIcon className="w-5 h-5" />

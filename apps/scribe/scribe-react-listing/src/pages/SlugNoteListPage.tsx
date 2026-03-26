@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ArrowRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
-import { MoveModal } from 'scribe-react-common/src/components/MoveModal'
+import { PlusIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
@@ -35,7 +34,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const { setFloatingAction } = useBottomNav()
   const routeCtx = useRouteContext()
   const isRoot = !collection
-  const [showMoveModal, setShowMoveModal] = useState(false)
 
   // Set the floating action button to "New Note" for this collection
   useEffect(() => {
@@ -145,21 +143,15 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumbs + Move button (collection view only) */}
-        {!isRoot && (
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1 min-w-0">
-              {ancestors && (
-                <Breadcrumbs ancestors={ancestors} prefix={prefix} />
-              )}
-            </div>
-            <button
-              onClick={() => setShowMoveModal(true)}
-              className="flex-shrink-0 ml-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-            >
-              <ArrowRightIcon className="w-4 h-4" />
-              <span className="hidden md:inline">Move</span>
-            </button>
-          </div>
+        {!isRoot && collection && ancestors && (
+          <SlugActionBar
+            ancestors={ancestors}
+            prefix={prefix}
+            slugPath={slugPath}
+            entityType="collection"
+            entityId={collection.collection_uuid}
+            onMoved={(newSlugPath) => navigate(routeCtx.buildPath(newSlugPath))}
+          />
         )}
 
         {totalItems === 0 ? (
@@ -357,20 +349,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
       </div>
 
-      {!isRoot && collection && (
-        <MoveModal
-          isOpen={showMoveModal}
-          onClose={() => setShowMoveModal(false)}
-          entityType="collection"
-          entityId={collection.collection_uuid}
-          currentSlugPath={slugPath}
-          prefix={prefix}
-          onMoved={(newSlugPath) => {
-            setShowMoveModal(false)
-            navigate(routeCtx.buildPath(newSlugPath))
-          }}
-        />
-      )}
     </div>
   )
 }
