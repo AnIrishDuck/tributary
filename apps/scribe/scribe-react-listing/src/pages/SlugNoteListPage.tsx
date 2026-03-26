@@ -8,7 +8,9 @@ import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSumm
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
-import { readDroppedItems, buildUploadPlan, BulkUploadDialog } from 'scribe-react-img'
+import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
+import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
+import BulkUploadDialog from 'scribe-react-img/src/components/BulkUploadDialog'
 import { TributaryStream } from 'tributary-client'
 
 interface NoteListViewProps {
