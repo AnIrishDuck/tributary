@@ -5,7 +5,7 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
-import { Collection, CollectionSlug, NoteSlugRow, schemaReady } from 'scribe-data'
+import { Collection, CollectionSlug, NoteSlugRow, ImageBlockBody, BlockSlugInfo as BlockSlugInfoType, schemaReady } from 'scribe-data'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
@@ -18,6 +18,7 @@ import MissingParentPage from './MissingParentPage'
 import LibrarySettingsPage from './LibrarySettingsPage'
 import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
 import ImageAddPage from 'scribe-react-img/src/pages/ImageAddPage'
+import ImageViewPage from 'scribe-react-img/src/pages/ImageViewPage'
 
 interface BlockSlugInfo {
   block_uuid: string;
@@ -40,12 +41,13 @@ type PageMode =
   | { type: 'historicalNote'; content: string; title: string; slugPath: string; versionUuid: string; blockUuid: string; ancestors: Collection[]; libraryName: string }
   | { type: 'duplicateNotes'; notes: BlockSlugInfo[]; slugPath: string }
   | { type: 'collection'; collection: CollectionSlug; ancestors: Collection[]; childCollections: { collection: Collection; slug: string | null }[]; notes: NoteSlugRow[]; collidingSlugs: Set<string>; slugPath: string; libraryName: string }
-  | { type: 'disambiguation'; notes: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
+  | { type: 'disambiguation'; notes: BlockSlugInfo[]; images: BlockSlugInfo[]; collections: CollectionSlug[]; slugPath: string }
   | { type: 'newNote'; collectionId?: string; parentSlugPath: string; initialTitle?: string; initialBody?: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newImage'; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'newCollection'; parentUuid?: string; parentSlugPath: string; ancestors: Collection[]; libraryName: string; initialTitle?: string }
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
+  | { type: 'image'; body: ImageBlockBody; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; blockUuid: string }
   | { type: 'missingSlug'; slugPath: string }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
   | { type: 'librarySettings' }
@@ -437,14 +439,6 @@ const SlugViewPage: React.FC = () => {
             }
           }
 
-          // Auto-redirect to edit page if the note has a local draft
-          if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
-            const noteSlugPath = segments.join('/')
-            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath, collectionLabel: uuidParentLabel })
-            return
-          }
-
-          const noteResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
           const fullSlugPath = segments.join('/')
 
           // Get parent collection ancestors for breadcrumbs
@@ -456,6 +450,24 @@ const SlugViewPage: React.FC = () => {
               noteAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
             }
           }
+
+          // Check if this is an image block
+          if ((blockSlugInfo as any).block_type === 'scribe/image') {
+            const imageResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
+            const { parseImageBlockBody } = await import('scribe-data')
+            const imageBody = parseImageBlockBody({ body: imageResult.body } as any)
+            setMode({ type: 'image', body: imageBody, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
+            return
+          }
+
+          // Auto-redirect to edit page if the note has a local draft
+          if (prefix && getDraftForNote(prefix, blockSlugInfo.block_uuid)) {
+            const noteSlugPath = segments.join('/')
+            setMode({ type: 'editNote', editBlockUuid: blockSlugInfo.block_uuid, noteSlugPath, collectionLabel: uuidParentLabel })
+            return
+          }
+
+          const noteResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
 
           setMode({ type: 'note', content: noteResult.body, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, versionUuid: noteResult.version_uuid, blockUuid: noteResult.block_uuid })
           return
@@ -495,9 +507,13 @@ const SlugViewPage: React.FC = () => {
         const fullSlugPath = segments.join('/')
 
         if (resolved.type === 'collision') {
+          const allBlocks = resolved.collisions?.notes || []
+          const collisionNotes = allBlocks.filter((b: any) => b.block_type !== 'scribe/image')
+          const collisionImages = allBlocks.filter((b: any) => b.block_type === 'scribe/image')
           setMode({
             type: 'disambiguation',
-            notes: resolved.collisions?.notes || [],
+            notes: collisionNotes,
+            images: collisionImages,
             collections: resolved.collisions?.collections || [],
             slugPath: fullSlugPath
           })
@@ -537,6 +553,27 @@ const SlugViewPage: React.FC = () => {
           }
 
           setMode({ type: 'note', content: noteResult.body, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, versionUuid: noteResult.version_uuid, blockUuid: noteResult.block_uuid })
+          return
+        }
+
+        if (resolved.type === 'image') {
+          const blockSlugInfo = resolved.entity as BlockSlugInfoType
+          const { parseImageBlockBody } = await import('scribe-data')
+
+          const imageResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
+          const imageBody = parseImageBlockBody({ body: imageResult.body } as any)
+
+          // Get parent collection ancestors for breadcrumbs
+          let imageAncestors: Collection[] = []
+          const parentSegments = segments.slice(0, -1)
+          if (parentSegments.length > 0) {
+            const parentResolved = await resolveSlugPath(localDb, parentSegments, library.collection_uuid)
+            if (parentResolved && parentResolved.type === 'collection') {
+              imageAncestors = await getCollectionAncestors(localDb, parentResolved.entity.collection_uuid)
+            }
+          }
+
+          setMode({ type: 'image', body: imageBody, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: imageAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
           return
         }
 
@@ -639,6 +676,7 @@ const SlugViewPage: React.FC = () => {
     return (
       <SlugCollision
         notes={mode.notes}
+        images={[]}
         collections={[]}
         slugPath={mode.slugPath}
         splatPath={splatPath}
@@ -651,6 +689,7 @@ const SlugViewPage: React.FC = () => {
     return (
       <SlugCollision
         notes={mode.notes}
+        images={mode.images}
         collections={mode.collections}
         slugPath={mode.slugPath}
         splatPath={splatPath}
@@ -676,6 +715,20 @@ const SlugViewPage: React.FC = () => {
           finalIndex: libStatus.finalIndex,
           synced: libStatus.synced
         } : null}
+      />
+    )
+  }
+
+  if (mode.type === 'image') {
+    return (
+      <ImageViewPage
+        body={mode.body}
+        title={mode.title}
+        slugPath={mode.slugPath}
+        prefix={prefix || ''}
+        ancestors={mode.ancestors}
+        libraryName={mode.libraryName}
+        blockUuid={mode.blockUuid}
       />
     )
   }

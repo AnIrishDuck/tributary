@@ -299,9 +299,9 @@ export async function indexSlugs(
 export async function getNoteSlugByUuid(
   db: TributaryLocal,
   noteUuid: string
-): Promise<NoteSlug | null> {
+): Promise<BlockSlugInfo | null> {
   const result = await db.query(
-    `SELECT b.block_uuid, b.slug, b.body
+    `SELECT b.block_uuid, b.slug, b.body, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      WHERE b.block_uuid = $1`,
@@ -313,11 +313,23 @@ export async function getNoteSlugByUuid(
   }
 
   const row = result.rows[0] as any
-  const title = extractTitleFromMarkdown(row.body)
+  const blockType = row.block_type || 'scribe/markdown'
+  let title: string
+  if (blockType === 'scribe/image') {
+    try {
+      const parsed = JSON.parse(row.body)
+      title = parsed.altText || parsed.fileName || ''
+    } catch {
+      title = ''
+    }
+  } else {
+    title = extractTitleFromMarkdown(row.body) || ''
+  }
   return {
     block_uuid: row.block_uuid,
     slug: row.slug,
-    title: title || ''
+    title,
+    block_type: blockType
   }
 }
 
