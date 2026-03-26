@@ -4,6 +4,10 @@
 import nacl from 'tweetnacl';
 import util from 'tweetnacl-util';
 import { encodeBase64Url, decodeBase64Url } from 'jsr:@std/encoding';
+import { computeHashPortable, verifyMerkleProof } from './merkleProof.ts';
+
+// Re-export so existing consumers don't break
+export { verifyMerkleProof } from './merkleProof.ts';
 
 /**
  * Decode URL-safe base64 string using Deno std/encoding library
@@ -46,15 +50,7 @@ export async function verifySignature(
  * @param data Input data
  * @returns Hex encoded hash
  */
-export async function computeHash(data: Uint8Array): Promise<string> {
-  // Create a new ArrayBuffer from the Uint8Array to avoid type issues
-  const buffer = new Uint8Array(data).buffer;
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = new Uint8Array(hashBuffer);
-  return Array.from(hashArray)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+export const computeHash = computeHashPortable;
 
 /**
  * Compute chain hash (SHA256(prior_hash + body_hash))
@@ -63,49 +59,6 @@ export async function computeHash(data: Uint8Array): Promise<string> {
  * @param bodyData Body data to hash
  * @returns Chain hash as hex string
  */
-/**
- * Verify a merkle proof: that a chunk hash belongs to a tree with the given root.
- * Uses the same SHA256 algorithm as merkletreejs.
- */
-export async function verifyMerkleProof(
-  rootHash: string,
-  chunkHash: string,
-  proof: Array<{ position: 'left' | 'right'; data: string }>,
-): Promise<boolean> {
-  try {
-    // Start with the leaf hash
-    let hash = chunkHash;
-
-    for (const step of proof) {
-      // Combine current hash with proof sibling in the correct order
-      const left = step.position === 'left' ? step.data : hash;
-      const right = step.position === 'left' ? hash : step.data;
-
-      // merkletreejs concatenates the raw buffers and hashes
-      const leftBuf = hexToBytes(left);
-      const rightBuf = hexToBytes(right);
-      const combined = new Uint8Array(leftBuf.length + rightBuf.length);
-      combined.set(leftBuf);
-      combined.set(rightBuf, leftBuf.length);
-
-      hash = await computeHash(combined);
-    }
-
-    return hash === rootHash;
-  } catch (error) {
-    console.error('Merkle proof verification error:', error);
-    return false;
-  }
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
-}
-
 export async function computeChainHash(priorHash: string, bodyData: Uint8Array): Promise<string> {
   // Compute body hash first (same as client)
   const bodyHash = await computeHash(bodyData);
