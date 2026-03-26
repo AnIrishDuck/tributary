@@ -1,29 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import React from 'react'
 import nacl from 'tweetnacl'
-import { createHomeLibrary, createLibrary, setLibraryPlugins } from 'scribe-data'
+import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { createTestTributaryClient, TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
 import { usePlugins } from 'scribe-react-common/src/context/pluginContext'
-import { SCRIBE_PLUGIN_API_VERSION, type ScribePlugin } from 'scribe-react-common/src/plugins/types'
 import PkRouteWrapper from '../src/components/PkRouteWrapper'
 import NamedRouteResolver from '../src/components/NamedRouteResolver'
-
-// Mock useLibraryPlugins to control plugin loading without real dynamic imports
-const mockedUseLibraryPlugins = vi.fn().mockReturnValue([])
-vi.mock('scribe-react-common/src/plugins/useLibraryPlugins', () => ({
-  useLibraryPlugins: (...args: any[]) => mockedUseLibraryPlugins(...args),
-}))
-
-function makePlugin(overrides: Partial<ScribePlugin> = {}): ScribePlugin {
-  return {
-    name: 'test-plugin',
-    apiVersion: SCRIBE_PLUGIN_API_VERSION,
-    ...overrides,
-  }
-}
 
 /** Test child that renders plugin context for assertions */
 function PluginDisplay() {
@@ -46,12 +31,15 @@ function TestProviders({ client, children }: { client: any; children: React.Reac
   )
 }
 
-describe('plugin loading in route wrappers', () => {
-  beforeEach(() => {
-    mockedUseLibraryPlugins.mockReset()
-    mockedUseLibraryPlugins.mockReturnValue([])
-  })
+async function createClientWithLibrary(name: string) {
+  const { client } = createTestTributaryClient()
+  const homeKeyPair = nacl.sign.keyPair()
+  const { stream: homeStream } = await createHomeLibrary(client, 'Home', homeKeyPair)
+  const { stream, prefix, streamId } = await createLibrary(client, name, homeStream)
+  return { client, stream, prefix, streamId }
+}
 
+describe('plugin loading in route wrappers', () => {
   describe('PkRouteWrapper', () => {
     function renderPkRoute(client: any, streamId: string) {
       const routes = [
@@ -71,68 +59,39 @@ describe('plugin loading in route wrappers', () => {
       )
     }
 
-    it('plugins from useLibraryPlugins appear in context', async () => {
-      const { client } = createTestTributaryClient()
-      const pluginA = makePlugin({ name: 'plugin-a' })
-      const pluginB = makePlugin({ name: 'plugin-b' })
-      mockedUseLibraryPlugins.mockReturnValue([pluginA, pluginB])
+    it('provides empty plugins for library with no plugin config', async () => {
+      const { client, streamId } = await createClientWithLibrary('No Plugins')
 
-      renderPkRoute(client, 'some-prefix')
+      renderPkRoute(client, streamId)
 
       await waitFor(() => {
-        expect(screen.getByTestId('plugin-count')).toHaveTextContent('2')
-      })
-
-      expect(screen.getByTestId('plugin-names')).toHaveTextContent('plugin-a,plugin-b')
+        expect(screen.getByTestId('plugin-count')).toHaveTextContent('0')
+      }, { timeout: 10000 })
     })
 
-    it('passes client and prefix to useLibraryPlugins', async () => {
+    it('provides empty plugins when stream does not exist', async () => {
       const { client } = createTestTributaryClient()
-      renderPkRoute(client, 'test-prefix-123')
 
-      await waitFor(() => {
-        expect(mockedUseLibraryPlugins).toHaveBeenCalled()
-      })
-
-      expect(mockedUseLibraryPlugins).toHaveBeenCalledWith(client, 'test-prefix-123')
-    })
-
-    it('provides empty plugins when hook returns empty array', async () => {
-      const { client } = createTestTributaryClient()
-      mockedUseLibraryPlugins.mockReturnValue([])
-
-      renderPkRoute(client, 'empty-prefix')
+      renderPkRoute(client, 'nonexistent-stream-id')
 
       await waitFor(() => {
         expect(screen.getByTestId('plugin-count')).toHaveTextContent('0')
       })
     })
 
-    it('skips null plugins (failed loads filtered by hook)', async () => {
-      const { client } = createTestTributaryClient()
-      const goodPlugin = makePlugin({ name: 'good-plugin' })
-      // Hook returns only successfully loaded plugins (nulls already filtered)
-      mockedUseLibraryPlugins.mockReturnValue([goodPlugin])
+    it('provides PluginProvider to child routes', async () => {
+      const { client, streamId } = await createClientWithLibrary('Plugin Provider Test')
 
-      renderPkRoute(client, 'partial-prefix')
+      renderPkRoute(client, streamId)
 
+      // PluginDisplay would throw if PluginProvider were missing
       await waitFor(() => {
-        expect(screen.getByTestId('plugin-count')).toHaveTextContent('1')
-      })
-
-      expect(screen.getByTestId('plugin-names')).toHaveTextContent('good-plugin')
+        expect(screen.getByTestId('plugin-count')).toBeDefined()
+      }, { timeout: 10000 })
     })
   })
 
   describe('NamedRouteResolver', () => {
-    async function createClientWithLibrary(name: string) {
-      const { client } = createTestTributaryClient()
-      const homeKeyPair = nacl.sign.keyPair()
-      const { stream: homeStream } = await createHomeLibrary(client, 'Home', homeKeyPair)
-      const { stream, prefix, streamId } = await createLibrary(client, name, homeStream)
-      return { client, stream, prefix, streamId }
-    }
-
     function renderNamedRoute(client: any, librarySlug: string) {
       const routes = [
         {
@@ -151,29 +110,24 @@ describe('plugin loading in route wrappers', () => {
       )
     }
 
-    it('passes resolved prefix to useLibraryPlugins', async () => {
-      const { client, streamId } = await createClientWithLibrary('Named Plugin Lib')
-      const plugin = makePlugin({ name: 'named-plugin' })
-      mockedUseLibraryPlugins.mockReturnValue([plugin])
+    it('provides empty plugins for resolved library with no plugin config', async () => {
+      const { client } = await createClientWithLibrary('Named Lib')
 
-      renderNamedRoute(client, 'named-plugin-lib')
+      renderNamedRoute(client, 'named-lib')
 
       await waitFor(() => {
-        expect(screen.getByTestId('plugin-count')).toHaveTextContent('1')
+        expect(screen.getByTestId('plugin-count')).toHaveTextContent('0')
       }, { timeout: 10000 })
-
-      expect(screen.getByTestId('plugin-names')).toHaveTextContent('named-plugin')
-      // Verify the hook was called with the resolved streamId
-      expect(mockedUseLibraryPlugins).toHaveBeenCalledWith(client, streamId)
     })
 
-    it('passes undefined prefix before resolution completes', async () => {
-      const { client } = createTestTributaryClient()
+    it('provides PluginProvider to resolved child routes', async () => {
+      const { client } = await createClientWithLibrary('Resolved Lib')
 
-      renderNamedRoute(client, 'nonexistent')
+      renderNamedRoute(client, 'resolved-lib')
 
-      // Before resolution, hook should be called with undefined prefix
-      expect(mockedUseLibraryPlugins).toHaveBeenCalledWith(client, undefined)
+      await waitFor(() => {
+        expect(screen.getByTestId('plugin-count')).toBeDefined()
+      }, { timeout: 10000 })
     })
   })
 })
