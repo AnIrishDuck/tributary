@@ -42,6 +42,7 @@ describe('scribe-data image blocks', () => {
     const image = await createImageBlock(syncedDb, {
       blobHash: 'abc123',
       contentType: 'image/png',
+      title: 'My Photo Title',
       altText: 'A photo',
       width: 800,
       height: 600,
@@ -57,6 +58,7 @@ describe('scribe-data image blocks', () => {
     const body = parseImageBlockBody(image)
     expect(body.blobHash).toBe('abc123')
     expect(body.contentType).toBe('image/png')
+    expect(body.title).toBe('My Photo Title')
     expect(body.altText).toBe('A photo')
     expect(body.width).toBe(800)
     expect(body.height).toBe(600)
@@ -131,6 +133,77 @@ describe('scribe-data image blocks', () => {
     expect(slug!.slug).toBe('landscape')
   })
 
+  test('title field is stored in body and used as canonical title', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user',
+    })
+
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashTitle',
+      contentType: 'image/png',
+      title: 'Sunset at the Beach',
+      altText: 'A sunset photo',
+      fileName: 'sunset.png',
+      slug: 'sunset-title',
+      inserter: 'test-user',
+      collectionId: root.collection_uuid,
+    })
+
+    // Title should be stored in body JSON
+    const body = parseImageBlockBody(image)
+    expect(body.title).toBe('Sunset at the Beach')
+
+    await indexSlugs(localDb)
+
+    // Title should take priority over altText and fileName in slug lookups
+    const slugResult = await getNoteSlugByUuid(localDb, image.block_uuid)
+    expect(slugResult).not.toBeNull()
+    expect(slugResult!.title).toBe('Sunset at the Beach')
+
+    // Title should take priority in getAllNotesWithTitles
+    const all = await getAllNotesWithTitles(localDb)
+    const found = all.find(n => n.slug === 'sunset-title')
+    expect(found).toBeDefined()
+    expect(found!.title).toBe('Sunset at the Beach')
+
+    // Title should take priority in getImageBySlug
+    const bySlug = await getImageBySlug(localDb, 'sunset-title', root.collection_uuid)
+    expect(bySlug).not.toBeNull()
+    expect(bySlug!.note.title).toBe('Sunset at the Beach')
+  })
+
+  test('title fallback chain: altText when no title, fileName when no altText', async () => {
+    // No title, has altText -> use altText
+    const img1 = await createImageBlock(syncedDb, {
+      blobHash: 'hashFallback1',
+      contentType: 'image/png',
+      altText: 'Alt text only',
+      fileName: 'file.png',
+      slug: 'fallback-alt',
+      inserter: 'test-user',
+    })
+    const body1 = parseImageBlockBody(img1)
+    expect(body1.title).toBeUndefined()
+
+    await indexSlugs(localDb)
+    const slug1 = await getNoteSlugByUuid(localDb, img1.block_uuid)
+    expect(slug1!.title).toBe('Alt text only')
+
+    // No title, no altText, has fileName -> use fileName
+    const img2 = await createImageBlock(syncedDb, {
+      blobHash: 'hashFallback2',
+      contentType: 'image/jpeg',
+      fileName: 'vacation.jpg',
+      slug: 'fallback-file',
+      inserter: 'test-user',
+    })
+
+    await indexSlugs(localDb)
+    const slug2 = await getNoteSlugByUuid(localDb, img2.block_uuid)
+    expect(slug2!.title).toBe('vacation.jpg')
+  })
+
   test('version an image block (replace with new blob hash)', async () => {
     const image = await createImageBlock(syncedDb, {
       blobHash: 'original-hash',
@@ -156,6 +229,28 @@ describe('scribe-data image blocks', () => {
     expect(body.contentType).toBe('image/png') // carried forward
     expect(body.width).toBe(200)
     expect(body.height).toBe(200)
+  })
+
+  test('update image block title', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashUpdateTitle',
+      contentType: 'image/png',
+      title: 'Original Title',
+      slug: 'update-title-img',
+      inserter: 'test-user',
+    })
+
+    const body = parseImageBlockBody(image)
+    expect(body.title).toBe('Original Title')
+
+    const updated = await updateImageBlock(syncedDb, image.block_uuid, {
+      title: 'Updated Title',
+      inserter: 'test-user',
+    })
+
+    const updatedBody = parseImageBlockBody(updated)
+    expect(updatedBody.title).toBe('Updated Title')
+    expect(updatedBody.blobHash).toBe('hashUpdateTitle') // carried forward
   })
 
   test('slug collision between a note and an image with the same slug', async () => {
