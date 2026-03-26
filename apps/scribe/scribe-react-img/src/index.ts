@@ -1,3 +1,6 @@
 export { default as ImageDialog } from './components/ImageDialog'
 export { default as ImageAddPage } from './pages/ImageAddPage'
 export { default as ImageViewPage } from './pages/ImageViewPage'
+export { readDroppedItems } from './utils/readFolderEntries'
+export type { FolderFileEntry } from './utils/readFolderEntries'
+export { buildUploadPlan } from './utils/buildUploadPlan'
