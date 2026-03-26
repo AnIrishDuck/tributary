@@ -4,6 +4,7 @@ import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 import { Server } from './server.js';
 import { TributaryLocal } from './tributaryLocal.js';
+import { TributaryBlob } from './tributaryBlob.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import { computeHash } from './hashUtils.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
@@ -117,6 +118,14 @@ export class TributaryStream {
     const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
     // Return a TributaryLocal instance with the correct schema
     return new TributaryLocal(this.pglite, cleanSchemaName);
+  }
+
+  /**
+   * Create a TributaryBlob instance for uploading/downloading encrypted blobs
+   * associated with this stream.
+   */
+  blob(): TributaryBlob {
+    return new TributaryBlob(this.server, this.privateKey);
   }
 
   /**

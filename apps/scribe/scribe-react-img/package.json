@@ -1,5 +1,5 @@
 {
-  "name": "scribe-react-listing",
+  "name": "scribe-react-img",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,9 +15,7 @@
     "react-dom": "^18.2.0",
     "react-router": "^7.0.0",
     "scribe-data": "*",
-    "scribe-react-common": "*",
-    "scribe-react-img": "*",
-    "scribe-react-note": "*"
+    "scribe-react-common": "*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.11",
