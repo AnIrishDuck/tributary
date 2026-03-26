@@ -5,7 +5,10 @@ Embed images into markdown notes via `![alt](slug)` syntax in the CodeMirror edi
 ## Prerequisites
 
 - Image block support (see `plans/images.md`) must be implemented first — specifically Prompt 1 (data layer) and the image add/edit dialog from `scribe-react-img`.
-- Tributary blob support (see `plans/blobs.md` at the repo root) must be implemented first — specifically Prompts 1-3 (merkle tree library, blob server API, blob client).
+- Tributary blob support (see `plans/blobs.md` at the repo root):
+  - Prompt 1 (done): Chunking, encryption, merkle helpers in `tributary-client/src/tributaryBlob.ts`.
+  - Prompt 2 (not started): Blob server API — required for downloading image data.
+  - Prompt 3 (not started): `TributaryBlob` class with `download(rootHash)` — required for on-demand blob fetching in the `BlobImage` component.
 
 ## Design Decisions
 

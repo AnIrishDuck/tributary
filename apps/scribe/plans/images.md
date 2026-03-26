@@ -6,7 +6,12 @@ Editor integration (inline `![alt](slug)` rendering and insertion) is covered se
 
 ## Prerequisites
 
-Tributary blob support (see `plans/blobs.md` at the repo root) must be implemented first — specifically Prompts 1-3 (merkle tree library, blob server API, blob client).
+Tributary blob support (see `plans/blobs.md` at the repo root):
+- **Prompt 1 (done)**: Chunking, encryption, and merkle helpers in `tributary-client/src/tributaryBlob.ts` — `chunkData`, `encryptChunk`, `decryptChunk`, `computeChunkHash`, `buildChunkTree`, `getChunkProof`, `verifyChunkProof`.
+- **Prompt 2 (not started)**: Blob server API — TUS upload proxy edge function, `blobs` metadata table, download endpoint. Required before images can be uploaded.
+- **Prompt 3 (not started)**: `TributaryBlob` class — high-level `upload(data, domain)` and `download(rootHash)` methods, `Server` interface extensions, `FakeServer` blob support. Required for the image save flow and for rendering images on the view page.
+
+Prompts 1-3 of this plan (data layer, shared slug infra, FAB menu) can proceed in parallel with blob implementation since they don't depend on blob upload/download. Prompt 4 (image dialog with upload) and Prompt 5 (image view with blob fetching) require blobs Prompts 2-3 to be complete.
 
 ## Design Decisions
 
@@ -192,19 +197,19 @@ interface ImageDialogProps {
 **Dialog fields**:
 - **Image file**: File picker button + drag-and-drop zone. Shows preview after selection. Required for new images; optional when editing (keeps existing blob).
 - **Slug**: Text input, mandatory. Auto-derived from file name on initial selection (via `titleToSlug`), but user can override. Validated for format (lowercase, hyphens, no special chars).
-- **Title**: Text input, optional. Displayed in breadcrumbs and listings.
+- **Title**: Text input, optional. Displayed beneath the image on the view page.
 
 **Save flow**:
-1. Upload the image file as a tributary blob via `uploadBlob()`
-2. Create image block via `createImageBlock()` with blob hash, content type, dimensions, slug, title
-3. Sync and re-index
-4. Navigate to the new image's slug path
+1. Read file as `Uint8Array`, extract dimensions via an offscreen `<img>` element
+2. Upload via `TributaryBlob.upload(data, domain)` — this chunks, encrypts, builds the merkle tree, and uploads all chunks to the blob server. Returns the root hash.
+3. Create image block via `createImageBlock()` with `{ blobHash: rootHash, contentType, width, height, slug, title, collectionId }`
+4. Sync and re-index
+5. Navigate to the new image's slug path
 
 **Edit flow**:
-1. Load existing image block data
-2. Pre-populate fields (slug, title, preview of current image)
-3. If a new file is selected, upload new blob
-4. Update via `updateImageBlock()` (new version)
+1. Load existing image block data, pre-populate fields (slug, title, preview of current image via `TributaryBlob.download()`)
+2. If a new file is selected, upload new blob via `TributaryBlob.upload()`
+3. Update via `updateImageBlock()` (new version with updated blobHash if changed)
 
 **`+image` route in SlugViewPage**:
 - Follows the same pattern as `+note`: parse parent segments, resolve collection, render `ImageAddPage`
@@ -234,7 +239,8 @@ interface ImageDialogProps {
 **`ImageViewPage`** component:
 - Header with back button and parent collection name
 - `SlugActionBar` with breadcrumbs, move button, history link
-- Image display: fetch blob on-demand, show loading placeholder, then the image
+- Image display: fetch blob via `TributaryBlob.download(blobHash)`, decrypt, create object URL, show loading placeholder then the image. Clean up object URL on unmount.
+- Title displayed beneath the image (when present)
 - Metadata footer: file name, content type, dimensions
 
 **`SlugCollision` changes**:
@@ -272,6 +278,8 @@ After all prompts are complete:
    - Verify `SlugActionBar` renders identically for notes and images (breadcrumbs, move, history)
 
 ## Key Files Reference
+- `tributary-client/src/tributaryBlob.ts` — blob chunking, encryption, merkle helpers (implemented)
+- `tributary-client/src/server.ts` — `Server` interface to extend with blob upload/download (blobs Prompt 3)
 - `apps/scribe/scribe-data/src/types.ts` — type definitions to extend
 - `apps/scribe/scribe-data/src/note.ts` — `createNote` pattern to follow for `createImageBlock`
 - `apps/scribe/scribe-data/src/indexing.ts` — `rebuildSlugCollisions` already unions blocks + collections
