@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey, exportKey, importKey, loadKeyPair } from './key';
 import { executeSQL } from './psql';
-import { logger, info, error as errorLog, warn } from './logger';
+import { info, error as errorLog } from './logger';
 import { getClient } from './util';
 
 function parseAppStreamId(appStreamId: string): [string, string] {
@@ -33,7 +33,7 @@ keyCmd
   .description('Generate a new key pair')
   .argument('<app-id>', 'Application identifier')
   .option('--quiet', 'Suppress output except for the stream ID')
-  .action(async (appId: string, options: any) => {
+  .action(async (appId: string, options: { quiet?: boolean }) => {
     try {
       info(`Generating new key pair for app: ${appId}`);
       const keyPair = generateKeyPair();
@@ -188,7 +188,7 @@ program
   .argument('[sql]', 'SQL command to execute')
   .option('-d, --db <path>', 'Local database file path for persistence')
   .option('-n, --no-sync', 'Disable automatic sync with server before executing command')
-  .action(async (appStreamId: string, sql: string | undefined, options: any) => {
+  .action(async (appStreamId: string, sql: string | undefined, options: { db?: string; sync: boolean }) => {
     try {
       const [appId, streamId] = parseAppStreamId(appStreamId);
       
