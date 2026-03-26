@@ -105,10 +105,14 @@ async function handleInitUpload(
     if (!authResult) return errorResponse('Unauthorized: valid Supabase auth token required', 401);
 
     const body: InitBlobUploadRequest = await req.json();
-    const { chunkCount, totalSize, domain } = body;
+    const { chunkCount, totalSize } = body;
+
+    // Domain comes from the Origin header (set by the browser), not the request body.
+    // This prevents one app from spoofing uploads for another domain.
+    const domain = req.headers.get('Origin') || '';
 
     if (!chunkCount || !totalSize || !domain) {
-      return errorResponse('Missing required fields: chunkCount, totalSize, domain', 400);
+      return errorResponse('Missing required fields: chunkCount, totalSize; Origin header required', 400);
     }
 
     if (chunkCount <= 0 || totalSize <= 0) {

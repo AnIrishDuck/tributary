@@ -303,8 +303,8 @@ Deno.test('Blob route: POST upload requires auth', async () => {
 
   const req = new Request('http://localhost/blob/somehash/upload', {
     method: 'POST',
-    body: JSON.stringify({ chunkCount: 1, totalSize: 100, domain: 'test' }),
-    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chunkCount: 1, totalSize: 100 }),
+    headers: { 'Content-Type': 'application/json', 'Origin': 'https://test.example.com' },
   });
   const res = await handler(req);
   assertEquals(res.status, 401);

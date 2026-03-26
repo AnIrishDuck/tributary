@@ -23,7 +23,6 @@ export interface BlobUpload {
 export interface InitBlobUploadRequest {
   chunkCount: number;
   totalSize: number;
-  domain: string;
 }
 
 export interface BlobObjectMetadata {
