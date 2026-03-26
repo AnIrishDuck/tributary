@@ -3,7 +3,7 @@ import { Outlet, useLocation, Link } from 'react-router'
 import { ArrowRightStartOnRectangleIcon, TrashIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useTributary } from '../context/tributaryContext'
-import { BottomNavProvider, FloatingAction } from '../context/bottomNavContext'
+import { BottomNavProvider, FloatingActionItem } from '../context/bottomNavContext'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const Layout: React.FC = () => {
@@ -49,8 +49,32 @@ const Layout: React.FC = () => {
   const isEditorPage = lastSegment.endsWith('&edit') || lastSegment === '+note' || pathSegments.includes('+draft')
 
   // Allow child pages to override the floating action button
-  const [floatingAction, setFloatingAction] = useState<FloatingAction | null>(null)
+  const [floatingAction, setFloatingAction] = useState<FloatingActionItem | FloatingActionItem[] | null>(null)
+  const [fabOpen, setFabOpen] = useState(false)
+  const fabRef = useRef<HTMLDivElement>(null)
   const bottomNavCtx = React.useMemo(() => ({ setFloatingAction }), [])
+
+  // Close speed-dial when clicking outside
+  useEffect(() => {
+    if (!fabOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (fabRef.current && !fabRef.current.contains(e.target as Node)) {
+        setFabOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [fabOpen])
+
+  // Close speed-dial on navigation
+  useEffect(() => {
+    setFabOpen(false)
+  }, [location.pathname])
+
+  const fabItems = floatingAction
+    ? Array.isArray(floatingAction) ? floatingAction : [floatingAction]
+    : []
+  const isSingleFab = fabItems.length === 1
 
   return (
     <BottomNavProvider value={bottomNavCtx}>
@@ -106,16 +130,53 @@ const Layout: React.FC = () => {
         <Outlet />
       </main>
 
-      {/* Standalone Floating Action Button */}
-      {floatingAction && (
-        <Link
-          to={floatingAction.to}
-          className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
-          aria-label={floatingAction.label}
-        >
-          <floatingAction.icon className="w-6 h-6" />
-        </Link>
-      )}
+      {/* Floating Action Button / Speed-Dial */}
+      {fabItems.length > 0 && isSingleFab && (() => {
+        const SingleIcon = fabItems[0].icon
+        return (
+          <Link
+            to={fabItems[0].to}
+            className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
+            aria-label={fabItems[0].label}
+          >
+            <SingleIcon className="w-6 h-6" />
+          </Link>
+        )
+      })()}
+      {fabItems.length > 1 && (() => {
+        const ToggleIcon = fabItems[0].icon
+        return (
+          <div ref={fabRef} className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex flex-col-reverse items-end gap-3">
+            {/* Main FAB toggle */}
+            <button
+              onClick={() => setFabOpen(prev => !prev)}
+              className={`flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white ${fabOpen ? 'rotate-45' : ''}`}
+              aria-label={fabOpen ? 'Close menu' : 'Open menu'}
+            >
+              <ToggleIcon className="w-6 h-6 transition-transform duration-200" />
+            </button>
+            {/* Speed-dial items */}
+            {fabOpen && fabItems.map((item, i) => {
+              const ItemIcon = item.icon
+              return (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={() => setFabOpen(false)}
+                  className="flex items-center gap-2 group"
+                >
+                  <span className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg shadow-md whitespace-nowrap opacity-90">
+                    {item.label}
+                  </span>
+                  <span className="flex items-center justify-center w-12 h-12 bg-white border border-gray-200 rounded-xl shadow-md text-blue-600 group-hover:bg-blue-50 transition-colors">
+                    <ItemIcon className="w-5 h-5" />
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        )
+      })()}
     </div>
     </BottomNavProvider>
   )
