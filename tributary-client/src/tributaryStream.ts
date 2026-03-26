@@ -681,19 +681,8 @@ export class TributaryStream {
    * @returns Symmetric encryption key
    */
   private async deriveEncryptionKey(): Promise<Uint8Array> {
-    // Derive the encryption key by hashing the private key
-    // This ensures we don't give away the private write key when sharing read access
-    const { computeHashBytes } = await import('./hashUtils.js');
-    // Ensure we create a proper Uint8Array from the slice
-    const privateKeySlice = new Uint8Array(this.privateKey.slice(0, 32));
-    const hashBytes = await computeHashBytes(privateKeySlice); // Hash the actual private scalar
-    
-    // Return the first 32 bytes as our encryption key
-    // Ensure we return a proper Uint8Array by creating a new one from the slice
-    const keyBytes = hashBytes.slice(0, nacl.secretbox.keyLength);
-    const encryptionKey = new Uint8Array(keyBytes);
-    
-    return encryptionKey;
+    const { deriveEncryptionKey } = await import('./blobHelpers.js');
+    return deriveEncryptionKey(this.privateKey);
   }
 
   /**

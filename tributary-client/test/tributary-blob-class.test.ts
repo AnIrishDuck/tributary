@@ -2,15 +2,7 @@ import { describe, it, expect } from 'vitest'
 import nacl from 'tweetnacl'
 import { TributaryBlob } from '../src/tributaryBlob.js'
 import { FakeServer } from '../src/fakeServer.js'
-import { computeHashBytes } from '../src/hashUtils.js'
-import { BLOB_CHUNK_SIZE } from '../src/blobHelpers.js'
-
-/** Helper: derive the encryption key the same way TributaryBlob does internally */
-async function deriveKey(readKey: Uint8Array): Promise<Uint8Array> {
-  const slice = new Uint8Array(readKey.slice(0, 32))
-  const hashBytes = await computeHashBytes(slice)
-  return new Uint8Array(hashBytes.slice(0, nacl.secretbox.keyLength))
-}
+import { BLOB_CHUNK_SIZE, deriveEncryptionKey } from '../src/blobHelpers.js'
 
 describe('TributaryBlob', () => {
   const readKey = nacl.randomBytes(64) // simulate a stream private key
@@ -102,7 +94,6 @@ describe('TributaryBlob', () => {
   describe('FakeServer verification', () => {
     it('rejects chunk with bad merkle proof', async () => {
       const server = new FakeServer()
-      const encKey = await deriveKey(readKey)
 
       // Manually set up an upload to test proof rejection
       await server.initBlobUpload('fakeroothash', {
@@ -123,7 +114,7 @@ describe('TributaryBlob', () => {
 
       // Build a real tree from specific data
       const { computeChunkHash, buildChunkTree, getChunkProof, encryptChunk } = await import('../src/blobHelpers.js')
-      const encKey = await deriveKey(readKey)
+      const encKey = await deriveEncryptionKey(readKey)
 
       const chunk = new TextEncoder().encode('real chunk data')
       const encrypted = encryptChunk(chunk, encKey)

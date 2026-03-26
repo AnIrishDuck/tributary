@@ -1,5 +1,4 @@
 import nacl from 'tweetnacl'
-import { computeHashBytes } from './hashUtils.js'
 import {
   BLOB_CHUNK_SIZE,
   chunkData,
@@ -8,6 +7,7 @@ import {
   computeChunkHash,
   buildChunkTree,
   getChunkProof,
+  deriveEncryptionKey,
 } from './blobHelpers.js'
 import type { Server, ObjectBlobMetadata } from './server.js'
 
@@ -34,16 +34,6 @@ export class TributaryBlob {
   }
 
   /**
-   * Derive a symmetric encryption key from the read key.
-   * Same derivation as TributaryStream: SHA256(readKey[0:32])[0:32].
-   */
-  private async deriveEncryptionKey(): Promise<Uint8Array> {
-    const keySlice = new Uint8Array(this.readKey.slice(0, 32))
-    const hashBytes = await computeHashBytes(keySlice)
-    return new Uint8Array(hashBytes.slice(0, nacl.secretbox.keyLength))
-  }
-
-  /**
    * Encrypt and upload a blob. Returns the root hash (content address).
    *
    * Flow:
@@ -57,7 +47,7 @@ export class TributaryBlob {
    * 7. Return root hash
    */
   async upload(data: Uint8Array, domain?: string): Promise<string> {
-    const encryptionKey = await this.deriveEncryptionKey()
+    const encryptionKey = await deriveEncryptionKey(this.readKey)
 
     // 1. Chunk
     const chunks = chunkData(data)
@@ -100,7 +90,7 @@ export class TributaryBlob {
    * Throws if decryption fails.
    */
   async download(rootHash: string): Promise<Uint8Array> {
-    const encryptionKey = await this.deriveEncryptionKey()
+    const encryptionKey = await deriveEncryptionKey(this.readKey)
 
     const blobData = await this.server.downloadBlob(rootHash)
     if (blobData === null) {

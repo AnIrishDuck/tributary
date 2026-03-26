@@ -1,7 +1,7 @@
 import nacl from 'tweetnacl'
 import { MerkleTree } from 'merkletreejs'
 import SHA256 from 'crypto-js/sha256.js'
-import { computeHash } from './hashUtils.js'
+import { computeHash, computeHashBytes } from './hashUtils.js'
 
 export const BLOB_CHUNK_SIZE = 6 * 1024 * 1024 // 6MB
 
@@ -95,4 +95,15 @@ export function verifyChunkProof(root: string, chunkHash: string, proof: ProofEn
     data: Buffer.from(p.data, 'hex'),
   }))
   return tree.verify(proofObjects, leaf, rootBuf)
+}
+
+/**
+ * Derive a symmetric encryption key from a read key (private key first 32 bytes).
+ * SHA256(readKey[0:32]) → first 32 bytes.
+ * Shared by TributaryBlob and TributaryStream.
+ */
+export async function deriveEncryptionKey(readKey: Uint8Array): Promise<Uint8Array> {
+  const keySlice = new Uint8Array(readKey.slice(0, 32))
+  const hashBytes = await computeHashBytes(keySlice)
+  return new Uint8Array(hashBytes.slice(0, nacl.secretbox.keyLength))
 }
