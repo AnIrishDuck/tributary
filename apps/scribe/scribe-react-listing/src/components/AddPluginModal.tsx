@@ -75,7 +75,7 @@ export const AddPluginModal: React.FC<AddPluginModalProps> = ({
               </p>
               <p className="mb-1">When you add a plugin to a library, that plugin can:</p>
               <ul className="list-disc list-inside space-y-0.5 ml-1">
-                <li>Read and modify the rendered content of every note in that library</li>
+                <li>Read and modify every note in that library</li>
                 <li>Execute arbitrary JavaScript in your browser</li>
                 <li>Make network requests to external servers</li>
                 <li>Access anything visible in the browser tab</li>
