@@ -9,6 +9,7 @@
     "apps/scribe/scribe-react-common",
     "apps/scribe/scribe-react-note",
     "apps/scribe/scribe-react-listing",
-    "apps/scribe/scribe-react"
+    "apps/scribe/scribe-react",
+    "apps/scribe/scribe-react-plugin-wake-lock"
   ]
 }
