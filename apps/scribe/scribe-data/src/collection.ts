@@ -61,6 +61,69 @@ export async function createCollection(
 }
 
 /**
+ * Create multiple collections in a single SQL statement.
+ *
+ * All collections are inserted in one INSERT, producing a single stream entry.
+ * Items are processed in order — callers must sort parents-first when
+ * parent_collection_uuid references another item in the same batch.
+ *
+ * @param db The TributaryStream database instance
+ * @param items Array of collection data to insert
+ * @returns Array of inserted collection records (same order as input)
+ */
+export async function createCollections(
+  db: TributaryStream,
+  items: Array<{
+    collection_uuid?: string
+    title: string
+    parent_collection_uuid?: string | null
+    inserter: string
+    linked_stream_id?: string | null
+    linked_stream_key?: string | null
+    slug?: string
+  }>
+): Promise<Collection[]> {
+  if (items.length === 0) return []
+
+  const now = new Date()
+  const collections: Collection[] = items.map(data => ({
+    collection_uuid: data.collection_uuid || uuidv4(),
+    title: data.title,
+    parent_collection_uuid: data.parent_collection_uuid ?? null,
+    insert_datetime: now.toISOString(),
+    inserter: data.inserter,
+    linked_stream_id: data.linked_stream_id ?? null,
+    linked_stream_key: data.linked_stream_key ?? null,
+    slug: data.slug !== undefined ? data.slug : titleToSlug(data.title),
+  }))
+
+  // Build multi-row INSERT: VALUES ($1,...,$8), ($9,...,$16), ...
+  const cols = 8
+  const valueClauses: string[] = []
+  const params: any[] = []
+  for (let i = 0; i < collections.length; i++) {
+    const c = collections[i]
+    const base = i * cols
+    valueClauses.push(
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`
+    )
+    params.push(
+      c.collection_uuid, c.title, c.parent_collection_uuid,
+      c.insert_datetime, c.inserter,
+      c.linked_stream_id, c.linked_stream_key, c.slug
+    )
+  }
+
+  await db.exec(
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
+     VALUES ${valueClauses.join(', ')}`,
+    params
+  )
+
+  return collections
+}
+
+/**
  * Get a collection by its UUID
  *
  * @param db The TributaryStream database instance

@@ -1,6 +1,7 @@
+import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream } from 'tributary-client'
-import { createCollection } from './collection.js'
-import { createImageBlock } from './image.js'
+import { createCollections } from './collection.js'
+import { createImageBlocks } from './image.js'
 import type { Note } from './types.js'
 
 export interface BulkCollectionEntry {
@@ -28,8 +29,9 @@ export interface BulkUploadPlan {
 }
 
 /**
- * Create sub-collections for a bulk upload plan. Collections must be sorted
- * parents-first so that parent UUIDs are available when creating children.
+ * Create sub-collections for a bulk upload plan in a single SQL statement.
+ * Collections must be sorted parents-first so that parent UUIDs are available
+ * when resolving children.
  *
  * Returns a map from folderPath to the created collection's UUID.
  */
@@ -38,28 +40,35 @@ export async function ensureBulkCollections(
   plan: BulkUploadPlan,
   inserter: string,
 ): Promise<Map<string, string>> {
-  const collectionMap = new Map<string, string>()
+  if (plan.collections.length === 0) return new Map()
 
+  // Pre-assign UUIDs so child entries can reference their parent's UUID
+  const collectionMap = new Map<string, string>()
   for (const entry of plan.collections) {
+    collectionMap.set(entry.folderPath, uuidv4())
+  }
+
+  const items = plan.collections.map(entry => {
     const parentUuid = entry.parentFolderPath === null
       ? plan.rootCollectionId ?? undefined
       : collectionMap.get(entry.parentFolderPath)
 
-    const collection = await createCollection(stream, {
+    return {
+      collection_uuid: collectionMap.get(entry.folderPath),
       title: entry.title,
       slug: entry.slug,
       parent_collection_uuid: parentUuid,
       inserter,
-    })
+    }
+  })
 
-    collectionMap.set(entry.folderPath, collection.collection_uuid)
-  }
+  await createCollections(stream, items)
 
   return collectionMap
 }
 
 /**
- * Create image blocks for all images in a bulk upload plan.
+ * Create image blocks for all images in a bulk upload plan in a single SQL statement.
  * Uses collectionMap (from ensureBulkCollections) to resolve folder paths
  * to collection UUIDs, falling back to rootCollectionId for images at the root.
  */
@@ -69,14 +78,14 @@ export async function createBulkImageBlocks(
   collectionMap: Map<string, string>,
   inserter: string,
 ): Promise<Note[]> {
-  const blocks: Note[] = []
+  if (plan.images.length === 0) return []
 
-  for (const entry of plan.images) {
+  const items = plan.images.map(entry => {
     const collectionId = entry.folderPath === ''
       ? plan.rootCollectionId ?? undefined
       : collectionMap.get(entry.folderPath)
 
-    const block = await createImageBlock(stream, {
+    return {
       blobHash: entry.blobHash,
       contentType: entry.contentType,
       fileName: entry.fileName,
@@ -86,10 +95,8 @@ export async function createBulkImageBlocks(
       height: entry.height,
       collectionId: collectionId ?? null,
       inserter,
-    })
+    }
+  })
 
-    blocks.push(block)
-  }
-
-  return blocks
+  return createImageBlocks(stream, items)
 }
