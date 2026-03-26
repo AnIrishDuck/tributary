@@ -1,7 +1,8 @@
 // Fake implementation of Server interface for testing
 // This implementation MUST implement the same hash and signature validations as tributary-server
-import { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
+import { Server, BlobMetadata, BlobData, ArrowBlob, ObjectBlobMetadata } from './server.js';
 import { computeHash } from './hashUtils.js';
+import { computeChunkHash, verifyChunkProof, type ProofEntry } from './blobHelpers.js';
 
 // Import base64url functions
 import * as base64url from 'urlsafe-base64';
@@ -40,6 +41,16 @@ export class FakeServer implements Server {
     this.accountConfig.delete(key);
     return true;
   }
+
+  // Blob object storage (content-addressed encrypted blobs)
+  private blobUploads: Map<string, {
+    params: { chunkCount: number; totalSize: number; domain: string };
+    chunks: Map<number, Uint8Array>;
+  }> = new Map();
+  private completedBlobs: Map<string, {
+    metadata: ObjectBlobMetadata;
+    data: Uint8Array;
+  }> = new Map();
 
   private blobs: Map<string, BlobData> = new Map();
 
@@ -258,5 +269,88 @@ export class FakeServer implements Server {
       blobs: resultBlobs,
       totalCount: blobs.length
     };
+  }
+
+  // Blob object storage methods
+
+  async initBlobUpload(rootHash: string, params: {
+    chunkCount: number;
+    totalSize: number;
+    domain: string;
+  }): Promise<{ tusUploadUrl: string }> {
+    if (this.completedBlobs.has(rootHash)) {
+      throw new Error('Blob already exists');
+    }
+    if (this.blobUploads.has(rootHash)) {
+      throw new Error('Upload already in progress');
+    }
+    this.blobUploads.set(rootHash, {
+      params,
+      chunks: new Map(),
+    });
+    return { tusUploadUrl: `fake-tus://upload/${rootHash}` };
+  }
+
+  async uploadBlobChunk(rootHash: string, chunkIndex: number,
+    data: Uint8Array, proof: ProofEntry[]): Promise<boolean> {
+    const upload = this.blobUploads.get(rootHash);
+    if (!upload) {
+      throw new Error('No upload session found for this root hash');
+    }
+
+    if (chunkIndex >= upload.params.chunkCount) {
+      throw new Error('Chunk index out of range');
+    }
+
+    // Hash the chunk and verify the merkle proof
+    const chunkHash = await computeChunkHash(data);
+    if (!verifyChunkProof(rootHash, chunkHash, proof)) {
+      throw new Error('Merkle proof verification failed');
+    }
+
+    upload.chunks.set(chunkIndex, new Uint8Array(data));
+
+    // Check if upload is complete
+    if (upload.chunks.size === upload.params.chunkCount) {
+      // Assemble the blob in chunk order
+      let totalSize = 0;
+      for (let i = 0; i < upload.params.chunkCount; i++) {
+        totalSize += upload.chunks.get(i)!.length;
+      }
+      const assembled = new Uint8Array(totalSize);
+      let offset = 0;
+      for (let i = 0; i < upload.params.chunkCount; i++) {
+        const chunk = upload.chunks.get(i)!;
+        assembled.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      this.completedBlobs.set(rootHash, {
+        metadata: {
+          rootHash,
+          domain: upload.params.domain,
+          size: totalSize,
+          chunkCount: upload.params.chunkCount,
+          createdAt: new Date(),
+        },
+        data: assembled,
+      });
+
+      this.blobUploads.delete(rootHash);
+    }
+
+    return true;
+  }
+
+  async getBlobObjectMetadata(rootHash: string): Promise<ObjectBlobMetadata | null> {
+    const blob = this.completedBlobs.get(rootHash);
+    if (!blob) return null;
+    return { ...blob.metadata };
+  }
+
+  async downloadBlob(rootHash: string): Promise<Uint8Array | null> {
+    const blob = this.completedBlobs.get(rootHash);
+    if (!blob) return null;
+    return new Uint8Array(blob.data);
   }
 }

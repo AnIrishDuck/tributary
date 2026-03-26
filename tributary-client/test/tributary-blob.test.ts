@@ -9,7 +9,7 @@ import {
   buildChunkTree,
   getChunkProof,
   verifyChunkProof,
-} from '../src/tributaryBlob.js'
+} from '../src/blobHelpers.js'
 
 describe('blobHelpers', () => {
   const encryptionKey = nacl.randomBytes(nacl.secretbox.keyLength)
