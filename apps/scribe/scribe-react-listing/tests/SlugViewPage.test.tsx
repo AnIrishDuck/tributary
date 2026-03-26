@@ -396,4 +396,103 @@ describe('SlugViewPage', () => {
     expect(screen.queryByText(/Failed to load note/)).toBeNull()
     expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
   })
+
+  it('should redirect to note when &titled resolves to a single result', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note with a unique title
+    await saveNote(stream, '# Unique Title\n\nSome content here.')
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&titled?t=Unique%20Title`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Single result should redirect and show the note content
+    await waitFor(() => {
+      expect(screen.getByText(/Some content here/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
+
+  it('should show disambiguation page when &titled matches multiple results', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    // Create two notes with the same title in different collections
+    await saveNote(stream, '# Pasta\n\nFirst pasta note.')
+
+    const col = await scribeData.createCollection(stream, {
+      title: 'Italian',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'test-user'
+    })
+    await stream.sync(1000)
+    await scribeData.indexAll(stream.local())
+
+    await saveNote(stream, '# Pasta\n\nSecond pasta note.', 'web-ui', undefined, col.collection_uuid)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&titled?t=Pasta`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Multiple results should show the disambiguation page
+    await waitFor(() => {
+      expect(screen.getByText(/Multiple items titled/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
+
+  it('should show not found when &titled has no matches', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&titled?t=Nonexistent%20Title`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Zero results should show the "not found" message
+    await waitFor(() => {
+      expect(screen.getByText(/No items titled/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
+
+  it('should show error when &titled is missing the t parameter', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/&titled`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Missing title parameter/)).toBeInTheDocument()
+    }, { timeout: 5000 })
+  })
 })

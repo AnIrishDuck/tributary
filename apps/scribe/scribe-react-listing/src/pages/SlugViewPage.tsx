@@ -13,6 +13,7 @@ import SlugCollision from './SlugCollision'
 import EditorPage from 'scribe-react-note/src/pages/EditorPage'
 import HistoryPage from 'scribe-react-note/src/pages/HistoryPage'
 import NewCollectionPage from './NewCollectionPage'
+import TitleCollision from './TitleCollision'
 import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
 import LibrarySettingsPage from './LibrarySettingsPage'
@@ -52,6 +53,7 @@ type PageMode =
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
   | { type: 'librarySettings' }
   | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
+  | { type: 'titled'; title: string; results: { title: string; entity_type: string; entity_uuid: string; slug_path: string }[] }
 
 const SlugViewPage: React.FC = () => {
   const navigate = useNavigate()
@@ -89,6 +91,54 @@ const SlugViewPage: React.FC = () => {
       // --- Handle &library (library settings page) ---
       if (splatPath === '&library') {
         setMode({ type: 'librarySettings' })
+        return
+      }
+
+      // --- Handle &titled (wikilink title resolution) ---
+      if (splatPath === '&titled') {
+        const title = searchParams.get('t')
+        if (!title) {
+          setMode({ type: 'error', message: 'Missing title parameter' })
+          return
+        }
+
+        try {
+          const streamId = prefix
+          const stream = await client.get('scribe', streamId)
+          if (!stream) {
+            if (!librarySynced && !globalSyncStatus.synced) {
+              setMode({ type: 'loading' })
+              return
+            }
+            throw new Error('Failed to get library')
+          }
+          const localDb = stream.local()
+
+          if (!await schemaReady(localDb)) {
+            if (!librarySynced) {
+              setMode({ type: 'schemaLoading' })
+            } else {
+              setMode({ type: 'schemaError' })
+            }
+            return
+          }
+
+          const { lookupByTitle } = await import('scribe-data')
+          const results = await lookupByTitle(localDb, title)
+
+          if (results.length === 1) {
+            navigate(routeCtx.buildPath(results[0].slug_path), { replace: true })
+            return
+          }
+
+          setMode({ type: 'titled', title, results })
+        } catch (err: any) {
+          if (!librarySynced && !globalSyncStatus.synced) {
+            setMode({ type: 'loading' })
+          } else {
+            setMode({ type: 'error', message: 'Failed to resolve title: ' + (err.message || 'Unknown error') })
+          }
+        }
         return
       }
 
@@ -787,6 +837,16 @@ const SlugViewPage: React.FC = () => {
 
   if (mode.type === 'librarySettings') {
     return <LibrarySettingsPage prefix={prefix || ''} />
+  }
+
+  if (mode.type === 'titled') {
+    return (
+      <TitleCollision
+        title={mode.title}
+        results={mode.results}
+        prefix={prefix || ''}
+      />
+    )
   }
 
   if (mode.type === 'missingSlug') {

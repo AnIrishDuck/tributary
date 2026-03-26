@@ -7,6 +7,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
+import { wikilinkExtension } from 'scribe-react-common/src/wikilink/codemirror'
 import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
@@ -526,6 +527,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                 extensions={[
                   markdown({ base: markdownLanguage, codeLanguages: languages }),
                   EditorView.lineWrapping,
+                  wikilinkExtension,
                   ...plugins.flatMap(p => p.codemirror ?? []),
                 ]}
                 onChange={(value) => setContent(value)}
