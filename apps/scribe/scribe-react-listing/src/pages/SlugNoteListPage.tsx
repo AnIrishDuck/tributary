@@ -1,11 +1,15 @@
-import React, { useMemo, useEffect } from 'react'
+import React, { useMemo, useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
+import type { BulkUploadPlan } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { readDroppedItems, buildUploadPlan, BulkUploadDialog } from 'scribe-react-img'
+import { TributaryStream } from 'tributary-client'
 
 interface NoteListViewProps {
   collections: { collection: Collection; slug: string | null }[]
@@ -32,8 +36,56 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 }) => {
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
+  const { client } = useTributary()
   const routeCtx = useRouteContext()
   const isRoot = !collection
+
+  // Bulk upload state
+  const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
+  const [bulkFiles, setBulkFiles] = useState<Map<number, File>>(new Map())
+  const [bulkStream, setBulkStream] = useState<TributaryStream | null>(null)
+
+  const handleBulkDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+  }, [])
+
+  const handleBulkDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    if (!client || !prefix) return
+
+    const entries = await readDroppedItems(e.dataTransfer)
+    if (entries.length === 0) return
+
+    const collectionId = collection?.collection_uuid ?? null
+    const plan = buildUploadPlan(entries, collectionId)
+
+    // Build a map from image index to File for the dialog
+    const fileMap = new Map<number, File>()
+    entries.forEach((entry, i) => {
+      fileMap.set(i, entry.file)
+    })
+
+    const stream = await client.get('scribe', prefix)
+    if (!stream) return
+
+    setBulkPlan(plan)
+    setBulkFiles(fileMap)
+    setBulkStream(stream)
+  }, [client, prefix, collection])
+
+  const handleBulkComplete = useCallback(() => {
+    setBulkPlan(null)
+    setBulkFiles(new Map())
+    setBulkStream(null)
+    // Re-navigate to refresh the listing
+    navigate(0)
+  }, [navigate])
+
+  const handleBulkCancel = useCallback(() => {
+    setBulkPlan(null)
+    setBulkFiles(new Map())
+    setBulkStream(null)
+  }, [])
 
   // Set the floating action buttons for "Add Note", "Add Image", and "Add Collection"
   useEffect(() => {
@@ -89,7 +141,16 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const totalItems = notes.length + collections.length + newNoteDrafts.length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" onDragOver={handleBulkDragOver} onDrop={handleBulkDrop}>
+      {bulkPlan && bulkStream && (
+        <BulkUploadDialog
+          plan={bulkPlan}
+          files={bulkFiles}
+          stream={bulkStream}
+          onComplete={handleBulkComplete}
+          onCancel={handleBulkCancel}
+        />
+      )}
       {/* Sticky header group: sync banner + nav header */}
       <div className="sticky top-0 z-40">
       {/* Sync Progress Banner */}
