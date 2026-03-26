@@ -127,14 +127,15 @@ async function handleInitUpload(
 
     // Create TUS upload session with Supabase Storage
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
-    const tusResponse = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+    const tusUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
+    const tusResponse = await fetch(tusUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
         'Upload-Length': totalSize.toString(),
-        'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
+        'Upload-Metadata': `bucketName ${btoa('tributary-blobs')},objectName ${btoa(rootHash)},contentType ${btoa('application/octet-stream')}`,
         'Tus-Resumable': '1.0.0',
       },
     });
@@ -217,7 +218,7 @@ async function handleUploadChunk(
 
     // Forward chunk to Supabase Storage TUS endpoint
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const uploadOffset = chunkIndex * BLOB_CHUNK_SIZE;
     const tusUrl = upload.tus_upload_url || `${supabaseUrl}/storage/v1/upload/resumable`;
@@ -225,7 +226,7 @@ async function handleUploadChunk(
     const tusResponse = await fetch(tusUrl, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
         'Upload-Offset': uploadOffset.toString(),
         'Content-Type': 'application/offset+octet-stream',
         'Tus-Resumable': '1.0.0',
@@ -303,10 +304,10 @@ async function handleDownload(
 
     // Fetch from Supabase Storage
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_KEY') || '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const storageHeaders: Record<string, string> = {
-      'Authorization': `Bearer ${serviceRoleKey}`,
+      'apikey': serviceRoleKey,
     };
 
     // Pass through Range header for partial content support

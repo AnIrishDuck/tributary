@@ -420,6 +420,9 @@ export class TributaryServer implements Server {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+    // In a browser the Origin header is set automatically, but from Node.js
+    // we need to set it explicitly so the server can identify the domain.
+    if (params.domain) headers['Origin'] = params.domain;
     const authHeader = this.getAuthHeader();
     if (authHeader) headers['Authorization'] = authHeader;
 
