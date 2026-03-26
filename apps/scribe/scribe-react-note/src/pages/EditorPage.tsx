@@ -11,6 +11,7 @@ import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractT
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
+import { validateLinks, LinkStatusMap } from 'scribe-react-common/src/utils/linkValidation'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
 import ConflictWarning from '../components/ConflictWarning'
@@ -49,6 +50,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
   const [showConflictWarning, setShowConflictWarning] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [linkStatuses, setLinkStatuses] = useState<LinkStatusMap | undefined>(undefined)
   const [showLineNumbers, setShowLineNumbers] = useState(false)
   const [optionsMenuOpen, setOptionsMenuOpen] = useState(false)
   const optionsMenuRef = useRef<HTMLDivElement>(null)
@@ -210,6 +212,31 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
 
     checkForConflict()
   }, [editBlockUuid, client, prefix, lastSyncedAt])
+
+  // Validate links when entering preview mode
+  useEffect(() => {
+    if (!showPreview || !client || !prefix) {
+      setLinkStatuses(undefined)
+      return
+    }
+
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const stream = await client.get('scribe', prefix)
+        if (!stream || cancelled) return
+        const localDb = stream.local()
+        const statuses = await validateLinks(localDb, content, noteSlugPath)
+        if (!cancelled) setLinkStatuses(statuses)
+      } catch {
+        // Silently ignore validation errors — links render without annotations
+      }
+    }
+
+    run()
+    return () => { cancelled = true }
+  }, [showPreview, client, prefix, content, noteSlugPath])
 
   // Close options menu when clicking outside
   useEffect(() => {
@@ -509,7 +536,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                       prefix,
                       noteSlugPath,
                       routeCtx.buildPath().replace(/\/$/, ''),
-                      plugins
+                      plugins,
+                      linkStatuses
                     ),
                   }}
                 />

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { resolveSlugLinksInHtml, resolveWikilinksInHtml, renderMarkdown } from './markdown'
 import type { ScribePlugin } from '../plugins/types'
 import type { HtmlExtension } from 'micromark-util-types'
+import type { LinkStatusMap } from './linkValidation'
 
 const testPrefix = '_ip1xGnAiIyjoI2RRX5xmAVei607S-s3rvTmEgFQ-k0'
 
@@ -279,5 +280,102 @@ describe('renderMarkdown with plugins', () => {
     const result = renderMarkdown('[link](my-note)', testPrefix, undefined, undefined, [plugin])
     expect(result).toContain('<p class="transformed">')
     expect(result).toContain(`/#/pk/${testPrefix}/my-note`)
+  })
+})
+
+describe('resolveSlugLinksInHtml with link statuses', () => {
+  it('should add broken style to broken slug links', () => {
+    const html = '<p><a href="missing-note">Missing</a></p>'
+    const statuses: LinkStatusMap = new Map([['missing-note', 'broken']])
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, undefined, statuses)
+    expect(result).toContain('class="link-broken"')
+    expect(result).toContain('color: #dc2626')
+  })
+
+  it('should add conflict style to conflict slug links', () => {
+    const html = '<p><a href="dupe-note">Dupe</a></p>'
+    const statuses: LinkStatusMap = new Map([['dupe-note', 'conflict']])
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, undefined, statuses)
+    expect(result).toContain('class="link-conflict"')
+    expect(result).toContain('color: #d97706')
+  })
+
+  it('should not add attrs to ok slug links', () => {
+    const html = '<p><a href="good-note">Good</a></p>'
+    const statuses: LinkStatusMap = new Map([['good-note', 'ok']])
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, undefined, statuses)
+    expect(result).not.toContain('class=')
+    expect(result).not.toContain('style=')
+  })
+
+  it('should not add attrs to links not in the map', () => {
+    const html = '<p><a href="unknown">Unknown</a></p>'
+    const statuses: LinkStatusMap = new Map()
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, undefined, statuses)
+    expect(result).not.toContain('class=')
+    expect(result).not.toContain('style=')
+  })
+
+  it('should not affect external links', () => {
+    const html = '<p><a href="https://example.com">Ext</a></p>'
+    const statuses: LinkStatusMap = new Map([['https://example.com', 'broken']])
+    const result = resolveSlugLinksInHtml(html, testPrefix, undefined, undefined, statuses)
+    expect(result).not.toContain('class=')
+  })
+})
+
+describe('resolveWikilinksInHtml with link statuses', () => {
+  it('should add broken style to broken wikilinks', () => {
+    const html = '<a href="wikilink:Missing Note" class="wikilink">Missing Note</a>'
+    const statuses: LinkStatusMap = new Map([['wikilink:Missing Note', 'broken']])
+    const result = resolveWikilinksInHtml(html, '/pk/abc', statuses)
+    expect(result).toContain('class="wikilink link-broken"')
+    expect(result).toContain('color: #dc2626')
+  })
+
+  it('should add conflict style to conflict wikilinks', () => {
+    const html = '<a href="wikilink:Dupe Title" class="wikilink">Dupe Title</a>'
+    const statuses: LinkStatusMap = new Map([['wikilink:Dupe Title', 'conflict']])
+    const result = resolveWikilinksInHtml(html, '/pk/abc', statuses)
+    expect(result).toContain('class="wikilink link-conflict"')
+    expect(result).toContain('color: #d97706')
+  })
+
+  it('should not add style to ok wikilinks', () => {
+    const html = '<a href="wikilink:Good Note" class="wikilink">Good Note</a>'
+    const statuses: LinkStatusMap = new Map([['wikilink:Good Note', 'ok']])
+    const result = resolveWikilinksInHtml(html, '/pk/abc', statuses)
+    expect(result).toContain('class="wikilink"')
+    expect(result).not.toContain('link-broken')
+    expect(result).not.toContain('link-conflict')
+  })
+})
+
+describe('renderMarkdown with link statuses', () => {
+  it('should annotate broken links in full render pipeline', () => {
+    const statuses: LinkStatusMap = new Map([['missing', 'broken']])
+    const result = renderMarkdown('[Gone](missing)', testPrefix, undefined, undefined, [], statuses)
+    expect(result).toContain('class="link-broken"')
+    expect(result).toContain('color: #dc2626')
+  })
+
+  it('should annotate broken wikilinks in full render pipeline', () => {
+    const statuses: LinkStatusMap = new Map([['wikilink:No Such Note', 'broken']])
+    const result = renderMarkdown('[[No Such Note]]', testPrefix, undefined, undefined, [], statuses)
+    expect(result).toContain('link-broken')
+    expect(result).toContain('color: #dc2626')
+  })
+
+  it('should annotate conflict links in full render pipeline', () => {
+    const statuses: LinkStatusMap = new Map([['dupe', 'conflict']])
+    const result = renderMarkdown('[Dupe](dupe)', testPrefix, undefined, undefined, [], statuses)
+    expect(result).toContain('class="link-conflict"')
+    expect(result).toContain('color: #d97706')
+  })
+
+  it('should not change behavior when linkStatuses is undefined', () => {
+    const without = renderMarkdown('[link](my-note)', testPrefix)
+    const withUndefined = renderMarkdown('[link](my-note)', testPrefix, undefined, undefined, [], undefined)
+    expect(withUndefined).toBe(without)
   })
 })

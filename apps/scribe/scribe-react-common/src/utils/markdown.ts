@@ -3,6 +3,7 @@ import { gfm, gfmHtml } from 'micromark-extension-gfm'
 import { isSlugLink, isAbsoluteInternalLink, resolveLink } from './links'
 import { wikilinkSyntax, wikilinkHtml } from '../wikilink/syntax'
 import type { ScribePlugin } from '../plugins/types'
+import type { LinkStatusMap } from './linkValidation'
 
 /**
  * Resolve slug links in micromark HTML output.
@@ -15,11 +16,25 @@ import type { ScribePlugin } from '../plugins/types'
  * Links that start with `#` and contain `/` are treated as absolute
  * internal links and resolved to `/#/{path}` regardless of paradigm.
  */
+/** Inline style for broken links (red). */
+const BROKEN_STYLE = 'color: #dc2626; text-decoration-color: #dc2626;'
+/** Inline style for conflict/collision links (yellow/amber). */
+const CONFLICT_STYLE = 'color: #d97706; text-decoration-color: #d97706;'
+
+function linkStatusAttrs(href: string, linkStatuses?: LinkStatusMap): string {
+  if (!linkStatuses) return ''
+  const status = linkStatuses.get(href)
+  if (status === 'broken') return ` class="link-broken" style="${BROKEN_STYLE}"`
+  if (status === 'conflict') return ` class="link-conflict" style="${CONFLICT_STYLE}"`
+  return ''
+}
+
 export function resolveSlugLinksInHtml(
   html: string,
   streamPrefix: string,
   currentSlug?: string,
-  routeBase?: string
+  routeBase?: string,
+  linkStatuses?: LinkStatusMap
 ): string {
   return html.replace(/<a href="([^"]*)">/g, (match, href) => {
     if (isAbsoluteInternalLink(href)) {
@@ -28,7 +43,8 @@ export function resolveSlugLinksInHtml(
     }
     if (isSlugLink(href)) {
       const resolved = resolveLink(href, streamPrefix, currentSlug, routeBase)
-      return `<a href="${resolved}">`
+      const attrs = linkStatusAttrs(href, linkStatuses)
+      return `<a href="${resolved}"${attrs}>`
     }
     return match
   })
@@ -42,13 +58,26 @@ export function resolveSlugLinksInHtml(
  */
 export function resolveWikilinksInHtml(
   html: string,
-  routeBase: string
+  routeBase: string,
+  linkStatuses?: LinkStatusMap
 ): string {
   return html.replace(
     /<a href="wikilink:([^"]*)" class="wikilink">/g,
     (_match, rawTitle: string) => {
       const title = rawTitle.replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-      return `<a href="/#${routeBase}/&titled?t=${encodeURIComponent(title)}" class="wikilink">`
+      const resolved = `/#${routeBase}/&titled?t=${encodeURIComponent(title)}`
+      const key = `wikilink:${title}`
+      const status = linkStatuses?.get(key)
+      let cls = 'wikilink'
+      let style = ''
+      if (status === 'broken') {
+        cls += ' link-broken'
+        style = ` style="${BROKEN_STYLE}"`
+      } else if (status === 'conflict') {
+        cls += ' link-conflict'
+        style = ` style="${CONFLICT_STYLE}"`
+      }
+      return `<a href="${resolved}" class="${cls}"${style}>`
     }
   )
 }
@@ -64,7 +93,8 @@ export function renderMarkdown(
   streamPrefix: string,
   currentSlug?: string,
   routeBase?: string,
-  plugins?: ScribePlugin[]
+  plugins?: ScribePlugin[],
+  linkStatuses?: LinkStatusMap
 ): string {
   const pluginExtensions = (plugins ?? []).flatMap(p => p.micromark?.extensions ?? [])
   const pluginHtmlExtensions = (plugins ?? []).flatMap(p => p.micromark?.htmlExtensions ?? [])
@@ -74,8 +104,8 @@ export function renderMarkdown(
     htmlExtensions: [gfmHtml(), wikilinkHtml(), ...pluginHtmlExtensions]
   })
 
-  html = resolveSlugLinksInHtml(html, streamPrefix, currentSlug, routeBase)
-  html = resolveWikilinksInHtml(html, routeBase || `/pk/${streamPrefix}`)
+  html = resolveSlugLinksInHtml(html, streamPrefix, currentSlug, routeBase, linkStatuses)
+  html = resolveWikilinksInHtml(html, routeBase || `/pk/${streamPrefix}`, linkStatuses)
 
   for (const plugin of plugins ?? []) {
     if (plugin.transformHtml) {
