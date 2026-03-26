@@ -304,8 +304,8 @@ export async function searchNotes(
   }
   
   // Convert query to tsquery format
-  // Split on whitespace and join with & (AND operator)
-  const queryTerms = query.trim().split(/\s+/).join(' & ')
+  // Split on whitespace, append :* for prefix matching, and join with & (AND operator)
+  const queryTerms = query.trim().split(/\s+/).map(term => `${term}:*`).join(' & ')
   
   try {
     const result = await localDb.query(

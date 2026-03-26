@@ -334,6 +334,49 @@ describe('Full-text search', () => {
       expect(results).toHaveLength(0)
     })
 
+    test('should find notes matching partial word prefix', async () => {
+      // Create test notes
+      const note1 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics.',
+        inserter: 'test-user'
+      })
+
+      const note2 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Python Guide\n\nPython programming essentials.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // Partial prefix "Java" should match "JavaScript"
+      const results = await searchNotes(localDb, 'Java')
+      expect(results).toHaveLength(1)
+      expect(results[0].block_uuid).toBe(note1.block_uuid)
+    })
+
+    test('should find notes matching partial multi-word prefix query', async () => {
+      const note1 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Tutorial\n\nLearn JavaScript basics and advanced concepts.',
+        inserter: 'test-user'
+      })
+
+      const note2 = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# JavaScript Guide\n\nQuick reference for JavaScript.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      // "Jav adv" should match note1 (JavaScript + advanced) but not note2
+      const results = await searchNotes(localDb, 'Jav adv')
+      expect(results).toHaveLength(1)
+      expect(results[0].block_uuid).toBe(note1.block_uuid)
+    })
+
     test('should handle empty query gracefully', async () => {
       // Create test note
       await createNote(syncedDb, {
