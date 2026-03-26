@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { PencilIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
+import { validateLinks, LinkStatusMap } from 'scribe-react-common/src/utils/linkValidation'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
@@ -32,6 +33,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
   const plugins = usePlugins()
   const contentRef = useRef<HTMLDivElement>(null)
   const [versionPosition, setVersionPosition] = useState<{ position: number; total: number } | null>(null)
+  const [linkStatuses, setLinkStatuses] = useState<LinkStatusMap | undefined>(undefined)
 
   // Fetch version position info when props are available
   useEffect(() => {
@@ -53,6 +55,28 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
     }
     loadVersionInfo()
   }, [blockUuid, versionUuid, client, prefix])
+
+  // Validate links for broken/conflict highlighting
+  useEffect(() => {
+    if (!client || !prefix || !content) return
+
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const stream = await client.get('scribe', prefix)
+        if (!stream || cancelled) return
+        const localDb = stream.local()
+        const statuses = await validateLinks(localDb, content, splatPath)
+        if (!cancelled) setLinkStatuses(statuses)
+      } catch {
+        // Silently ignore validation errors
+      }
+    }
+
+    run()
+    return () => { cancelled = true }
+  }, [client, prefix, content, splatPath])
 
   useMountPlugins(contentRef, plugins)
 
@@ -132,7 +156,7 @@ const NoteViewPage: React.FC<NoteViewPageProps> = ({ content, slugPath, prefix, 
           <div
             ref={contentRef}
             className="prose prose-base max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, ''), plugins) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(content, prefix, splatPath, routeCtx.buildPath().replace(/\/$/, ''), plugins, linkStatuses) }}
           />
         </div>
 
