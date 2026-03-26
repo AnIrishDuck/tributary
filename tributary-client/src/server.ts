@@ -138,7 +138,7 @@ export interface Server {
   initBlobUpload(rootHash: string, params: {
     chunkCount: number;
     totalSize: number;
-    domain: string;
+    domain?: string;
   }): Promise<{ tusUploadUrl: string }>;
 
   /**

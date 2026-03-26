@@ -276,7 +276,7 @@ export class FakeServer implements Server {
   async initBlobUpload(rootHash: string, params: {
     chunkCount: number;
     totalSize: number;
-    domain: string;
+    domain?: string;
   }): Promise<{ tusUploadUrl: string }> {
     if (this.completedBlobs.has(rootHash)) {
       throw new Error('Blob already exists');
@@ -328,7 +328,7 @@ export class FakeServer implements Server {
       this.completedBlobs.set(rootHash, {
         metadata: {
           rootHash,
-          domain: upload.params.domain,
+          domain: upload.params.domain || '',
           size: totalSize,
           chunkCount: upload.params.chunkCount,
           createdAt: new Date(),

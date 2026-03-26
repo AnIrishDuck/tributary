@@ -56,7 +56,7 @@ export class TributaryBlob {
    *    call server.uploadBlobChunk(rootHash, index, encryptedChunk, proof)
    * 7. Return root hash
    */
-  async upload(data: Uint8Array, domain: string): Promise<string> {
+  async upload(data: Uint8Array, domain?: string): Promise<string> {
     const encryptionKey = await this.deriveEncryptionKey()
 
     // 1. Chunk
@@ -81,7 +81,7 @@ export class TributaryBlob {
     await this.server.initBlobUpload(root, {
       chunkCount: encryptedChunks.length,
       totalSize,
-      domain,
+      domain: domain || '',
     })
 
     // 7. Upload each chunk with proof

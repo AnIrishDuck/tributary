@@ -414,7 +414,7 @@ export class TributaryServer implements Server {
   async initBlobUpload(rootHash: string, params: {
     chunkCount: number;
     totalSize: number;
-    domain: string;
+    domain?: string;
   }): Promise<{ tusUploadUrl: string }> {
     const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/upload`);
     const headers: Record<string, string> = {
