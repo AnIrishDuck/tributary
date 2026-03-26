@@ -139,6 +139,7 @@ async function handleInitUpload(
 
     const tusUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
     const tusHeaders: Record<string, string> = {
+      'apikey': serviceRoleKey,
       'Authorization': `Bearer ${serviceRoleKey}`,
       'Upload-Length': totalSize.toString(),
       'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
@@ -244,6 +245,7 @@ async function handleUploadChunk(
     const tusResponse = await fetch(tusUrl, {
       method: 'PATCH',
       headers: {
+        'apikey': serviceRoleKey,
         'Authorization': `Bearer ${serviceRoleKey}`,
         'Upload-Offset': uploadOffset.toString(),
         'Content-Type': 'application/offset+octet-stream',
@@ -325,6 +327,7 @@ async function handleDownload(
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const storageHeaders: Record<string, string> = {
+      'apikey': serviceRoleKey,
       'Authorization': `Bearer ${serviceRoleKey}`,
     };
 
