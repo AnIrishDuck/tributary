@@ -4,8 +4,10 @@ import React from 'react'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, createLibrary, setLibraryPlugins } from 'scribe-data'
 import { createTestTributaryClient } from '../context/tributaryContext'
-import { SCRIBE_PLUGIN_API_VERSION, type ScribePlugin } from './types'
+import { SCRIBE_PLUGIN_API_VERSION, type PluginEntry, type ScribePlugin } from './types'
 import { useLibraryPlugins } from './useLibraryPlugins'
+
+type LoadPluginFn = (entry: PluginEntry) => Promise<ScribePlugin | null>
 
 function makePlugin(overrides: Partial<ScribePlugin> = {}): ScribePlugin {
   return {
@@ -16,10 +18,10 @@ function makePlugin(overrides: Partial<ScribePlugin> = {}): ScribePlugin {
 }
 
 describe('useLibraryPlugins', () => {
-  let mockLoadPlugin: ReturnType<typeof vi.fn>
+  let mockLoadPlugin: ReturnType<typeof vi.fn> & LoadPluginFn
 
   beforeEach(() => {
-    mockLoadPlugin = vi.fn()
+    mockLoadPlugin = vi.fn() as ReturnType<typeof vi.fn> & LoadPluginFn
   })
 
   async function createClientWithLibrary(name: string) {
