@@ -35,9 +35,17 @@ export class TributaryServer implements Server {
   private writeAuthToken?: string;
   private authTokenRefresher?: () => Promise<string | undefined>;
 
+  /**
+   * @param baseUrl The functions root URL (e.g. https://xxx.supabase.co/functions/v1).
+   *               Stream endpoints are at {baseUrl}/stream/... and blob endpoints at {baseUrl}/blob/...
+   */
   constructor(baseUrl: string, authKey?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash if present
     this.authKey = authKey;
+  }
+
+  private get streamUrl(): string {
+    return `${this.baseUrl}/stream`;
   }
 
   setWriteAuthToken(token: string | undefined) {
@@ -101,7 +109,7 @@ export class TributaryServer implements Server {
   ): Promise<boolean | 'unauthorized'> {
     // The server now auto-generates IDs based on pubkey and sequence number
     // We don't send the ID in the URL anymore, just the pubkey
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}`;
+    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}`;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
@@ -137,7 +145,7 @@ export class TributaryServer implements Server {
     pubkey: string,
     id: string
   ): Promise<BlobData | null> {
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
+    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
     
     const headers: Record<string, string> = {};
     
@@ -164,7 +172,7 @@ export class TributaryServer implements Server {
   async getLatestBlobMetadata(
     pubkey: string
   ): Promise<BlobMetadata | null> {
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/latest`;
+    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/latest`;
     
     const headers: Record<string, string> = {};
     
@@ -203,7 +211,7 @@ export class TributaryServer implements Server {
     blobs: BlobMetadata[];
     totalCount: number;
   }> {
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/all`;
+    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/all`;
     
     const params = new URLSearchParams();
     if (startSequence !== undefined) {
@@ -246,7 +254,7 @@ export class TributaryServer implements Server {
   }
 
   async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
-    const url = `${this.baseUrl}/config`;
+    const url = `${this.streamUrl}/config`;
     const headers: Record<string, string> = {};
     const authHeader = this.getAuthHeader();
     if (authHeader) {
@@ -263,7 +271,7 @@ export class TributaryServer implements Server {
   }
 
   async setAccountConfig(key: string, value: string): Promise<boolean> {
-    const url = `${this.baseUrl}/config`;
+    const url = `${this.streamUrl}/config`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -289,7 +297,7 @@ export class TributaryServer implements Server {
   }
 
   async deleteAccountConfig(key: string): Promise<boolean> {
-    const url = `${this.baseUrl}/config`;
+    const url = `${this.streamUrl}/config`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -323,7 +331,7 @@ export class TributaryServer implements Server {
     blobs: ArrowBlob[];
     totalCount: number;
   }> {
-    const url = `${this.baseUrl}/${encodeURIComponent(pubkey)}/blobs`;
+    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/blobs`;
     
     const params = new URLSearchParams();
     if (startSequence !== undefined) {
@@ -396,19 +404,8 @@ export class TributaryServer implements Server {
 
   // Blob object storage methods
 
-  private blobBaseUrl?: string;
-
-  /**
-   * Set the base URL for the blob object storage edge function.
-   * This is separate from the main tributary-server URL.
-   */
-  setBlobBaseUrl(url: string) {
-    this.blobBaseUrl = url.replace(/\/$/, '');
-  }
-
   private getBlobUrl(path: string): string {
-    const base = this.blobBaseUrl || this.baseUrl;
-    return `${base}/blob${path}`;
+    return `${this.baseUrl}/blob${path}`;
   }
 
   async initBlobUpload(rootHash: string, params: {
