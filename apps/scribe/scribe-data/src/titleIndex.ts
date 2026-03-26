@@ -3,12 +3,12 @@ import { extractTitleFromMarkdown } from './indexing.js'
 
 /**
  * Try to extract a display title from an image block's JSON body.
- * Returns altText or fileName if present, otherwise null.
+ * Returns title, altText, or fileName if present, otherwise null.
  */
 function tryParseImageTitle(body: string): string | null {
   try {
     const parsed = JSON.parse(body)
-    return parsed.altText || parsed.fileName || null
+    return parsed.title || parsed.altText || parsed.fileName || null
   } catch {
     return null
   }

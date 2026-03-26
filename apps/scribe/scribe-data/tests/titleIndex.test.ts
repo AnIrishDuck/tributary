@@ -282,7 +282,7 @@ describe('title index', () => {
     expect(results).toHaveLength(0)
   })
 
-  test('image blocks are indexed by altText', async () => {
+  test('image blocks are indexed by title', async () => {
     const root = await createCollection(syncedDb, {
       title: 'My Library',
       inserter: 'test-user'
@@ -291,7 +291,8 @@ describe('title index', () => {
     await createImageBlock(syncedDb, {
       blobHash: 'abc123',
       contentType: 'image/png',
-      altText: 'Sunset Photo',
+      title: 'Sunset Photo',
+      altText: 'A beautiful sunset',
       fileName: 'sunset.png',
       slug: 'sunset-photo',
       inserter: 'test-user',
@@ -301,22 +302,29 @@ describe('title index', () => {
     await indexSlugs(localDb)
     await rebuildTitleIndex(localDb)
 
+    // Should use title, not altText or fileName
     const results = await lookupByTitle(localDb, 'Sunset Photo')
     expect(results).toHaveLength(1)
     expect(results[0].entity_type).toBe('image')
     expect(results[0].slug_path).toBe('sunset-photo')
     expect(results[0].title).toBe('Sunset Photo')
+
+    // altText should not match
+    const altResults = await lookupByTitle(localDb, 'A beautiful sunset')
+    expect(altResults).toHaveLength(0)
   })
 
-  test('image blocks without altText fall back to fileName', async () => {
+  test('image blocks without title fall back to altText then fileName', async () => {
     const root = await createCollection(syncedDb, {
       title: 'My Library',
       inserter: 'test-user'
     })
 
+    // No title, has altText
     await createImageBlock(syncedDb, {
       blobHash: 'def456',
       contentType: 'image/jpeg',
+      altText: 'Beach vacation',
       fileName: 'vacation.jpg',
       slug: 'vacation',
       inserter: 'test-user',
@@ -326,12 +334,35 @@ describe('title index', () => {
     await indexSlugs(localDb)
     await rebuildTitleIndex(localDb)
 
-    const results = await lookupByTitle(localDb, 'vacation.jpg')
+    const results = await lookupByTitle(localDb, 'Beach vacation')
     expect(results).toHaveLength(1)
     expect(results[0].entity_type).toBe('image')
   })
 
-  test('image blocks without altText or fileName are not indexed', async () => {
+  test('image blocks with only fileName use fileName as title', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user'
+    })
+
+    await createImageBlock(syncedDb, {
+      blobHash: 'xyz789',
+      contentType: 'image/jpeg',
+      fileName: 'holiday.jpg',
+      slug: 'holiday',
+      inserter: 'test-user',
+      collection_id: root.collection_uuid
+    })
+
+    await indexSlugs(localDb)
+    await rebuildTitleIndex(localDb)
+
+    const results = await lookupByTitle(localDb, 'holiday.jpg')
+    expect(results).toHaveLength(1)
+    expect(results[0].entity_type).toBe('image')
+  })
+
+  test('image blocks without title, altText, or fileName are not indexed', async () => {
     const root = await createCollection(syncedDb, {
       title: 'My Library',
       inserter: 'test-user'
