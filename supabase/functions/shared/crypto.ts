@@ -4,6 +4,10 @@
 import nacl from 'tweetnacl';
 import util from 'tweetnacl-util';
 import { encodeBase64Url, decodeBase64Url } from 'jsr:@std/encoding';
+import { computeHashPortable, verifyMerkleProof } from './merkleProof.ts';
+
+// Re-export so existing consumers don't break
+export { verifyMerkleProof } from './merkleProof.ts';
 
 /**
  * Decode URL-safe base64 string using Deno std/encoding library
@@ -46,15 +50,7 @@ export async function verifySignature(
  * @param data Input data
  * @returns Hex encoded hash
  */
-export async function computeHash(data: Uint8Array): Promise<string> {
-  // Create a new ArrayBuffer from the Uint8Array to avoid type issues
-  const buffer = new Uint8Array(data).buffer;
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = new Uint8Array(hashBuffer);
-  return Array.from(hashArray)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+export const computeHash = computeHashPortable;
 
 /**
  * Compute chain hash (SHA256(prior_hash + body_hash))

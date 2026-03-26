@@ -283,7 +283,7 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
 export type Authenticator = (req: Request) => Promise<{ userId: string } | null>;
 
 // Default authenticator: validate a Supabase JWT and return the user ID
-async function authenticateUser(req: Request): Promise<{ userId: string } | null> {
+export async function authenticateUser(req: Request): Promise<{ userId: string } | null> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
