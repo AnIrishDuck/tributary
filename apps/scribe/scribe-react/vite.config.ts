@@ -1,10 +1,51 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path'
+
+/**
+ * Dev-only Vite plugin that serves scribe plugin sources through Vite's
+ * transform pipeline. This lets dynamically-imported plugins resolve bare
+ * specifiers (e.g. "react") via Vite's pre-bundled deps — guaranteeing a
+ * single React instance so hooks work correctly.
+ *
+ * Usage: add a plugin URL like "/dev-plugins/wake-lock.js" in library settings.
+ */
+function serveDevPlugins(): Plugin {
+  const pluginSources: Record<string, string> = {
+    'wake-lock.js': path.resolve(__dirname, '../scribe-react-plugin-wake-lock/src/index.tsx'),
+  }
+
+  return {
+    name: 'serve-dev-plugins',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/dev-plugins/')) return next()
+        const name = req.url.replace('/dev-plugins/', '').split('?')[0]
+        const sourcePath = pluginSources[name]
+        if (!sourcePath) return next()
+
+        try {
+          const result = await server.transformRequest('/@fs/' + sourcePath)
+          if (result) {
+            res.setHeader('Content-Type', 'application/javascript')
+            res.setHeader('Cache-Control', 'no-cache')
+            res.end(result.code)
+            return
+          }
+        } catch (err) {
+          console.error(`[dev-plugins] Failed to transform ${name}:`, err)
+        }
+        next()
+      })
+    },
+  }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    serveDevPlugins(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
