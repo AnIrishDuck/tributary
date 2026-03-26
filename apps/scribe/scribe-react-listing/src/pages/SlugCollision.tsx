@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, Link } from 'react-router'
-import { ArrowLeftIcon, DocumentTextIcon, FolderIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, DocumentTextIcon, FolderIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { CollectionSlug } from 'scribe-data'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 
@@ -12,13 +12,14 @@ interface BlockSlugInfo {
 
 interface SlugCollisionProps {
   notes: BlockSlugInfo[]
+  images: BlockSlugInfo[]
   collections: CollectionSlug[]
   slugPath: string
   splatPath: string
   prefix: string
 }
 
-const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugPath, splatPath, prefix }) => {
+const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, images, collections, slugPath, splatPath, prefix }) => {
   const navigate = useNavigate()
   const routeCtx = useRouteContext()
 
@@ -26,7 +27,7 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
     navigate(routeCtx.buildPath())
   }
 
-  const hasCollisions = collections.length > 0
+  const hasMultipleTypes = (notes.length > 0 ? 1 : 0) + (images.length > 0 ? 1 : 0) + (collections.length > 0 ? 1 : 0) > 1
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -47,19 +48,19 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="bg-white rounded-xl shadow overflow-hidden p-6 md:p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-2">
-            {hasCollisions
+            {hasMultipleTypes
               ? `Multiple items match "${splatPath}"`
-              : `Multiple notes match "${splatPath}"`}
+              : `Multiple ${images.length > 0 ? 'images' : 'notes'} match "${splatPath}"`}
           </h2>
           <p className="text-sm text-gray-500 mb-6">
-            {hasCollisions
-              ? 'Select the item you want to view:'
-              : 'Select the note you want to view:'}
+            Select the item you want to view:
           </p>
 
-          {hasCollisions && collections.length > 0 && (
+          {collections.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Collections</h3>
+              {hasMultipleTypes && (
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Collections</h3>
+              )}
               <div className="space-y-3">
                 {collections.map((col) => (
                   <Link
@@ -81,8 +82,8 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
           )}
 
           {notes.length > 0 && (
-            <div>
-              {hasCollisions && (
+            <div className="mb-6">
+              {hasMultipleTypes && (
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Notes</h3>
               )}
               <div className="space-y-3">
@@ -97,6 +98,31 @@ const SlugCollision: React.FC<SlugCollisionProps> = ({ notes, collections, slugP
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{note.title || 'Untitled'}</p>
                         <p className="text-xs text-gray-500 font-mono truncate">{note.block_uuid}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {images.length > 0 && (
+            <div>
+              {hasMultipleTypes && (
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Images</h3>
+              )}
+              <div className="space-y-3">
+                {images.map((image) => (
+                  <Link
+                    key={image.block_uuid}
+                    to={routeCtx.buildPath(`${slugPath}/${image.block_uuid}`)}
+                    className="block bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-lg p-4 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <PhotoIcon className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{image.title || 'Untitled'}</p>
+                        <p className="text-xs text-gray-500 font-mono truncate">{image.block_uuid}</p>
                       </div>
                     </div>
                   </Link>

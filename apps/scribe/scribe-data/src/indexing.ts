@@ -299,9 +299,9 @@ export async function indexSlugs(
 export async function getNoteSlugByUuid(
   db: TributaryLocal,
   noteUuid: string
-): Promise<NoteSlug | null> {
+): Promise<BlockSlugInfo | null> {
   const result = await db.query(
-    `SELECT b.block_uuid, b.slug, b.body
+    `SELECT b.block_uuid, b.slug, b.body, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      WHERE b.block_uuid = $1`,
@@ -313,11 +313,23 @@ export async function getNoteSlugByUuid(
   }
 
   const row = result.rows[0] as any
-  const title = extractTitleFromMarkdown(row.body)
+  const blockType = row.block_type || 'scribe/markdown'
+  let title: string
+  if (blockType === 'scribe/image') {
+    try {
+      const parsed = JSON.parse(row.body)
+      title = parsed.altText || parsed.fileName || ''
+    } catch {
+      title = ''
+    }
+  } else {
+    title = extractTitleFromMarkdown(row.body) || ''
+  }
   return {
     block_uuid: row.block_uuid,
     slug: row.slug,
-    title: title || ''
+    title,
+    block_type: blockType
   }
 }
 
@@ -456,20 +468,35 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
  */
 export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
   const result = await db.query(
-    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
+    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      ORDER BY b.insert_datetime DESC`,
     []
   )
 
-  return (result.rows || []).map((row: any) => ({
-    block_uuid: row.block_uuid,
-    slug: row.slug,
-    title: extractTitleFromMarkdown(row.body) || '',
-    insert_datetime: row.insert_datetime,
-    collection_id: row.collection_id
-  }))
+  return (result.rows || []).map((row: any) => {
+    const blockType = row.block_type || 'scribe/markdown'
+    let title: string
+    if (blockType === 'scribe/image') {
+      try {
+        const parsed = JSON.parse(row.body)
+        title = parsed.altText || parsed.fileName || ''
+      } catch {
+        title = ''
+      }
+    } else {
+      title = extractTitleFromMarkdown(row.body) || ''
+    }
+    return {
+      block_uuid: row.block_uuid,
+      slug: row.slug,
+      title,
+      insert_datetime: row.insert_datetime,
+      collection_id: row.collection_id,
+      block_type: blockType
+    }
+  })
 }
 
 /**
@@ -496,7 +523,7 @@ export async function getNotesInCollectionWithSlugs(
   let result
   if (resolvedId === null) {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
        WHERE b.collection_id IS NULL
@@ -505,7 +532,7 @@ export async function getNotesInCollectionWithSlugs(
     )
   } else {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
        WHERE b.collection_id = $1
@@ -514,13 +541,28 @@ export async function getNotesInCollectionWithSlugs(
     )
   }
 
-  return (result.rows || []).map((row: any) => ({
-    block_uuid: row.block_uuid,
-    slug: row.slug,
-    title: extractTitleFromMarkdown(row.body) || '',
-    insert_datetime: row.insert_datetime,
-    collection_id: row.collection_id
-  }))
+  return (result.rows || []).map((row: any) => {
+    const blockType = row.block_type || 'scribe/markdown'
+    let title: string
+    if (blockType === 'scribe/image') {
+      try {
+        const parsed = JSON.parse(row.body)
+        title = parsed.altText || parsed.fileName || ''
+      } catch {
+        title = ''
+      }
+    } else {
+      title = extractTitleFromMarkdown(row.body) || ''
+    }
+    return {
+      block_uuid: row.block_uuid,
+      slug: row.slug,
+      title,
+      insert_datetime: row.insert_datetime,
+      collection_id: row.collection_id,
+      block_type: blockType
+    }
+  })
 }
 
 /**

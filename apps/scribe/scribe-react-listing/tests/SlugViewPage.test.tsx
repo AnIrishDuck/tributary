@@ -11,6 +11,7 @@ import { TestFakeServer } from 'scribe-react-common/tests/test-server'
 import { createTestTributaryClient } from 'scribe-react-common/src/context/tributaryContext'
 import { createTestClientWithStream, WithProviders, WithFastSyncProviders, createFreshLoginClient } from './test-utils'
 import { saveNote } from 'scribe-react-note/src/actions/saveNote'
+import { saveImage } from 'scribe-react-img/src/actions/saveImage'
 import { createHomeLibrary, createLibrary } from 'scribe-data'
 import * as scribeData from 'scribe-data'
 
@@ -289,6 +290,79 @@ describe('SlugViewPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/schema could not be loaded/)).toBeInTheDocument()
     }, { timeout: 15000 })
+  })
+
+  it('should render image view page when slug resolves to an image block', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create an image block
+    const fileData = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+    await saveImage(stream, {
+      fileData,
+      contentType: 'image/png',
+      fileName: 'sunset.png',
+      slug: 'sunset',
+      width: 800,
+      height: 600,
+    })
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/sunset`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show image metadata (dimensions, content type)
+    await waitFor(() => {
+      expect(screen.getByText('image/png')).toBeInTheDocument()
+    }, { timeout: 10000 })
+
+    expect(screen.getByText('800 × 600')).toBeInTheDocument()
+    // sunset.png appears in both metadata and title — verify at least one exists
+    expect(screen.getAllByText('sunset.png').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('should show disambiguation page with images section when note and image share a slug', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    // Create a note with slug "banner"
+    await saveNote(stream, '# Banner\n\nA note about banners.')
+
+    // Create an image with the same slug "banner"
+    const fileData = new Uint8Array([255, 216, 255, 224])
+    await saveImage(stream, {
+      fileData,
+      contentType: 'image/jpeg',
+      fileName: 'banner.jpg',
+      slug: 'banner',
+      width: 1920,
+      height: 1080,
+    })
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/banner`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Should show the disambiguation page
+    await waitFor(() => {
+      expect(screen.getByText(/Multiple items match/)).toBeInTheDocument()
+    }, { timeout: 10000 })
+
+    // Should show section headers for both types
+    expect(screen.getByText('Notes')).toBeInTheDocument()
+    expect(screen.getByText('Images')).toBeInTheDocument()
   })
 
   it('should transition from schema loading to content once sync completes', async () => {

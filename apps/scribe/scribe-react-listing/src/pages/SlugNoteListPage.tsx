@@ -275,40 +275,57 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 </Link>
               ))}
 
-              {/* Persisted notes */}
+              {/* Persisted notes and images */}
               {sortedNotes.map((note) => {
                 const hasDraft = draftBlockUuids.has(note.block_uuid)
                 const hasCollision = collidingSlugs?.has(note.slug)
+                const isImage = note.block_type === 'scribe/image'
+
+                // Color scheme: amber for drafts, green for images, blue for notes
+                const colorScheme = hasDraft ? 'amber' : isImage ? 'green' : 'blue'
+                const borderClass = hasDraft
+                  ? 'border border-amber-200 hover:border-amber-300'
+                  : hasCollision
+                    ? 'border border-orange-200 hover:border-orange-300'
+                    : isImage
+                      ? 'border border-gray-100 hover:border-green-200'
+                      : 'border border-gray-100 hover:border-blue-200'
+                const hoverTextClass = colorScheme === 'amber'
+                  ? 'group-hover:text-amber-600'
+                  : colorScheme === 'green'
+                    ? 'group-hover:text-green-600'
+                    : 'group-hover:text-blue-600'
+                const iconBgClass = colorScheme === 'amber'
+                  ? 'bg-amber-50 group-hover:bg-amber-100'
+                  : colorScheme === 'green'
+                    ? 'bg-green-50 group-hover:bg-green-100'
+                    : 'bg-blue-50 group-hover:bg-blue-100'
+                const slugBadgeClass = colorScheme === 'amber'
+                  ? 'bg-amber-50 text-amber-700'
+                  : colorScheme === 'green'
+                    ? 'bg-green-50 text-green-700'
+                    : 'bg-blue-50 text-blue-700'
+
                 return (
                   <Link
                     key={note.block_uuid}
                     to={`${linkPrefix}/${note.slug}${hasDraft ? '&edit' : ''}`}
                     className="group block"
                   >
-                    <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${
-                      hasDraft
-                        ? 'border border-amber-200 hover:border-amber-300'
-                        : hasCollision
-                          ? 'border border-orange-200 hover:border-orange-300'
-                          : 'border border-gray-100 hover:border-blue-200'
-                    }`}>
+                    <div className={`bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden transform hover:-translate-y-1 ${borderClass}`}>
                       <div className="px-6 py-8">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1 min-w-0">
-                            <h3 className={`text-xl font-bold text-gray-900 truncate transition-colors mb-2 ${
-                              hasDraft ? 'group-hover:text-amber-600' : 'group-hover:text-blue-600'
-                            }`}>
+                            <h3 className={`text-xl font-bold text-gray-900 truncate transition-colors mb-2 ${hoverTextClass}`}>
                               {note.title || 'Untitled'}
                             </h3>
                           </div>
                           <div className="flex-shrink-0">
-                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${
-                              hasDraft
-                                ? 'bg-amber-50 group-hover:bg-amber-100'
-                                : 'bg-blue-50 group-hover:bg-blue-100'
-                            }`}>
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${iconBgClass}`}>
                               {hasDraft ? (
                                 <PencilSquareIcon className="w-6 h-6 text-amber-600" />
+                              ) : isImage ? (
+                                <PhotoIcon className="w-6 h-6 text-green-600" />
                               ) : (
                                 <DocumentTextIcon className="w-6 h-6 text-blue-600" />
                               )}
@@ -336,9 +353,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                                 Draft
                               </span>
                             )}
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                              hasDraft ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
-                            }`}>
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${slugBadgeClass}`}>
                               {note.slug}
                             </span>
                           </div>
