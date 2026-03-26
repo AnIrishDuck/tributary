@@ -134,8 +134,8 @@ async function handleInitUpload(
     console.log('[blob-upload] Available SUPABASE_* env vars:', supabaseEnvKeys.join(', '));
     console.log('[blob-upload] SUPABASE_URL =', supabaseUrl);
     console.log('[blob-upload] SERVICE_ROLE_KEY: length =', serviceRoleKey.length,
-      ', prefix =', JSON.stringify(serviceRoleKey.slice(0, 20)),
-      ', suffix =', JSON.stringify(serviceRoleKey.slice(-10)));
+      ', prefix =', JSON.stringify(serviceRoleKey.slice(0, 5)),
+      ', suffix =', JSON.stringify(serviceRoleKey.slice(-5)));
 
     const tusUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
     const tusHeaders: Record<string, string> = {
@@ -148,7 +148,7 @@ async function handleInitUpload(
     console.log('[blob-upload] TUS request: POST', tusUrl);
     console.log('[blob-upload] TUS headers:', JSON.stringify({
       ...tusHeaders,
-      'Authorization': `Bearer ${serviceRoleKey.slice(0, 20)}...`,
+      'Authorization': `Bearer ${serviceRoleKey.slice(0, 5)}...${serviceRoleKey.slice(-5)}`,
     }));
 
     const tusResponse = await fetch(tusUrl, {
