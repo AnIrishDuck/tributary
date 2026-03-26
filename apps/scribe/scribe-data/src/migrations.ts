@@ -153,6 +153,23 @@ export async function localMigrations(local: TributaryLocal): Promise<void> {
     )
   `)
 
+  // Create the title_index table for wikilink title lookups (non-synchronized).
+  // Maps entity titles to their full slug paths for library-wide title-based linking.
+  await local.exec(`
+    CREATE TABLE IF NOT EXISTS title_index (
+      title TEXT NOT NULL,
+      title_lower TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_uuid TEXT NOT NULL,
+      slug_path TEXT NOT NULL,
+      PRIMARY KEY (entity_type, entity_uuid)
+    )
+  `)
+
+  await local.exec(`
+    CREATE INDEX IF NOT EXISTS idx_title_index_lower ON title_index (title_lower)
+  `)
+
 }
 
 /**
@@ -189,6 +206,7 @@ export async function up(syncedDb: TributaryStream, localDb: TributaryLocal): Pr
  * Migration to drop the block table
  */
 export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): Promise<void> {
+  await localDb.exec('DROP TABLE IF EXISTS title_index')
   await localDb.exec('DROP TABLE IF EXISTS linked_libraries')
   await localDb.exec('DROP TABLE IF EXISTS slug_collision')
   await localDb.exec('DROP TABLE IF EXISTS block_search_index')

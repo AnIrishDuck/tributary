@@ -242,6 +242,37 @@ export interface LinkedLibraryTable {
 }
 
 /**
+ * Database representation of a title index entry (non-synchronized).
+ * Maps entity titles to their full slug paths for library-wide wikilink resolution.
+ */
+export interface TitleIndexTable {
+  /**
+   * Original title (case-preserved)
+   */
+  title: string
+
+  /**
+   * Lowercase title for case-insensitive lookup
+   */
+  title_lower: string
+
+  /**
+   * Type of entity: 'note' or 'collection'
+   */
+  entity_type: string
+
+  /**
+   * UUID of the entity (block_uuid or collection_uuid)
+   */
+  entity_uuid: string
+
+  /**
+   * Full slug path, e.g. 'cooking/italian/pasta'
+   */
+  slug_path: string
+}
+
+/**
  * The main database schema for the scribe app
  */
 export interface ScribeSchema {
@@ -284,6 +315,11 @@ export interface ScribeSchema {
    * Table caching linked library metadata on the home stream (non-synchronized)
    */
   linked_libraries: LinkedLibraryTable
+
+  /**
+   * Table mapping entity titles to slug paths for wikilink resolution (non-synchronized)
+   */
+  title_index: TitleIndexTable
 
 }
 
