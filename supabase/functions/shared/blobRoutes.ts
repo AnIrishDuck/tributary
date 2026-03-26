@@ -141,7 +141,7 @@ async function handleInitUpload(
     const tusHeaders: Record<string, string> = {
       'apikey': serviceRoleKey,
       'Upload-Length': totalSize.toString(),
-      'Upload-Metadata': `bucketName ${btoa('tributary-blobs')}, objectName ${btoa(rootHash)}`,
+      'Upload-Metadata': `bucketName ${btoa('tributary-blobs')},objectName ${btoa(rootHash)},contentType ${btoa('application/octet-stream')}`,
       'Tus-Resumable': '1.0.0',
     };
 
