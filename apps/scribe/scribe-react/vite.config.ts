@@ -1,51 +1,17 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
 
-/**
- * Dev-only Vite plugin that serves scribe plugin sources through Vite's
- * transform pipeline. This lets dynamically-imported plugins resolve bare
- * specifiers (e.g. "react") via Vite's pre-bundled deps — guaranteeing a
- * single React instance so hooks work correctly.
- *
- * Usage: add a plugin URL like "/dev-plugins/wake-lock.js" in library settings.
- */
-function serveDevPlugins(): Plugin {
-  const pluginSources: Record<string, string> = {
-    'wake-lock.js': path.resolve(__dirname, '../scribe-react-plugin-wake-lock/src/index.tsx'),
-  }
-
-  return {
-    name: 'serve-dev-plugins',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/dev-plugins/')) return next()
-        const name = req.url.replace('/dev-plugins/', '').split('?')[0]
-        const sourcePath = pluginSources[name]
-        if (!sourcePath) return next()
-
-        try {
-          const result = await server.transformRequest('/@fs/' + sourcePath)
-          if (result) {
-            res.setHeader('Content-Type', 'application/javascript')
-            res.setHeader('Cache-Control', 'no-cache')
-            res.end(result.code)
-            return
-          }
-        } catch (err) {
-          console.error(`[dev-plugins] Failed to transform ${name}:`, err)
-        }
-        next()
-      })
-    },
-  }
-}
+// React is loaded from esm.sh via import map (see index.html) so that
+// dynamically-loaded plugins share the exact same React instance as the host.
+// Plugins are ES modules that externalize react in their builds and rely on
+// the browser's import map for resolution.
+const REACT_ESM = 'https://esm.sh/react@18.3.1'
+const REACT_EXTERNALS = ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client']
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    serveDevPlugins(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -93,8 +59,20 @@ export default defineConfig({
   resolve: {
     alias: {
       // Polyfill Buffer for browser compatibility
-      buffer: 'buffer/'
+      buffer: 'buffer/',
+      // Point react imports to esm.sh so the host uses the same instance
+      // the browser import map provides to plugins
+      'react/jsx-runtime': `${REACT_ESM}/jsx-runtime`,
+      'react-dom/client': 'https://esm.sh/react-dom@18.3.1/client',
+      'react-dom': 'https://esm.sh/react-dom@18.3.1',
+      'react': REACT_ESM,
     }
+  },
+  build: {
+    rollupOptions: {
+      // Leave react as bare imports — resolved by the import map at runtime
+      external: REACT_EXTERNALS,
+    },
   },
   server: {
     // Bind to all interfaces for external access
@@ -109,6 +87,20 @@ export default defineConfig({
     // Exclude PGlite from optimization to prevent WASM loading issues
     exclude: ['@electric-sql/pglite'],
     // Force include buffer polyfill
-    include: ['buffer']
+    include: ['buffer'],
+    esbuildOptions: {
+      // Prevent esbuild from bundling react into pre-bundled deps (e.g.
+      // react-router).  Left as bare imports, they're resolved by the
+      // resolve.alias in dev and the import map in production.
+      plugins: [{
+        name: 'externalize-react',
+        setup(build) {
+          build.onResolve({ filter: /^react(-dom)?(\/.*)?$/ }, (args) => ({
+            path: args.path,
+            external: true,
+          }))
+        },
+      }],
+    },
   }
 })
