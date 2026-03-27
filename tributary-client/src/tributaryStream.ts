@@ -242,7 +242,7 @@ export class TributaryStream {
         query,
         params
       };
-      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true });
+      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
 
       return queryResult;
     });
@@ -294,7 +294,7 @@ export class TributaryStream {
         query,
         params
       };
-      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true });
+      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
     });
 
     // Transaction committed successfully — persist sync index outside the transaction
@@ -397,7 +397,7 @@ export class TributaryStream {
         info('TRANSACTION: Attempting server persistence with', recordedCommands.length, 'commands');
 
         // Attempt to persist to server
-        await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true });
+        await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
         info('TRANSACTION: Server persistence successful');
 
         // If server persistence succeeds, we just return normally
@@ -661,23 +661,34 @@ export class TributaryStream {
    * @param transactionEntry The transaction log entry to persist
    * @param options.skipDbSyncSave When true, skip the DB sync index save (caller manages it).
    *        Required when called inside a PGlite transaction to avoid deadlock.
+   * @param options.guardIndex When set, use this as the expected server index instead of
+   *        re-fetching from the server. The POST will target guardIndex+1. This ensures the
+   *        sequence number is consistent with the sync guard that was already checked.
    */
   private async ensureServerPersistence(
     transactionEntry: TransactionLogEntry,
-    options?: { skipDbSyncSave?: boolean }
+    options?: { skipDbSyncSave?: boolean; guardIndex?: number }
   ): Promise<void> {
     info('ensureServerPersistence: Starting persistence for transaction', transactionEntry);
-    
-    // Get the latest blob metadata from the server for proper chaining
+
+    // Get the latest blob metadata from the server for proper chaining.
+    // When guardIndex is provided, we already know the expected server state from
+    // the sync guard check — but we still need the latest hash for chain verification.
     const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
     debug('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
-    
+
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
     const priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
     debug('ensureServerPersistence: Using priorHash:', priorHash);
-    
-    // Use the next sequence number based on the server's latest blob
-    this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+
+    // Use the next sequence number. When guardIndex is provided (from the sync guard),
+    // derive it from there to ensure consistency with what was already checked.
+    // Otherwise fall back to the server's latest blob metadata.
+    if (options?.guardIndex !== undefined) {
+      this.sequenceNumber = options.guardIndex + 1;
+    } else {
+      this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+    }
     debug('ensureServerPersistence: Using sequenceNumber:', this.sequenceNumber);
     
     // Serialize the transaction data
