@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { up } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
 import { createCollection } from '../src/collection.js'
-import { createNote } from '../src/note.js'
+import { createNote, moveNote } from '../src/note.js'
 import { indexAll } from '../src/indexing.js'
 import { suggestSlugs } from '../src/slug.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
@@ -268,5 +268,60 @@ describe('suggestSlugs', () => {
       'cooking/indian',
       'cooking/italian'
     ])
+  })
+
+  test('returns slug_path (not just title) for newly created notes', async () => {
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# My Fancy Title\n\nContent here.',
+      inserter: 'test-user'
+    })
+    await indexAll(localDb)
+
+    // Search by slug prefix, not title prefix
+    const suggestions = await suggestSlugs(localDb, ['my'], libraryUuid)
+
+    expect(suggestions.length).toBe(1)
+    expect(suggestions[0].slug_path).toBe('my-fancy-title')
+    expect(suggestions[0].title).toBe('My Fancy Title')
+    expect(suggestions[0].type).toBe('note')
+  })
+
+  test('finds note by slug prefix after move + re-index', async () => {
+    const cooking = await createCollection(syncedDb, {
+      title: 'Cooking',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'test-user'
+    })
+    const travel = await createCollection(syncedDb, {
+      title: 'Travel',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'test-user'
+    })
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta\n\nBoil water.',
+      inserter: 'test-user',
+      collection_id: cooking.collection_uuid
+    })
+    await indexAll(localDb)
+
+    // Note starts in cooking
+    let suggestions = await suggestSlugs(localDb, ['cooking', 'pa'], libraryUuid)
+    expect(suggestions.length).toBe(1)
+    expect(suggestions[0].slug_path).toBe('cooking/pasta')
+
+    // Move note to travel and re-index
+    await moveNote(syncedDb, note.block_uuid, travel.collection_uuid, 'test-user')
+    await indexAll(localDb)
+
+    // Should no longer appear under cooking
+    suggestions = await suggestSlugs(localDb, ['cooking', 'pa'], libraryUuid)
+    expect(suggestions.length).toBe(0)
+
+    // Should now appear under travel
+    suggestions = await suggestSlugs(localDb, ['travel', 'pa'], libraryUuid)
+    expect(suggestions.length).toBe(1)
+    expect(suggestions[0].slug_path).toBe('travel/pasta')
   })
 })

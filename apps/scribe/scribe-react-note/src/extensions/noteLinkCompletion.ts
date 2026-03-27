@@ -249,6 +249,23 @@ export function buildSlugApplyText(
   return suggestion.slug_path
 }
 
+/**
+ * Build a CodeMirror Completion for a slug suggestion in a markdown link.
+ * The label is the slug (what gets inserted), with the title shown as detail.
+ */
+export function buildSlugCompletion(
+  suggestion: SlugSuggestion,
+  partialSlug: string,
+  noteSlugPath?: string
+): Completion {
+  const applyText = buildSlugApplyText(suggestion, partialSlug, noteSlugPath)
+  return {
+    label: applyText,
+    detail: suggestion.title,
+    type: suggestion.type,
+  }
+}
+
 function completionSource(config: NoteLinkCompletionConfig) {
   return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     const linkCtx = detectLinkContext(ctx)
@@ -303,11 +320,9 @@ function completionSource(config: NoteLinkCompletionConfig) {
 
     if (suggestions.length === 0) return null
 
-    const options: Completion[] = suggestions.map((s) => ({
-      label: s.title,
-      type: s.type,
-      apply: buildSlugApplyText(s, partialSlug, config.noteSlugPath),
-    }))
+    const options: Completion[] = suggestions.map((s) =>
+      buildSlugCompletion(s, partialSlug, config.noteSlugPath)
+    )
 
     return {
       from: linkCtx.from,
