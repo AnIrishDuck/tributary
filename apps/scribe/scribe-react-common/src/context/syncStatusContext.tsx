@@ -207,6 +207,7 @@ export const SyncStatusProvider: React.FC<{
         // (authoritative_version, indexed_block, etc.) don't see
         // synced=true before those tables exist.
         let hadChanges = false
+        const changedStreams = new Set<string>()
         const completedStreams = new Set<string>()
         for (const { id, stream } of streamsToSync) {
           if (!isMounted) { isRunning = false; return }
@@ -221,6 +222,7 @@ export const SyncStatusProvider: React.FC<{
                 prevStatus.currentIndex !== tributaryStatus.currentIndex ||
                 prevStatus.finalIndex !== tributaryStatus.finalIndex) {
               hadChanges = true
+              changedStreams.add(id)
             }
 
             if (isComplete) completedStreams.add(id)
@@ -228,7 +230,10 @@ export const SyncStatusProvider: React.FC<{
             latestPerStream[id] = {
               ...latestPerStream[id],
               // Preserve previous synced state — only promote to true after
-              // localMigrations + indexAll finish (below).
+              // localMigrations + indexAll finish (below).  When the stream
+              // has new data, demote back to false so consumers don't query
+              // stale index tables before indexAll rebuilds them.
+              synced: changedStreams.has(id) ? false : (latestPerStream[id]?.synced ?? false),
               isSyncing: !isComplete,
               currentIndex: tributaryStatus.currentIndex,
               finalIndex: tributaryStatus.finalIndex,
@@ -278,16 +283,20 @@ export const SyncStatusProvider: React.FC<{
                 await ensurePluginTable(stream)
               }
 
-              // Mark as synced now that local tables are ready. indexAll and
-              // metadata queries below may fail (e.g. empty streams without
-              // synced schema) but the page should still see synced=true so
-              // it can show a schema error instead of loading forever.
+              // Run indexAll before marking synced so that consumers
+              // (e.g. autocomplete) never query stale index tables.  If
+              // indexAll fails we still promote synced=true so the page
+              // can show a schema error instead of loading forever.
+              try {
+                await indexAll(stream.local())
+              } catch (indexErr) {
+                console.error('Error running indexAll:', indexErr)
+              }
+
               latestPerStream[id] = {
                 ...latestPerStream[id],
                 synced: completedStreams.has(id) || (latestPerStream[id]?.synced ?? false),
               }
-
-              await indexAll(stream.local())
 
               // Compute library metadata alongside indexing so the home page
               // never needs to fire independent queries per library.
