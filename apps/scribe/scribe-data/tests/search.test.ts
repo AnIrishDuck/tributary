@@ -5,6 +5,7 @@ import {
   searchNotes,
   indexSearchVectors,
   extractSearchableText,
+  extractTitle,
   type SearchResult
 } from '../src/search.js'
 import { indexSlugs, indexAll } from '../src/indexing.js'
@@ -97,6 +98,24 @@ describe('Full-text search', () => {
       const markdown = 'Text\n---\nMore text\n***\nEven more'
       const text = extractSearchableText(markdown)
       expect(text).toBe('Text More text Even more')
+    })
+  })
+
+  describe('Title extraction', () => {
+    test('should extract title from markdown heading', () => {
+      expect(extractTitle('# My Title\n\nBody text.')).toBe('My Title')
+    })
+
+    test('should return empty string when no heading exists', () => {
+      expect(extractTitle('No heading here.')).toBe('')
+    })
+
+    test('should extract only the first h1 heading', () => {
+      expect(extractTitle('# First\n## Second\n# Third')).toBe('First')
+    })
+
+    test('should strip inline markdown from title', () => {
+      expect(extractTitle('# **Bold** Title')).toBe('Bold Title')
     })
   })
 
@@ -301,20 +320,45 @@ describe('Full-text search', () => {
         body: '# JavaScript\n\nJavaScript JavaScript JavaScript',
         inserter: 'test-user'
       })
-      
+
       const note2 = await createNote(syncedDb, {
         block_type: 'scribe/markdown',
         body: '# Web Dev\n\nSome JavaScript here.',
         inserter: 'test-user'
       })
-      
+
       await indexAll(localDb)
-      
+
       const results = await searchNotes(localDb, 'JavaScript')
-      
+
       expect(results).toHaveLength(2)
       // note1 should rank higher (more occurrences)
       expect(results[0].block_uuid).toBe(note1.block_uuid)
+      expect(results[0].rank).toBeGreaterThan(results[1].rank)
+    })
+
+    test('should rank title matches above body-only matches', async () => {
+      // note with "kubernetes" only in body
+      const bodyNote = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Infrastructure Guide\n\nDeploy services to kubernetes clusters efficiently.',
+        inserter: 'test-user'
+      })
+
+      // note with "kubernetes" in title
+      const titleNote = await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# Kubernetes\n\nContainer orchestration platform overview.',
+        inserter: 'test-user'
+      })
+
+      await indexAll(localDb)
+
+      const results = await searchNotes(localDb, 'kubernetes')
+
+      expect(results).toHaveLength(2)
+      // Title match should come first
+      expect(results[0].block_uuid).toBe(titleNote.block_uuid)
       expect(results[0].rank).toBeGreaterThan(results[1].rank)
     })
 
