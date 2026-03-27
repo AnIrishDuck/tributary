@@ -19,6 +19,20 @@ interface TransactionLogEntry {
 }
 
 /**
+ * Thrown when a write operation is attempted but the stream has unsynced
+ * remote transactions. The caller should sync fully before retrying.
+ */
+export class SyncRequiredError extends Error {
+  constructor(currentIndex: number, finalIndex: number) {
+    super(
+      `Stream has unsynced remote transactions (synced ${currentIndex}/${finalIndex}). ` +
+      `Sync fully before writing to avoid data inconsistency.`
+    );
+    this.name = 'SyncRequiredError';
+  }
+}
+
+/**
  * Sync status information for a stream
  */
 export interface SyncStatus {
@@ -204,27 +218,15 @@ export class TributaryStream {
       });
     }
 
-    // For write operations, we need to ensure server persistence BEFORE local commit
-    // Create a transaction log entry
-    const transactionEntry: TransactionLogEntry = {
-      id: this.generateTransactionId(),
-      timestamp: Date.now(),
-      query,
-      params
-    };
+    // Write path: sync, persist to server, then execute locally
+    await this.writeToServer(query, params);
 
-    // Send to server with persistence guarantee BEFORE executing locally
-    await this.ensureServerPersistence(transactionEntry);
-
-    // Now execute locally since we have server confirmation
+    // Execute locally since we have server confirmation
     const result = await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // @ts-ignore
       return await tx.query(query, params);
     });
-
-    // Update the transaction entry with the result
-    transactionEntry.result = result;
 
     return result;
   }
@@ -242,19 +244,10 @@ export class TributaryStream {
       this.syncStateInitialized = true;
     }
 
-    // For write operations, we need to ensure server persistence BEFORE local commit
-    // Create a transaction log entry
-    const transactionEntry: TransactionLogEntry = {
-      id: this.generateTransactionId(),
-      timestamp: Date.now(),
-      query,
-      params
-    };
+    // Write path: sync, persist to server, then execute locally
+    await this.writeToServer(query, params);
 
-    // Send to server with persistence guarantee BEFORE executing locally
-    await this.ensureServerPersistence(transactionEntry);
-
-    // Now execute locally with SET LOCAL search_path scoped to this transaction
+    // Execute locally with SET LOCAL search_path scoped to this transaction
     await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // Use query instead of exec for parameterized operations to work around PGLite issue
@@ -265,6 +258,35 @@ export class TributaryStream {
         await tx.exec(query);
       }
     });
+  }
+
+  /**
+   * Shared write path for query() and exec(): checks for unsynced remote
+   * transactions, then persists the operation to the server. Throws
+   * SyncRequiredError if ANY remote transactions exist — the caller's SQL
+   * may be based on stale local state and must be re-evaluated after syncing.
+   */
+  private async writeToServer(query: string, params?: any[]): Promise<void> {
+    // Use sync(1) as a lightweight probe: if it finds even one remote blob,
+    // the local state is potentially stale. The caller must sync fully and
+    // re-evaluate their query before retrying.
+    const beforeIndex = this.lastSyncIndex;
+    const syncStatus = await this.sync(1);
+
+    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
+      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
+    }
+
+    // Create a transaction log entry
+    const transactionEntry: TransactionLogEntry = {
+      id: this.generateTransactionId(),
+      timestamp: Date.now(),
+      query,
+      params
+    };
+
+    // Persist to server before local execution
+    await this.ensureServerPersistence(transactionEntry);
   }
 
   /**
@@ -281,6 +303,13 @@ export class TributaryStream {
     }
 
     info('TRANSACTION: Starting transaction method');
+
+    // Check for unsynced remote transactions before writing.
+    const beforeIndex = this.lastSyncIndex;
+    const syncStatus = await this.sync(1);
+    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
+      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
+    }
 
     // For transactions, we run commands immediately so users can see results and make decisions
     // We record all commands, then post to server while still inside the PGlite transaction
@@ -479,7 +508,11 @@ export class TributaryStream {
       sequenceNumber: number;
     }
     const writeBlobs: DeserializedBlob[] = [];
-    let finalSyncIndex = this.lastSyncIndex;
+    // Use the captured initialLastSyncIndex, NOT this.lastSyncIndex which can
+    // be modified by concurrent ensureServerPersistence calls during the await
+    // points in this method. Reading the live value caused finalSyncIndex to
+    // jump past unsynced remote blobs when a write happened mid-sync.
+    let finalSyncIndex = initialLastSyncIndex;
 
     const cryptoStart = performance.now();
     for (let i = 0; i < result.blobs.length; i++) {
@@ -542,27 +575,45 @@ export class TributaryStream {
 
         for (const { entry, sequenceNumber } of writeBlobs) {
           info(`SYNC APPLYING: Applying blob with sequence ${sequenceNumber}`);
-          if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
-            for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
-              if (command.query) {
-                // @ts-ignore - PGLite transaction exec has different typing
-                await tx.exec(command.query, command.params);
+          // Use SAVEPOINTs so that locally-produced blobs (already applied)
+          // can be gracefully skipped without rolling back the entire batch.
+          // This handles the case where ensureServerPersistence couldn't advance
+          // lastSyncIndex due to a gap, and sync later encounters the local blob.
+          // @ts-ignore
+          await tx.exec(`SAVEPOINT blob_${sequenceNumber}`);
+          try {
+            if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
+              for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
+                if (command.query) {
+                  // @ts-ignore - PGLite transaction exec has different typing
+                  await tx.exec(command.query, command.params);
+                }
               }
+            } else {
+              // @ts-ignore
+              await tx.query(entry.query, entry.params || []);
             }
-          } else {
             // @ts-ignore
-            await tx.query(entry.query, entry.params || []);
+            await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
+          } catch (blobError: any) {
+            // Roll back just this blob — likely already applied locally
+            // @ts-ignore
+            await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
+            warn(`SYNC: Skipping blob ${sequenceNumber} (likely already applied locally): ${(blobError as Error).message}`);
           }
         }
 
-        // Update sync index once for the entire batch
+        // Update sync index once for the entire batch.
+        // Use GREATEST to avoid overwriting a higher value set by a concurrent
+        // ensureServerPersistence call (e.g. contiguous local writes).
         // @ts-ignore
         await tx.query(
-          `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+          `UPDATE tributary.streams SET last_sync_index = GREATEST(COALESCE(last_sync_index, 0), $1) WHERE id = $2`,
           [finalSyncIndex, this.getId()]
         );
       });
-      this.lastSyncIndex = finalSyncIndex;
+      // Use Math.max to preserve any higher value set by concurrent local writes
+      this.lastSyncIndex = Math.max(this.lastSyncIndex, finalSyncIndex);
     }
     const dbMs = Math.round(performance.now() - dbStart);
 
@@ -673,11 +724,19 @@ export class TributaryStream {
       
       // Update our local latest hash for consistency
       this.latestHash = hash;
-      
+
       // Update the last sync index to indicate this operation has been applied locally
-      // This prevents the sync process from re-applying operations that originated locally
-      this.lastSyncIndex = Math.max(this.lastSyncIndex, this.sequenceNumber);
-      await this.saveLastSyncIndex();
+      // This prevents the sync process from re-applying operations that originated locally.
+      // IMPORTANT: Only advance if contiguous (sequenceNumber === lastSyncIndex + 1).
+      // If there's a gap, it means remote blobs exist between our lastSyncIndex and
+      // the new blob that haven't been synced yet. Advancing past them would cause
+      // sync to skip those remote blobs permanently.
+      if (this.sequenceNumber === this.lastSyncIndex + 1) {
+        this.lastSyncIndex = this.sequenceNumber;
+        await this.saveLastSyncIndex();
+      } else if (this.sequenceNumber > this.lastSyncIndex + 1) {
+        warn(`ensureServerPersistence: Gap detected - wrote sequence ${this.sequenceNumber} but lastSyncIndex is ${this.lastSyncIndex}. Remote blobs need sync before advancing.`);
+      }
     } catch (err: unknown) {
       error('ensureServerPersistence: Error storing blob:', err as Error);
       // Re-throw with a more specific error message

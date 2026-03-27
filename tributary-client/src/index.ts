@@ -7,6 +7,7 @@ export { FakeServer } from './fakeServer.js';
 export { createTestServer, createTestClient, createTestDb } from './testUtils.js';
 export type { Server, BlobMetadata, BlobData, ArrowBlob, ObjectBlobMetadata } from './server.js';
 export { TributaryBlob } from './tributaryBlob.js';
+export { SyncRequiredError } from './tributaryStream.js';
 export type { SyncStatus } from './tributaryStream.js';
 export type { StreamStorageEstimate, QuotaEstimate } from './storage.js';
 export { estimateStreamStorageBytes, estimateQuota } from './storage.js';
