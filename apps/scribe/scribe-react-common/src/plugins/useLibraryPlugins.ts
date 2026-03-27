@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { TributaryClient } from 'tributary-client'
 import type { PluginEntry, ScribePlugin } from './types'
 import { loadPlugin as defaultLoadPlugin } from './loadPlugin'
-import { getLibraryPlugins } from 'scribe-data'
+import { getLibraryPlugins, type PluginEntry as DbPluginEntry } from 'scribe-data'
 
 type LoadPluginFn = (entry: PluginEntry) => Promise<ScribePlugin | null>
 
@@ -32,7 +32,16 @@ export function useLibraryPlugins(
         return
       }
 
-      const entries = await getLibraryPlugins(stream)
+      let entries: DbPluginEntry[]
+      try {
+        entries = await getLibraryPlugins(stream)
+      } catch {
+        // Table doesn't exist yet — library predates the plugin system or
+        // sync hasn't delivered the schema yet. schemaReady gates pages
+        // until the table arrives; return empty in the meantime.
+        setPlugins([])
+        return
+      }
       if (cancelled) return
 
       if (entries.length === 0) {

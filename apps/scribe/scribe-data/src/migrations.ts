@@ -186,6 +186,7 @@ export async function schemaReady(
   try {
     await db.query('SELECT 1 FROM block LIMIT 0', [])
     await db.query('SELECT 1 FROM collection LIMIT 0', [])
+    await db.query('SELECT 1 FROM library_plugins LIMIT 0', [])
     await db.query('SELECT 1 FROM authoritative_version LIMIT 0', [])
     await db.query('SELECT 1 FROM slug_collision LIMIT 0', [])
     return true

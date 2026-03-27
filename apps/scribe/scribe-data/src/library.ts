@@ -213,6 +213,23 @@ export async function seedLinkedLibrariesCache(
 }
 
 /**
+ * Ensure the library_plugins synced table exists. Call this only when sync is
+ * complete for the stream — it creates a synced blob if the table is missing,
+ * which is safe because no more remote blobs can arrive and interleave.
+ *
+ * @param stream The TributaryStream for the library
+ */
+export async function ensurePluginTable(stream: TributaryStream): Promise<void> {
+  try {
+    await stream.query('SELECT 1 FROM library_plugins LIMIT 0', [])
+  } catch {
+    // Table doesn't exist — library predates the plugin system. Create it now
+    // that sync is complete so the synced blob won't conflict with incoming data.
+    await migrateAddPlugins(stream)
+  }
+}
+
+/**
  * Get all plugin entries for a library, ordered by sort_order.
  *
  * @param stream The TributaryStream for the library
@@ -221,19 +238,6 @@ export async function seedLinkedLibrariesCache(
 export async function getLibraryPlugins(
   stream: TributaryStream
 ): Promise<PluginEntry[]> {
-  // Check if the table exists (read-only, no blob created)
-  let tableExists = true
-  try {
-    await stream.query('SELECT 1 FROM library_plugins LIMIT 0', [])
-  } catch {
-    tableExists = false
-  }
-
-  if (!tableExists) {
-    // Existing library created before the plugin system — create the table once
-    await migrateAddPlugins(stream)
-  }
-
   const result = await stream.query(
     `SELECT plugin_url, config_json, sort_order
      FROM library_plugins
@@ -254,6 +258,8 @@ export async function setLibraryPlugins(
   stream: TributaryStream,
   entries: Array<{ plugin_url: string; config_json?: string }>
 ): Promise<void> {
+  // Ensure the table exists (intentional user write — synced migration is OK here)
+  await migrateAddPlugins(stream)
   await stream.exec(`DELETE FROM library_plugins`)
 
   for (let i = 0; i < entries.length; i++) {
