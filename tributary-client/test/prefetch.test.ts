@@ -94,7 +94,7 @@ describe('Prefetch', () => {
     expect(result.rows.length).toBe(3);
   });
 
-  it('should invalidate prefetch when a local write changes the sync index', async () => {
+  it('should invalidate prefetch when a contiguous local write changes the sync index', async () => {
     const writer = await createTestClient({ server });
     const writerStream = await writer.addWriteKey('test', privateKeyBase64);
     await writerStream.exec('CREATE TABLE test (id INTEGER)');
@@ -104,31 +104,38 @@ describe('Prefetch', () => {
     const reader = await createTestClient({ server });
     const readerStream = await reader.addWriteKey('test', privateKeyBase64);
 
-    // First sync all remote blobs so the reader has the table
+    // First sync all remote blobs so the reader is fully caught up (lastSyncIndex=3)
     let status = await readerStream.sync(10);
     expect(status.complete()).toBe(true);
 
-    // Writer adds more blobs
+    // Reader writes a contiguous blob (seq 4 = lastSyncIndex 3 + 1)
+    // This advances lastSyncIndex to 4
+    await readerStream.exec('INSERT INTO test VALUES (99)');
+
+    // Writer adds multiple blobs so there are enough for prefetch to fire
     await writerStream.exec('INSERT INTO test VALUES (3)');
     await writerStream.exec('INSERT INTO test VALUES (4)');
+    await writerStream.exec('INSERT INTO test VALUES (5)');
 
     const spy = vi.spyOn(server, 'getBlobsArrow');
 
-    // Sync gets blob 4 (INSERT 3), auto-prefetches from index 4
+    // Sync from lastSyncIndex=4, max=1. Gets blob 5 (INSERT 3).
+    // moreToFetch = true (finalSyncIndex=5 < totalCount=7), so prefetch fires.
     status = await readerStream.sync(1);
     expect(status.complete()).toBe(false);
     expect(spy).toHaveBeenCalledTimes(2); // fetch + prefetch
 
-    // Local write advances lastSyncIndex past the prefetch's startSequence
-    await readerStream.exec('INSERT INTO test VALUES (99)');
+    // Reader writes another contiguous blob (advances lastSyncIndex past prefetch's startSequence)
+    await readerStream.exec('INSERT INTO test VALUES (100)');
 
     // Next sync should invalidate the stale prefetch and fetch fresh
     status = await readerStream.sync(1);
     expect(spy).toHaveBeenCalledTimes(3); // +1 fresh fetch (stale prefetch discarded)
 
-    // Verify the local write was applied
+    // Verify the local writes were applied
     const result: any = await readerStream.local().query('SELECT * FROM test ORDER BY id');
     expect(result.rows.map((r: any) => r.id)).toContain(99);
+    expect(result.rows.map((r: any) => r.id)).toContain(100);
   });
 
   it('should handle stale prefetch when new blobs arrive on server after prefetch fires', async () => {

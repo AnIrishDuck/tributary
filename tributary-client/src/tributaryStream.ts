@@ -479,7 +479,11 @@ export class TributaryStream {
       sequenceNumber: number;
     }
     const writeBlobs: DeserializedBlob[] = [];
-    let finalSyncIndex = this.lastSyncIndex;
+    // Use the captured initialLastSyncIndex, NOT this.lastSyncIndex which can
+    // be modified by concurrent ensureServerPersistence calls during the await
+    // points in this method. Reading the live value caused finalSyncIndex to
+    // jump past unsynced remote blobs when a write happened mid-sync.
+    let finalSyncIndex = initialLastSyncIndex;
 
     const cryptoStart = performance.now();
     for (let i = 0; i < result.blobs.length; i++) {
@@ -542,27 +546,45 @@ export class TributaryStream {
 
         for (const { entry, sequenceNumber } of writeBlobs) {
           info(`SYNC APPLYING: Applying blob with sequence ${sequenceNumber}`);
-          if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
-            for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
-              if (command.query) {
-                // @ts-ignore - PGLite transaction exec has different typing
-                await tx.exec(command.query, command.params);
+          // Use SAVEPOINTs so that locally-produced blobs (already applied)
+          // can be gracefully skipped without rolling back the entire batch.
+          // This handles the case where ensureServerPersistence couldn't advance
+          // lastSyncIndex due to a gap, and sync later encounters the local blob.
+          // @ts-ignore
+          await tx.exec(`SAVEPOINT blob_${sequenceNumber}`);
+          try {
+            if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
+              for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
+                if (command.query) {
+                  // @ts-ignore - PGLite transaction exec has different typing
+                  await tx.exec(command.query, command.params);
+                }
               }
+            } else {
+              // @ts-ignore
+              await tx.query(entry.query, entry.params || []);
             }
-          } else {
             // @ts-ignore
-            await tx.query(entry.query, entry.params || []);
+            await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
+          } catch (blobError: any) {
+            // Roll back just this blob — likely already applied locally
+            // @ts-ignore
+            await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
+            warn(`SYNC: Skipping blob ${sequenceNumber} (likely already applied locally): ${(blobError as Error).message}`);
           }
         }
 
-        // Update sync index once for the entire batch
+        // Update sync index once for the entire batch.
+        // Use GREATEST to avoid overwriting a higher value set by a concurrent
+        // ensureServerPersistence call (e.g. contiguous local writes).
         // @ts-ignore
         await tx.query(
-          `UPDATE tributary.streams SET last_sync_index = $1 WHERE id = $2`,
+          `UPDATE tributary.streams SET last_sync_index = GREATEST(COALESCE(last_sync_index, 0), $1) WHERE id = $2`,
           [finalSyncIndex, this.getId()]
         );
       });
-      this.lastSyncIndex = finalSyncIndex;
+      // Use Math.max to preserve any higher value set by concurrent local writes
+      this.lastSyncIndex = Math.max(this.lastSyncIndex, finalSyncIndex);
     }
     const dbMs = Math.round(performance.now() - dbStart);
 
@@ -673,11 +695,19 @@ export class TributaryStream {
       
       // Update our local latest hash for consistency
       this.latestHash = hash;
-      
+
       // Update the last sync index to indicate this operation has been applied locally
-      // This prevents the sync process from re-applying operations that originated locally
-      this.lastSyncIndex = Math.max(this.lastSyncIndex, this.sequenceNumber);
-      await this.saveLastSyncIndex();
+      // This prevents the sync process from re-applying operations that originated locally.
+      // IMPORTANT: Only advance if contiguous (sequenceNumber === lastSyncIndex + 1).
+      // If there's a gap, it means remote blobs exist between our lastSyncIndex and
+      // the new blob that haven't been synced yet. Advancing past them would cause
+      // sync to skip those remote blobs permanently.
+      if (this.sequenceNumber === this.lastSyncIndex + 1) {
+        this.lastSyncIndex = this.sequenceNumber;
+        await this.saveLastSyncIndex();
+      } else if (this.sequenceNumber > this.lastSyncIndex + 1) {
+        warn(`ensureServerPersistence: Gap detected - wrote sequence ${this.sequenceNumber} but lastSyncIndex is ${this.lastSyncIndex}. Remote blobs need sync before advancing.`);
+      }
     } catch (err: unknown) {
       error('ensureServerPersistence: Error storing blob:', err as Error);
       // Re-throw with a more specific error message
