@@ -28,18 +28,25 @@ function renderTypeIcon(completion: Completion): Node {
   const el = document.createElement('div')
   el.className = 'cm-completionIcon'
   el.setAttribute('aria-hidden', 'true')
+  el.style.display = 'inline-flex'
+  el.style.alignItems = 'center'
+  el.style.justifyContent = 'center'
+  el.style.width = '1.4em'
+  el.style.height = '1.4em'
+  el.style.borderRadius = '4px'
+  el.style.backgroundColor = '#f3f4f6'
+  el.style.marginRight = '0.4em'
+  el.style.flexShrink = '0'
   const type = completion.type ?? ''
   const d = heroiconPaths[type]
   if (d) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     svg.setAttribute('viewBox', '0 0 24 24')
     svg.setAttribute('fill', 'none')
-    svg.setAttribute('stroke', 'currentColor')
+    svg.setAttribute('stroke', '#6b7280')
     svg.setAttribute('stroke-width', '1.5')
-    svg.style.width = '1em'
-    svg.style.height = '1em'
-    svg.style.verticalAlign = 'text-top'
-    svg.style.opacity = '0.6'
+    svg.style.width = '0.9em'
+    svg.style.height = '0.9em'
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
     path.setAttribute('stroke-linecap', 'round')
     path.setAttribute('stroke-linejoin', 'round')
@@ -52,8 +59,8 @@ function renderTypeIcon(completion: Completion): Node {
 
 const noteLinkCompletionTheme = EditorView.baseTheme({
   '.cm-tooltip-autocomplete .cm-completionIcon': {
-    width: '1.5em',
-    paddingRight: '.5em',
+    padding: '0',
+    width: 'auto',
   },
 })
 
