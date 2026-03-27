@@ -123,6 +123,29 @@ describe('useLibraryPlugins', () => {
     expect(mockLoadPlugin).not.toHaveBeenCalled()
   })
 
+  it('returns empty array when library_plugins table does not exist (pre-plugin library)', async () => {
+    const { client } = createTestTributaryClient()
+    const keyPair = nacl.sign.keyPair()
+
+    // Create a stream with only the bare minimum tables (no library_plugins)
+    const stream = await client.addWriteKey('scribe', keyPair.secretKey)
+    await stream.exec(`
+      CREATE TABLE IF NOT EXISTS block (
+        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
+        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
+        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
+      )
+    `)
+
+    const { result } = renderHook(() => useLibraryPlugins(client, stream.getId(), mockLoadPlugin))
+
+    // Should settle to empty array without throwing an unhandled error
+    await new Promise(r => setTimeout(r, 100))
+    expect(result.current).toEqual([])
+    expect(mockLoadPlugin).not.toHaveBeenCalled()
+  })
+
   it('passes config values through to loadPlugin', async () => {
     const { client, stream, streamId } = await createClientWithLibrary('Config Lib')
 

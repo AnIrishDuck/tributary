@@ -32,7 +32,16 @@ export function useLibraryPlugins(
         return
       }
 
-      const entries = await getLibraryPlugins(stream)
+      let entries: PluginEntry[]
+      try {
+        entries = await getLibraryPlugins(stream)
+      } catch {
+        // Table doesn't exist yet — library predates the plugin system or
+        // sync hasn't delivered the schema yet. schemaReady gates pages
+        // until the table arrives; return empty in the meantime.
+        setPlugins([])
+        return
+      }
       if (cancelled) return
 
       if (entries.length === 0) {
