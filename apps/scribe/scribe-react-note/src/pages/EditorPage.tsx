@@ -9,7 +9,8 @@ import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
 import { wikilinkExtension } from 'scribe-react-common/src/wikilink/codemirror'
 import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
-import { getAuthoritativeVersionByNoteUuid, getNoteByVersion } from 'scribe-data'
+import { getAuthoritativeVersionByNoteUuid, getNoteByVersion, getLibrary } from 'scribe-data'
+import { noteLinkCompletion } from '../extensions/noteLinkCompletion'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
 import { validateLinks, LinkStatusMap } from 'scribe-react-common/src/utils/linkValidation'
@@ -98,6 +99,26 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
     const title = extractTitleFromMarkdown(content)
     return title ? titleToSlug(title) : undefined
   }, [content])
+
+  // Autocomplete extension for note links (markdown links and wikilinks)
+  const noteLinkCompletionExt = useMemo(() => {
+    return noteLinkCompletion({
+      getDb: async () => {
+        if (!client || !prefix) return null
+        const stream = await client.get('scribe', prefix)
+        if (!stream) return null
+        return stream.local()
+      },
+      getLibraryUuid: async () => {
+        if (!client || !prefix) return null
+        const stream = await client.get('scribe', prefix)
+        if (!stream) return null
+        const lib = await getLibrary(stream.local())
+        return lib?.collection_uuid ?? null
+      },
+      noteSlugPath,
+    })
+  }, [client, prefix, noteSlugPath])
 
   // Check if THIS library is synced (not the global status, which can be blocked
   // by other libraries that aren't being synced due to the focused-library optimization)
@@ -556,6 +577,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
                   markdown({ base: markdownLanguage, codeLanguages: languages }),
                   EditorView.lineWrapping,
                   wikilinkExtension,
+                  noteLinkCompletionExt,
                   ...plugins.flatMap(p => p.codemirror ?? []),
                 ]}
                 onChange={(value) => setContent(value)}

@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { up } from '../src/migrations.js'
-import { rebuildTitleIndex, lookupByTitle } from '../src/titleIndex.js'
+import { rebuildTitleIndex, lookupByTitle, suggestByTitlePrefix } from '../src/titleIndex.js'
 import { indexSlugs, indexAll } from '../src/indexing.js'
 import { createNote } from '../src/note.js'
 import { createCollection } from '../src/collection.js'
@@ -368,5 +368,129 @@ describe('title index', () => {
     expect(results).toHaveLength(1)
     expect(results[0].slug_path).toBe('a/b/c')
     expect(results[0].entity_type).toBe('collection')
+  })
+})
+
+describe('suggestByTitlePrefix', () => {
+  let syncedDb: TributaryStream
+  let localDb: TributaryLocal
+
+  beforeEach(async () => {
+    const result = await createTestDB()
+    syncedDb = result.syncedDb
+    localDb = result.localDb
+    await up(syncedDb, localDb)
+  })
+
+  test('returns empty array when no titles match prefix', async () => {
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Hello World\n\nContent.',
+      inserter: 'test-user'
+    })
+    await indexAll(localDb)
+
+    const results = await suggestByTitlePrefix(localDb, 'xyz')
+    expect(results).toEqual([])
+  })
+
+  test('matches notes by title prefix (case-insensitive)', async () => {
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Grocery List\n\nMilk, eggs.',
+      inserter: 'test-user'
+    })
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Great Ideas\n\nSome ideas.',
+      inserter: 'test-user'
+    })
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Unrelated\n\nNot matching.',
+      inserter: 'test-user'
+    })
+    await indexAll(localDb)
+
+    const results = await suggestByTitlePrefix(localDb, 'gr')
+    expect(results.length).toBe(2)
+    expect(results.every(r => r.title.toLowerCase().startsWith('gr'))).toBe(true)
+  })
+
+  test('is case-insensitive', async () => {
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# My Recipe\n\nContent.',
+      inserter: 'test-user'
+    })
+    await indexAll(localDb)
+
+    const lower = await suggestByTitlePrefix(localDb, 'my r')
+    expect(lower).toHaveLength(1)
+
+    const upper = await suggestByTitlePrefix(localDb, 'MY R')
+    expect(upper).toHaveLength(1)
+  })
+
+  test('respects limit option', async () => {
+    for (let i = 0; i < 10; i++) {
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: `# Note ${i}\n\nContent.`,
+        inserter: 'test-user'
+      })
+    }
+    await indexAll(localDb)
+
+    const results = await suggestByTitlePrefix(localDb, 'Note', { limit: 3 })
+    expect(results.length).toBe(3)
+  })
+
+  test('matches collections by title prefix', async () => {
+    const root = await createCollection(syncedDb, {
+      title: 'My Library',
+      inserter: 'test-user'
+    })
+    await createCollection(syncedDb, {
+      title: 'Cooking',
+      parent_collection_uuid: root.collection_uuid,
+      inserter: 'test-user'
+    })
+    await createCollection(syncedDb, {
+      title: 'Crafts',
+      parent_collection_uuid: root.collection_uuid,
+      inserter: 'test-user'
+    })
+    await rebuildTitleIndex(localDb)
+
+    const results = await suggestByTitlePrefix(localDb, 'co')
+    expect(results.length).toBe(1)
+    expect(results[0].title).toBe('Cooking')
+    expect(results[0].entity_type).toBe('collection')
+  })
+
+  test('returns results sorted by title', async () => {
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Broccoli\n\nContent.',
+      inserter: 'test-user'
+    })
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Banana\n\nContent.',
+      inserter: 'test-user'
+    })
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Blueberry\n\nContent.',
+      inserter: 'test-user'
+    })
+    await indexAll(localDb)
+
+    const results = await suggestByTitlePrefix(localDb, 'b')
+    expect(results.length).toBe(3)
+    expect(results[0].title).toBe('Banana')
+    expect(results[1].title).toBe('Blueberry')
+    expect(results[2].title).toBe('Broccoli')
   })
 })

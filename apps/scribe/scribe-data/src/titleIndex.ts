@@ -165,3 +165,42 @@ export async function lookupByTitle(
 
   return (result.rows || []) as TitleLookupResult[]
 }
+
+/**
+ * Options for `suggestByTitlePrefix`.
+ */
+export interface SuggestByTitlePrefixOptions {
+  /** Maximum number of suggestions to return. Defaults to 5. */
+  limit?: number
+}
+
+/**
+ * Suggest entities whose title starts with the given prefix (case-insensitive).
+ *
+ * This is the wikilink counterpart to `suggestSlugs` — it searches the
+ * title_index for titles matching a prefix, for typeahead/autocomplete
+ * inside `[[ ]]` wikilinks.
+ *
+ * @param db The TributaryLocal database instance
+ * @param prefix The title prefix to search for
+ * @param options Limit options
+ * @returns Array of matching entities, up to `limit`
+ */
+export async function suggestByTitlePrefix(
+  db: TributaryLocal,
+  prefix: string,
+  options: SuggestByTitlePrefixOptions = {}
+): Promise<TitleLookupResult[]> {
+  const limit = options.limit ?? 5
+
+  const result = await db.query(
+    `SELECT title, entity_type, entity_uuid, slug_path
+     FROM title_index
+     WHERE title_lower LIKE $1
+     ORDER BY title_lower
+     LIMIT $2`,
+    [prefix.toLowerCase() + '%', limit]
+  )
+
+  return (result.rows || []) as TitleLookupResult[]
+}
