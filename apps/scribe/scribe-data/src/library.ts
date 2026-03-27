@@ -221,26 +221,44 @@ export async function seedLinkedLibrariesCache(
 export async function getLibraryPlugins(
   stream: TributaryStream
 ): Promise<PluginEntry[]> {
-  // Check if the table exists (read-only, no blob created)
-  let tableExists = true
+  // Fast path: table already exists
   try {
-    await stream.query('SELECT 1 FROM library_plugins LIMIT 0', [])
+    const result = await stream.query(
+      `SELECT plugin_url, config_json, sort_order
+       FROM library_plugins
+       ORDER BY sort_order`,
+      []
+    )
+    return (result.rows || []) as PluginEntry[]
   } catch {
-    tableExists = false
+    // Table doesn't exist — fall through to migration path
   }
 
-  if (!tableExists) {
-    // Existing library created before the plugin system — create the table once
-    await migrateAddPlugins(stream)
+  // Slow path: library was created before the plugin system. Apply the synced
+  // migration so the table is created for all clients. If sync is in progress
+  // (e.g. remote blobs are arriving), the exec may fail — retry with backoff
+  // since sync will eventually complete and unblock writes.
+  const maxRetries = 5
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await migrateAddPlugins(stream)
+      // Migration succeeded — query the (empty) table
+      const result = await stream.query(
+        `SELECT plugin_url, config_json, sort_order
+         FROM library_plugins
+         ORDER BY sort_order`,
+        []
+      )
+      return (result.rows || []) as PluginEntry[]
+    } catch {
+      // If it's the last attempt, give up and return empty
+      if (attempt === maxRetries - 1) return []
+      // Wait with exponential backoff before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)))
+    }
   }
 
-  const result = await stream.query(
-    `SELECT plugin_url, config_json, sort_order
-     FROM library_plugins
-     ORDER BY sort_order`,
-    []
-  )
-  return (result.rows || []) as PluginEntry[]
+  return []
 }
 
 /**
@@ -254,6 +272,8 @@ export async function setLibraryPlugins(
   stream: TributaryStream,
   entries: Array<{ plugin_url: string; config_json?: string }>
 ): Promise<void> {
+  // Ensure the table exists (intentional user write — synced migration is OK here)
+  await migrateAddPlugins(stream)
   await stream.exec(`DELETE FROM library_plugins`)
 
   for (let i = 0; i < entries.length; i++) {
