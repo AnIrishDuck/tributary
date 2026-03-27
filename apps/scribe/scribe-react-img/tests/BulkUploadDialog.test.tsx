@@ -2,7 +2,7 @@ import React from 'react'
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import BulkUploadDialog from '../src/components/BulkUploadDialog'
+import BulkUploadDialog, { PAGE_SIZE } from '../src/components/BulkUploadDialog'
 import { createTestClientWithStream } from './test-utils'
 import * as scribeData from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
@@ -172,6 +172,110 @@ describe('BulkUploadDialog', () => {
 
     // Summary: 2 images in 2 collections (1 sub + 1 root)
     expect(screen.getByText('2 images in 2 collections')).toBeInTheDocument()
+  })
+
+  it('does not show pagination controls when images fit on one page', () => {
+    const plan = makePlan(['a.png', 'b.png', 'c.png'])
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={makeFiles(plan)}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/Page/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
+  })
+
+  it('paginates when images exceed PAGE_SIZE', () => {
+    const names = Array.from({ length: PAGE_SIZE + 5 }, (_, i) => `img-${i}.png`)
+    const plan = makePlan(names)
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={makeFiles(plan)}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Should show pagination
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+
+    // First page images visible, second page images not
+    expect(screen.getByText('img-0.png')).toBeInTheDocument()
+    expect(screen.getByText(`img-${PAGE_SIZE - 1}.png`)).toBeInTheDocument()
+    expect(screen.queryByText(`img-${PAGE_SIZE}.png`)).not.toBeInTheDocument()
+  })
+
+  it('navigates between pages with next/previous buttons', async () => {
+    const names = Array.from({ length: PAGE_SIZE + 5 }, (_, i) => `img-${i}.png`)
+    const plan = makePlan(names)
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={makeFiles(plan)}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Page 1
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('img-0.png')).toBeInTheDocument()
+
+    // Go to page 2
+    await userEvent.click(screen.getByLabelText('Next page'))
+    expect(screen.getByText('Page 2 of 2')).toBeInTheDocument()
+    expect(screen.getByText(`img-${PAGE_SIZE}.png`)).toBeInTheDocument()
+    expect(screen.queryByText('img-0.png')).not.toBeInTheDocument()
+
+    // Go back to page 1
+    await userEvent.click(screen.getByLabelText('Previous page'))
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('img-0.png')).toBeInTheDocument()
+  })
+
+  it('auto-advances to next page during upload when current page completes', async () => {
+    const { stream } = await createTestClientWithStream()
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    const names = Array.from({ length: PAGE_SIZE + 3 }, (_, i) => `img-${i}.png`)
+    const plan = makePlan(names, library!.collection_uuid)
+    const files = makeFiles(plan)
+    const restoreImage = mockImage(100, 50)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={stream}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Starts on page 1
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Upload'))
+
+    // Should auto-advance to page 2 once page 1 images complete, then finish
+    await waitFor(() => {
+      expect(screen.getByText('Upload Complete')).toBeInTheDocument()
+    }, { timeout: 30000 })
+
+    // Should be on page 2 after upload completes (auto-advanced)
+    expect(screen.getByText('Page 2 of 2')).toBeInTheDocument()
+
+    restoreImage()
   })
 
   it('calls onCancel when Cancel button is clicked', async () => {

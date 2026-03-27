@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react'
-import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { XMarkIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { TributaryStream } from 'tributary-client'
 import {
   ensureBulkCollections,
@@ -15,6 +15,8 @@ interface ImageRowStatus {
   status: ImageStatus
   error?: string
 }
+
+export const PAGE_SIZE = 20
 
 export interface BulkUploadDialogProps {
   plan: BulkUploadPlan
@@ -53,12 +55,27 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
     plan.images.map((_, i) => ({ index: i, status: 'pending' }))
   )
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(0)
+
+  const totalPages = Math.max(1, Math.ceil(plan.images.length / PAGE_SIZE))
 
   const updateStatus = useCallback((index: number, status: ImageStatus, errorMsg?: string) => {
     setStatuses(prev => prev.map(s =>
       s.index === index ? { ...s, status, error: errorMsg } : s
     ))
   }, [])
+
+  // Auto-advance to next page during upload when current page is fully done
+  useEffect(() => {
+    if (phase !== 'uploading') return
+    const pageStart = currentPage * PAGE_SIZE
+    const pageEnd = Math.min(pageStart + PAGE_SIZE, plan.images.length)
+    const pageStatuses = statuses.slice(pageStart, pageEnd)
+    const allPageDone = pageStatuses.every(s => s.status === 'done' || s.status === 'error')
+    if (allPageDone && currentPage < totalPages - 1) {
+      setCurrentPage(prev => prev + 1)
+    }
+  }, [statuses, phase, currentPage, totalPages, plan.images.length])
 
   const handleUpload = useCallback(async () => {
     setPhase('uploading')
@@ -117,16 +134,22 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
     }
   }, [stream, plan, files, updateStatus])
 
-  // Group images by collection folder
-  const groupedImages = plan.images.reduce<Map<string, { index: number; slug: string; title?: string; fileName: string }[]>>(
-    (acc, img, i) => {
-      const key = img.folderPath || '(root)'
-      if (!acc.has(key)) acc.set(key, [])
-      acc.get(key)!.push({ index: i, slug: img.slug, title: img.title, fileName: img.fileName })
-      return acc
-    },
-    new Map()
-  )
+  // Get current page slice and group by collection folder
+  const pageStart = currentPage * PAGE_SIZE
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, plan.images.length)
+  const pageImages = plan.images.slice(pageStart, pageEnd)
+
+  const groupedImages = useMemo(() => {
+    return pageImages.reduce<Map<string, { index: number; slug: string; title?: string; fileName: string }[]>>(
+      (acc, img, i) => {
+        const key = img.folderPath || '(root)'
+        if (!acc.has(key)) acc.set(key, [])
+        acc.get(key)!.push({ index: pageStart + i, slug: img.slug, title: img.title, fileName: img.fileName })
+        return acc
+      },
+      new Map()
+    )
+  }, [pageStart, pageEnd, plan.images])
 
   const totalImages = plan.images.length
   const totalCollections = plan.collections.length
@@ -204,39 +227,66 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          {phase === 'confirm' && (
-            <>
+        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
+          {/* Pagination controls */}
+          {totalPages > 1 ? (
+            <div className="flex items-center gap-2">
               <button
-                onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={() => setCurrentPage(p => p - 1)}
+                disabled={currentPage === 0}
+                className="p-1 rounded text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Previous page"
               >
-                Cancel
+                <ChevronLeftIcon className="w-5 h-5" />
               </button>
+              <span className="text-sm text-gray-600">
+                Page {currentPage + 1} of {totalPages}
+              </span>
               <button
-                onClick={handleUpload}
+                onClick={() => setCurrentPage(p => p + 1)}
+                disabled={currentPage >= totalPages - 1}
+                className="p-1 rounded text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Next page"
+              >
+                <ChevronRightIcon className="w-5 h-5" />
+              </button>
+            </div>
+          ) : <div />}
+
+          <div className="flex gap-3">
+            {phase === 'confirm' && (
+              <>
+                <button
+                  onClick={onCancel}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpload}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Upload
+                </button>
+              </>
+            )}
+            {phase === 'uploading' && (
+              <button
+                disabled
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-400 rounded-lg cursor-not-allowed"
+              >
+                Uploading...
+              </button>
+            )}
+            {phase === 'done' && (
+              <button
+                onClick={onComplete}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Upload
+                Done
               </button>
-            </>
-          )}
-          {phase === 'uploading' && (
-            <button
-              disabled
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-400 rounded-lg cursor-not-allowed"
-            >
-              Uploading...
-            </button>
-          )}
-          {phase === 'done' && (
-            <button
-              onClick={onComplete}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Done
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
