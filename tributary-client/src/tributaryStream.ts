@@ -19,6 +19,20 @@ interface TransactionLogEntry {
 }
 
 /**
+ * Thrown when a write operation is attempted but the stream has unsynced
+ * remote transactions. The caller should sync fully before retrying.
+ */
+export class SyncRequiredError extends Error {
+  constructor(currentIndex: number, finalIndex: number) {
+    super(
+      `Stream has unsynced remote transactions (synced ${currentIndex}/${finalIndex}). ` +
+      `Sync fully before writing to avoid data inconsistency.`
+    );
+    this.name = 'SyncRequiredError';
+  }
+}
+
+/**
  * Sync status information for a stream
  */
 export interface SyncStatus {
@@ -204,27 +218,15 @@ export class TributaryStream {
       });
     }
 
-    // For write operations, we need to ensure server persistence BEFORE local commit
-    // Create a transaction log entry
-    const transactionEntry: TransactionLogEntry = {
-      id: this.generateTransactionId(),
-      timestamp: Date.now(),
-      query,
-      params
-    };
+    // Write path: sync, persist to server, then execute locally
+    await this.writeToServer(query, params);
 
-    // Send to server with persistence guarantee BEFORE executing locally
-    await this.ensureServerPersistence(transactionEntry);
-
-    // Now execute locally since we have server confirmation
+    // Execute locally since we have server confirmation
     const result = await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // @ts-ignore
       return await tx.query(query, params);
     });
-
-    // Update the transaction entry with the result
-    transactionEntry.result = result;
 
     return result;
   }
@@ -242,19 +244,10 @@ export class TributaryStream {
       this.syncStateInitialized = true;
     }
 
-    // For write operations, we need to ensure server persistence BEFORE local commit
-    // Create a transaction log entry
-    const transactionEntry: TransactionLogEntry = {
-      id: this.generateTransactionId(),
-      timestamp: Date.now(),
-      query,
-      params
-    };
+    // Write path: sync, persist to server, then execute locally
+    await this.writeToServer(query, params);
 
-    // Send to server with persistence guarantee BEFORE executing locally
-    await this.ensureServerPersistence(transactionEntry);
-
-    // Now execute locally with SET LOCAL search_path scoped to this transaction
+    // Execute locally with SET LOCAL search_path scoped to this transaction
     await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       // Use query instead of exec for parameterized operations to work around PGLite issue
@@ -265,6 +258,35 @@ export class TributaryStream {
         await tx.exec(query);
       }
     });
+  }
+
+  /**
+   * Shared write path for query() and exec(): checks for unsynced remote
+   * transactions, then persists the operation to the server. Throws
+   * SyncRequiredError if ANY remote transactions exist — the caller's SQL
+   * may be based on stale local state and must be re-evaluated after syncing.
+   */
+  private async writeToServer(query: string, params?: any[]): Promise<void> {
+    // Use sync(1) as a lightweight probe: if it finds even one remote blob,
+    // the local state is potentially stale. The caller must sync fully and
+    // re-evaluate their query before retrying.
+    const beforeIndex = this.lastSyncIndex;
+    const syncStatus = await this.sync(1);
+
+    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
+      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
+    }
+
+    // Create a transaction log entry
+    const transactionEntry: TransactionLogEntry = {
+      id: this.generateTransactionId(),
+      timestamp: Date.now(),
+      query,
+      params
+    };
+
+    // Persist to server before local execution
+    await this.ensureServerPersistence(transactionEntry);
   }
 
   /**
@@ -281,6 +303,13 @@ export class TributaryStream {
     }
 
     info('TRANSACTION: Starting transaction method');
+
+    // Check for unsynced remote transactions before writing.
+    const beforeIndex = this.lastSyncIndex;
+    const syncStatus = await this.sync(1);
+    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
+      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
+    }
 
     // For transactions, we run commands immediately so users can see results and make decisions
     // We record all commands, then post to server while still inside the PGlite transaction

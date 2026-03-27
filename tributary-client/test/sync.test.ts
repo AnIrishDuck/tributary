@@ -1,6 +1,6 @@
 // Test for sync functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTestServer, createTestClient, createTestDb } from '../src/index';
+import { createTestServer, createTestClient, createTestDb, SyncRequiredError } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -125,10 +125,10 @@ describe('Sync Functionality', () => {
     expect(result.rows[0].count).toBe(3);
   });
 
-  it('should not skip remote blobs when local write creates a sequence gap', async () => {
-    // Simulates the bug: Device A writes blobs 1-5, Device B partially syncs (1-2),
-    // then Device B writes blob 6. Without the fix, Device B's lastSyncIndex jumps
-    // to 6, permanently skipping remote blobs 3-5.
+  it('should reject writes when partially synced with remote blobs remaining', async () => {
+    // Device B partially syncs, then tries to write — should throw because
+    // remote blobs still exist. This prevents the original bug where
+    // lastSyncIndex would jump past unsynced remote blobs.
     const writerDb = await createTestDb();
     const readerDb = await createTestDb();
 
@@ -150,27 +150,23 @@ describe('Sync Functionality', () => {
     expect(partialSync.complete()).toBe(false);
     expect(partialSync.currentIndex).toBe(2);
 
-    // Device B writes a new blob — this gets sequence 6 on the server
-    // (server has 5 blobs, so next is 6)
+    // Device B tries to write — should throw because remote blobs 3-5 exist
+    await expect(
+      readerStream.query("INSERT INTO items VALUES (100, 'from_reader')")
+    ).rejects.toThrow(SyncRequiredError);
+
+    // After fully syncing, the write should succeed
+    let status;
+    do {
+      status = await readerStream.sync(1000);
+    } while (!status.complete());
+
     await readerStream.query("INSERT INTO items VALUES (100, 'from_reader')");
 
-    // Verify the reader did NOT jump past the gap
-    const readerLastSync = (readerStream as any).lastSyncIndex;
-    // With the fix: lastSyncIndex should still be 2 (gap detected, not advanced to 6)
-    expect(readerLastSync).toBe(2);
-
-    // Now sync fully — should process remote blobs 3-5, then skip local blob 6
-    let syncResult;
-    do {
-      syncResult = await readerStream.sync(100);
-    } while (!syncResult.complete());
-
-    // Verify ALL remote data was applied (blobs 3-5 were not skipped)
+    // Verify ALL data present
     const result = await readerStream.query("SELECT * FROM items ORDER BY id");
     expect(result.rows.length).toBe(5);
     expect(result.rows.map((r: any) => r.id)).toEqual([1, 2, 3, 4, 100]);
-    expect(result.rows[2].value).toBe('from_writer_3');
-    expect(result.rows[3].value).toBe('from_writer_4');
   });
 
   it('should return true when fully synced and false when more blobs available', async () => {
@@ -215,5 +211,76 @@ describe('Sync Functionality', () => {
     // Sync once more should still be complete
     const result3 = await stream2.sync(100);
     expect(result3.complete()).toBe(true);
+  });
+
+  it('should throw SyncRequiredError when remote blobs exist (query)', async () => {
+    const writerDb = await createTestDb();
+    const readerDb = await createTestDb();
+
+    const writerClient = await createTestClient({ server: testServer, db: writerDb });
+    const readerClient = await createTestClient({ server: testServer, db: readerDb });
+
+    const writerStream = await writerClient.addWriteKey('test', testPrivateKeyBase64);
+    const readerStream = await readerClient.addWriteKey('test', testPrivateKeyBase64);
+
+    // Device A writes some blobs
+    await writerStream.query("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
+    await writerStream.query("INSERT INTO items VALUES (1, 'from_writer')");
+
+    // Device B tries to write without syncing — should throw because
+    // remote blobs exist and local state may be stale
+    await expect(
+      readerStream.query("INSERT INTO items VALUES (2, 'from_reader')")
+    ).rejects.toThrow(SyncRequiredError);
+  });
+
+  it('should throw SyncRequiredError when remote blobs exist (exec)', async () => {
+    const writerDb = await createTestDb();
+    const readerDb = await createTestDb();
+
+    const writerClient = await createTestClient({ server: testServer, db: writerDb });
+    const readerClient = await createTestClient({ server: testServer, db: readerDb });
+
+    const writerStream = await writerClient.addWriteKey('test', testPrivateKeyBase64);
+    const readerStream = await readerClient.addWriteKey('test', testPrivateKeyBase64);
+
+    // Device A writes data
+    await writerStream.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
+    await writerStream.exec("INSERT INTO items VALUES (1, 'from_writer')");
+
+    // Device B tries to write via exec — should throw
+    await expect(
+      readerStream.exec("INSERT INTO items VALUES (2, 'from_reader')")
+    ).rejects.toThrow(SyncRequiredError);
+  });
+
+  it('should allow writes after fully syncing', async () => {
+    const writerDb = await createTestDb();
+    const readerDb = await createTestDb();
+
+    const writerClient = await createTestClient({ server: testServer, db: writerDb });
+    const readerClient = await createTestClient({ server: testServer, db: readerDb });
+
+    const writerStream = await writerClient.addWriteKey('test', testPrivateKeyBase64);
+    const readerStream = await readerClient.addWriteKey('test', testPrivateKeyBase64);
+
+    // Device A writes data
+    await writerStream.query("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
+    await writerStream.query("INSERT INTO items VALUES (1, 'from_writer')");
+
+    // Device B syncs fully first
+    let status;
+    do {
+      status = await readerStream.sync(1000);
+    } while (!status.complete());
+
+    // Now Device B can write successfully
+    await readerStream.query("INSERT INTO items VALUES (2, 'from_reader')");
+
+    // Verify both rows exist
+    const result = await readerStream.query("SELECT * FROM items ORDER BY id");
+    expect(result.rows.length).toBe(2);
+    expect(result.rows[0].value).toBe('from_writer');
+    expect(result.rows[1].value).toBe('from_reader');
   });
 });
