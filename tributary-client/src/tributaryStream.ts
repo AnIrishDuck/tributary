@@ -46,6 +46,20 @@ export interface SyncStatus {
   error?: Error;
 }
 
+/**
+ * A recorded sync error
+ */
+export interface SyncError {
+  id: string;
+  stream_id: string;
+  blob_sequence: number | null;
+  error_type: string;
+  error_message: string;
+  occurred_at: string;
+  query: string | null;
+  params: string | null;
+}
+
 export class TributaryStream {
   private pglite: PGliteInterface;
   private server: Server;
@@ -404,6 +418,61 @@ export class TributaryStream {
   }
 
   /**
+   * Record a sync error to the tributary.sync_errors table
+   */
+  private async recordSyncError(
+    errorType: string,
+    errorMessage: string,
+    blobSequence?: number,
+    query?: string,
+    params?: any[]
+  ): Promise<void> {
+    try {
+      const id = `err-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      await this.pglite.query(
+        `INSERT INTO tributary.sync_errors (id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          id,
+          this.getId(),
+          blobSequence ?? null,
+          errorType,
+          errorMessage,
+          new Date().toISOString(),
+          query ?? null,
+          params != null ? JSON.stringify(params) : null,
+        ]
+      );
+    } catch (e: unknown) {
+      warn('Failed to record sync error:', e as Error);
+    }
+  }
+
+  /**
+   * Get all sync errors for this stream, ordered by most recent first
+   */
+  async getErrors(): Promise<SyncError[]> {
+    const result: any = await this.pglite.query(
+      `SELECT id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params
+       FROM tributary.sync_errors
+       WHERE stream_id = $1
+       ORDER BY occurred_at DESC`,
+      [this.getId()]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Clear all sync errors for this stream
+   */
+  async clearErrors(): Promise<void> {
+    await this.pglite.query(
+      `DELETE FROM tributary.sync_errors WHERE stream_id = $1`,
+      [this.getId()]
+    );
+  }
+
+  /**
    * Load the last sync index from the database
    */
   private async loadLastSyncIndex(): Promise<void> {
@@ -545,6 +614,12 @@ export class TributaryStream {
         warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
         // Advance past unparseable blobs so we don't re-fetch them
         finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
+        // Record the error for app visibility
+        await this.recordSyncError(
+          'parse_error',
+          (parseError as Error).message || String(parseError),
+          blob.sequenceNumber
+        );
       }
     }
 
@@ -568,6 +643,12 @@ export class TributaryStream {
       };
     }
     const dbStart = performance.now();
+    // Collect errors inside the transaction; flush them after it commits
+    // to avoid deadlocking on a nested pglite.query() call.
+    const pendingErrors: Array<{
+      errorType: string; errorMessage: string;
+      blobSequence?: number; query?: string; params?: any[];
+    }> = [];
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
       await this.pglite.transaction(async (tx) => {
         // Set search_path once for the entire batch
@@ -599,7 +680,15 @@ export class TributaryStream {
             // Roll back just this blob — likely already applied locally
             // @ts-ignore
             await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
-            warn(`SYNC: Skipping blob ${sequenceNumber} (likely already applied locally): ${(blobError as Error).message}`);
+            error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError as Error);
+            // Defer recording so we don't deadlock inside the transaction
+            pendingErrors.push({
+              errorType: 'apply_error',
+              errorMessage: (blobError as Error).message || String(blobError),
+              blobSequence: sequenceNumber,
+              query: entry.query,
+              params: entry.params,
+            });
           }
         }
 
@@ -614,6 +703,11 @@ export class TributaryStream {
       });
       // Use Math.max to preserve any higher value set by concurrent local writes
       this.lastSyncIndex = Math.max(this.lastSyncIndex, finalSyncIndex);
+    }
+
+    // Flush deferred error records now that the transaction is done
+    for (const pe of pendingErrors) {
+      await this.recordSyncError(pe.errorType, pe.errorMessage, pe.blobSequence, pe.query, pe.params);
     }
     const dbMs = Math.round(performance.now() - dbStart);
 
