@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import {
   autocompletion,
@@ -10,6 +11,23 @@ import { suggestSlugs, suggestByTitlePrefix } from 'scribe-data'
 import type { SlugSuggestion } from 'scribe-data'
 
 const MAX_SUGGESTIONS = 3
+
+/**
+ * Theme for note-link autocomplete icons.
+ * Uses the CodeMirror completionIcon-{type} convention to show
+ * entity-type icons to the left of each suggestion.
+ */
+const noteLinkCompletionTheme = EditorView.baseTheme({
+  '.cm-completionIcon-note': {
+    '&::after': { content: "'\\1F4DD'" }, // memo / note
+  },
+  '.cm-completionIcon-collection': {
+    '&::after': { content: "'\\1F4C1'" }, // folder
+  },
+  '.cm-completionIcon-image': {
+    '&::after': { content: "'\\1F5BC'" }, // framed picture
+  },
+})
 
 /**
  * Configuration for the note-link autocomplete extension.
@@ -219,7 +237,7 @@ function completionSource(config: NoteLinkCompletionConfig) {
 
       const options: Completion[] = results.map((r) => ({
         label: r.title,
-        detail: r.entity_type,
+        type: r.entity_type,
         apply: r.title,
       }))
 
@@ -253,6 +271,7 @@ function completionSource(config: NoteLinkCompletionConfig) {
     const options: Completion[] = suggestions.map((s) => ({
       label: s.title,
       detail: s.slug_path,
+      type: s.type,
       apply: buildSlugApplyText(s, partialSlug, config.noteSlugPath),
     }))
 
@@ -271,8 +290,11 @@ function completionSource(config: NoteLinkCompletionConfig) {
  * Shows at most 3 suggestions as the user types.
  */
 export function noteLinkCompletion(config: NoteLinkCompletionConfig): Extension {
-  return autocompletion({
-    override: [completionSource(config)],
-    icons: false,
-  })
+  return [
+    autocompletion({
+      override: [completionSource(config)],
+      icons: true,
+    }),
+    noteLinkCompletionTheme,
+  ]
 }
