@@ -87,12 +87,28 @@ interface UnindexedSearchNote {
 }
 
 /**
+ * Extract the title from a markdown body.
+ * Returns the text of the first # heading, or empty string if none.
+ */
+export function extractTitle(body: string): string {
+  const match = body.match(/^#\s+(.+)$/m)
+  if (!match) return ''
+  // Strip inline markdown from the title text
+  let title = match[1]
+  title = title.replace(/(\*\*|__)(.*?)\1/g, '$2')
+  title = title.replace(/(\*|_)(.*?)\1/g, '$2')
+  title = title.replace(/`[^`]+`/g, '')
+  title = title.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  return title.trim()
+}
+
+/**
  * Extract searchable plain text from markdown body
  * Removes markdown syntax but keeps the actual content
- * 
+ *
  * @param body The markdown document body
  * @returns Plain text suitable for full-text indexing
- * 
+ *
  * @example
  * extractSearchableText('# Title\n\nThis is **bold** text.')
  * // Returns: 'Title This is bold text'
@@ -219,13 +235,14 @@ export async function indexSearchVectors(
   const cpuStart = performance.now()
   const now = new Date().toISOString()
 
-  const withText: { block_uuid: string, version_uuid: string, searchableText: string }[] = []
+  const withText: { block_uuid: string, version_uuid: string, title: string, bodyText: string }[] = []
   const emptyUuids: string[] = []
 
   for (const note of unindexedNotes) {
     const searchableText = extractSearchableText(note.body)
     if (searchableText.trim().length > 0) {
-      withText.push({ block_uuid: note.block_uuid, version_uuid: note.version_uuid, searchableText })
+      const title = extractTitle(note.body)
+      withText.push({ block_uuid: note.block_uuid, version_uuid: note.version_uuid, title, bodyText: searchableText })
     } else {
       emptyUuids.push(note.block_uuid)
     }
@@ -240,10 +257,10 @@ export async function indexSearchVectors(
   await localDb.transaction(async (tx: any) => {
     if (withText.length > 0) {
       const vals = withText.map((_, i) => {
-        const b = i * 4
-        return `($${b+1}, $${b+2}, to_tsvector('english', $${b+3}), $${b+4})`
+        const b = i * 5
+        return `($${b+1}, $${b+2}, setweight(to_tsvector('english', $${b+3}), 'A') || setweight(to_tsvector('english', $${b+4}), 'D'), $${b+5})`
       }).join(', ')
-      const params = withText.flatMap(n => [n.block_uuid, n.version_uuid, n.searchableText, now])
+      const params = withText.flatMap(n => [n.block_uuid, n.version_uuid, n.title, n.bodyText, now])
       await tx.query(
         `INSERT INTO block_search_index (block_uuid, version_uuid, search_vector, indexed_at)
          VALUES ${vals}
