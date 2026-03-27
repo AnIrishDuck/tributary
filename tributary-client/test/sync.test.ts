@@ -226,11 +226,17 @@ describe('Sync Functionality', () => {
     // Device A writes some blobs
     await writerStream.query("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
     await writerStream.query("INSERT INTO items VALUES (1, 'from_writer')");
+    await writerStream.query("INSERT INTO items VALUES (2, 'from_writer_2')");
 
-    // Device B tries to write without syncing — should throw because
+    // Device B partially syncs so the table exists locally, but unsynced blobs remain.
+    // The local exec will succeed, but the sync guard should catch the remaining blobs.
+    const partial = await readerStream.sync(1);
+    expect(partial.complete()).toBe(false);
+
+    // Device B tries to write — sync guard fires SyncRequiredError because
     // remote blobs exist and local state may be stale
     await expect(
-      readerStream.query("INSERT INTO items VALUES (2, 'from_reader')")
+      readerStream.query("INSERT INTO items VALUES (10, 'from_reader')")
     ).rejects.toThrow(SyncRequiredError);
   });
 
@@ -247,10 +253,15 @@ describe('Sync Functionality', () => {
     // Device A writes data
     await writerStream.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)");
     await writerStream.exec("INSERT INTO items VALUES (1, 'from_writer')");
+    await writerStream.exec("INSERT INTO items VALUES (2, 'from_writer_2')");
 
-    // Device B tries to write via exec — should throw
+    // Device B partially syncs so the table exists locally, but unsynced blobs remain
+    const partial = await readerStream.sync(1);
+    expect(partial.complete()).toBe(false);
+
+    // Device B tries to write via exec — sync guard should throw
     await expect(
-      readerStream.exec("INSERT INTO items VALUES (2, 'from_reader')")
+      readerStream.exec("INSERT INTO items VALUES (10, 'from_reader')")
     ).rejects.toThrow(SyncRequiredError);
   });
 

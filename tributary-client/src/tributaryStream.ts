@@ -232,15 +232,37 @@ export class TributaryStream {
       });
     }
 
-    // Write path: sync, persist to server, then execute locally
-    await this.writeToServer(query, params);
+    // Record the local sync index BEFORE anything (including sync guard).
+    // This becomes the basis for the server POST — the server rejects gaps.
+    const guardIndex = this.lastSyncIndex;
 
-    // Execute locally since we have server confirmation
+    // Everything happens inside a single PGlite transaction so that a local
+    // DB failure (e.g. constraint violation) prevents the server write, and
+    // a server failure rolls back the local change.
     const result = await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
+
+      // 1. Execute locally FIRST to catch postgres errors before touching the server
       // @ts-ignore
-      return await tx.query(query, params);
+      const queryResult = await tx.query(query, params);
+
+      // 2. Sync guard: verify no unsynced remote blobs exist (server-only check)
+      await this.checkSyncGuard(guardIndex);
+
+      // 3. Persist to server
+      const transactionEntry: TransactionLogEntry = {
+        id: this.generateTransactionId(),
+        timestamp: Date.now(),
+        query,
+        params
+      };
+      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
+
+      return queryResult;
     });
+
+    // Transaction committed successfully — persist sync index outside the transaction
+    await this.saveLastSyncIndex();
 
     return result;
   }
@@ -258,12 +280,16 @@ export class TributaryStream {
       this.syncStateInitialized = true;
     }
 
-    // Write path: sync, persist to server, then execute locally
-    await this.writeToServer(query, params);
+    // Record the local sync index BEFORE anything (including sync guard).
+    const guardIndex = this.lastSyncIndex;
 
-    // Execute locally with SET LOCAL search_path scoped to this transaction
+    // Single PGlite transaction: local exec → sync guard → server persist.
+    // If the local exec fails (e.g. constraint violation), we never touch the server.
+    // If the server persist fails, PGlite rolls back the local change.
     await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
+
+      // 1. Execute locally FIRST to catch postgres errors
       // Use query instead of exec for parameterized operations to work around PGLite issue
       // @ts-ignore
       if (params && params.length > 0) {
@@ -271,36 +297,35 @@ export class TributaryStream {
       } else {
         await tx.exec(query);
       }
+
+      // 2. Sync guard: verify no unsynced remote blobs exist (server-only check)
+      await this.checkSyncGuard(guardIndex);
+
+      // 3. Persist to server
+      const transactionEntry: TransactionLogEntry = {
+        id: this.generateTransactionId(),
+        timestamp: Date.now(),
+        query,
+        params
+      };
+      await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
     });
+
+    // Transaction committed successfully — persist sync index outside the transaction
+    await this.saveLastSyncIndex();
   }
 
   /**
-   * Shared write path for query() and exec(): checks for unsynced remote
-   * transactions, then persists the operation to the server. Throws
-   * SyncRequiredError if ANY remote transactions exist — the caller's SQL
-   * may be based on stale local state and must be re-evaluated after syncing.
+   * Lightweight sync guard: verifies no unsynced remote blobs exist.
+   * Unlike sync(), this does NOT apply any blobs — it only queries the server.
+   * Safe to call inside an open PGlite transaction (no DB operations).
+   * Throws SyncRequiredError if ANY remote transactions exist beyond guardIndex.
    */
-  private async writeToServer(query: string, params?: any[]): Promise<void> {
-    // Use sync(1) as a lightweight probe: if it finds even one remote blob,
-    // the local state is potentially stale. The caller must sync fully and
-    // re-evaluate their query before retrying.
-    const beforeIndex = this.lastSyncIndex;
-    const syncStatus = await this.sync(1);
-
-    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
-      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
+  private async checkSyncGuard(guardIndex: number): Promise<void> {
+    const probe = await this.server.getBlobsArrow(this.getPublicKeyBase64(), guardIndex, 1);
+    if (probe.totalCount > guardIndex) {
+      throw new SyncRequiredError(guardIndex, probe.totalCount);
     }
-
-    // Create a transaction log entry
-    const transactionEntry: TransactionLogEntry = {
-      id: this.generateTransactionId(),
-      timestamp: Date.now(),
-      query,
-      params
-    };
-
-    // Persist to server before local execution
-    await this.ensureServerPersistence(transactionEntry);
   }
 
   /**
@@ -318,16 +343,12 @@ export class TributaryStream {
 
     info('TRANSACTION: Starting transaction method');
 
-    // Check for unsynced remote transactions before writing.
-    const beforeIndex = this.lastSyncIndex;
-    const syncStatus = await this.sync(1);
-    if (syncStatus.currentIndex !== beforeIndex || !syncStatus.complete()) {
-      throw new SyncRequiredError(syncStatus.currentIndex, syncStatus.finalIndex);
-    }
+    // Record the local sync index BEFORE anything (including sync guard).
+    const guardIndex = this.lastSyncIndex;
 
-    // For transactions, we run commands immediately so users can see results and make decisions
-    // We record all commands, then post to server while still inside the PGlite transaction
-    // If server post fails, we throw an error to cause PGlite to rollback the entire transaction
+    // For transactions, we run commands immediately so users can see results and make decisions.
+    // We record all commands, then check sync guard + persist to server while still inside
+    // the PGlite transaction. If any step fails, PGlite rolls back everything.
 
     // Create array to store commands for server persistence
     const recordedCommands: Array<{ query: string, params?: any[] }> = [];
@@ -340,49 +361,43 @@ export class TributaryStream {
       // operations on other streams cannot interfere.
       await tx.exec(this.searchPathSQL);
       info('TRANSACTION: Inside pglite.transaction callback with transaction object');
-      
+
       // Create a transaction object that executes immediately AND records
       const recordingTx = {
         query: async (query: string, params?: any[]) => {
           info('TRANSACTION: recordingTx.query called with:', query);
-          try {
-            // Execute immediately using the PGlite transaction object (user sees real results)
-            // @ts-ignore
-            const queryResult = await tx.query(query, params);
-            // Record the command for server persistence
-            recordedCommands.push({ query, params });
-            info('TRANSACTION: recordingTx.query completed');
-            return queryResult;
-          } catch (error: any) {
-            error('TRANSACTION: recordingTx.query failed:', error as Error);
-            throw error;
-          }
+          // Execute immediately using the PGlite transaction object (user sees real results)
+          // @ts-ignore
+          const queryResult = await tx.query(query, params);
+          // Record the command for server persistence
+          recordedCommands.push({ query, params });
+          info('TRANSACTION: recordingTx.query completed');
+          return queryResult;
         },
         exec: async (query: string, params?: any[]) => {
           info('TRANSACTION: recordingTx.exec called with:', query);
-          try {
-            // Execute immediately using the PGlite transaction object (user sees real results)
-            // @ts-ignore
-            await tx.exec(query, params);
-            // Record the command for server persistence
-            recordedCommands.push({ query, params });
-            info('TRANSACTION: recordingTx.exec completed');
-          } catch (error: any) {
-            error('TRANSACTION: recordingTx.exec failed:', error as Error);
-            throw error;
-          }
+          // Execute immediately using the PGlite transaction object (user sees real results)
+          // @ts-ignore
+          await tx.exec(query, params);
+          // Record the command for server persistence
+          recordedCommands.push({ query, params });
+          info('TRANSACTION: recordingTx.exec completed');
         }
       };
-      
-      // Execute the user's callback with our recording transaction
-      // User can query data, see results, and make decisions based on those results
+
+      // Execute the user's callback with our recording transaction.
+      // Local postgres errors (constraint violations, etc.) are caught here
+      // and cause an immediate rollback — the server is never touched.
       info('TRANSACTION: About to call user callback');
       const callbackResult = await callback(recordingTx);
       info('TRANSACTION: Callback completed successfully with result:', callbackResult);
-      
+
       // IMPORTANT: We're still INSIDE the PGlite transaction here!
-      // The transaction has not been committed yet, but all changes are staged
-      
+      // The transaction has not been committed yet, but all changes are staged.
+
+      // Sync guard: verify no unsynced remote blobs exist (server-only check)
+      await this.checkSyncGuard(guardIndex);
+
       // Now try to persist to server while still inside the transaction
       const transactionEntry: TransactionLogEntry = {
         id: this.generateTransactionId(),
@@ -391,29 +406,33 @@ export class TributaryStream {
         params: recordedCommands,
         result: callbackResult
       };
-      
+
       try {
         info('TRANSACTION: Attempting server persistence with', recordedCommands.length, 'commands');
-        
+
         // Attempt to persist to server
-        await this.ensureServerPersistence(transactionEntry);
+        await this.ensureServerPersistence(transactionEntry, { skipDbSyncSave: true, guardIndex });
         info('TRANSACTION: Server persistence successful');
-        
+
         // If server persistence succeeds, we just return normally
         // PGlite will automatically commit the transaction
         info('TRANSACTION: About to return from transaction callback');
         return callbackResult;
       } catch (serverError) {
         error('TRANSACTION: Server persistence failed:', serverError as Error);
-        
+
         // If server persistence fails, we throw an error
         // This causes PGlite to automatically rollback the entire transaction
         // The local state is reset as if the transaction never happened
         throw new Error(`Transaction failed to persist to server: ${(serverError as Error).message}`);
       }
     });
-    
+
     info('TRANSACTION: pglite.transaction completed successfully with result:', result);
+
+    // Transaction committed successfully — persist sync index outside the transaction
+    await this.saveLastSyncIndex();
+
     return result;
   }
 
@@ -734,20 +753,36 @@ export class TributaryStream {
   /**
    * Ensure that a transaction is persisted on the server before confirming locally
    * @param transactionEntry The transaction log entry to persist
+   * @param options.skipDbSyncSave When true, skip the DB sync index save (caller manages it).
+   *        Required when called inside a PGlite transaction to avoid deadlock.
+   * @param options.guardIndex When set, use this as the expected server index instead of
+   *        re-fetching from the server. The POST will target guardIndex+1. This ensures the
+   *        sequence number is consistent with the sync guard that was already checked.
    */
-  private async ensureServerPersistence(transactionEntry: TransactionLogEntry): Promise<void> {
+  private async ensureServerPersistence(
+    transactionEntry: TransactionLogEntry,
+    options?: { skipDbSyncSave?: boolean; guardIndex?: number }
+  ): Promise<void> {
     info('ensureServerPersistence: Starting persistence for transaction', transactionEntry);
-    
-    // Get the latest blob metadata from the server for proper chaining
+
+    // Get the latest blob metadata from the server for proper chaining.
+    // When guardIndex is provided, we already know the expected server state from
+    // the sync guard check — but we still need the latest hash for chain verification.
     const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
     debug('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
-    
+
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
     const priorHash = latestBlobMetadata ? latestBlobMetadata.hash : '';
     debug('ensureServerPersistence: Using priorHash:', priorHash);
-    
-    // Use the next sequence number based on the server's latest blob
-    this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+
+    // Use the next sequence number. When guardIndex is provided (from the sync guard),
+    // derive it from there to ensure consistency with what was already checked.
+    // Otherwise fall back to the server's latest blob metadata.
+    if (options?.guardIndex !== undefined) {
+      this.sequenceNumber = options.guardIndex + 1;
+    } else {
+      this.sequenceNumber = latestBlobMetadata ? latestBlobMetadata.sequenceNumber + 1 : 1;
+    }
     debug('ensureServerPersistence: Using sequenceNumber:', this.sequenceNumber);
     
     // Serialize the transaction data
@@ -827,7 +862,9 @@ export class TributaryStream {
       // sync to skip those remote blobs permanently.
       if (this.sequenceNumber === this.lastSyncIndex + 1) {
         this.lastSyncIndex = this.sequenceNumber;
-        await this.saveLastSyncIndex();
+        if (!options?.skipDbSyncSave) {
+          await this.saveLastSyncIndex();
+        }
       } else if (this.sequenceNumber > this.lastSyncIndex + 1) {
         warn(`ensureServerPersistence: Gap detected - wrote sequence ${this.sequenceNumber} but lastSyncIndex is ${this.lastSyncIndex}. Remote blobs need sync before advancing.`);
       }
