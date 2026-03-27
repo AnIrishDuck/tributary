@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
-import { syncedMigrations, localMigrations, schemaReady } from '../src/migrations'
+import { syncedMigrations, localMigrations, schemaReady, migrateAddPlugins } from '../src/migrations'
+import { ensurePluginTable } from '../src/library'
 
 function makeClient(server?: FakeServer) {
   const s = server ?? new FakeServer()
@@ -71,6 +72,76 @@ describe('schemaReady', () => {
     // After both synced + local migrations — all tables present
     await localMigrations(localDb)
     expect(await schemaReady(localDb)).toBe(true)
+  })
+
+  it('returns false when library_plugins table is missing (pre-plugin library)', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const stream = await client.addWriteKey('scribe', keyPair.secretKey)
+
+    // Create only block + collection (old schema without library_plugins)
+    await stream.exec(`
+      CREATE TABLE IF NOT EXISTS block (
+        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
+        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
+        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
+      )
+    `)
+    await stream.exec(`
+      CREATE TABLE IF NOT EXISTS collection (
+        collection_uuid TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL,
+        parent_collection_uuid TEXT, insert_datetime TEXT NOT NULL,
+        inserter TEXT NOT NULL, linked_stream_id TEXT,
+        linked_stream_key TEXT, slug TEXT NOT NULL
+      )
+    `)
+    await localMigrations(stream.local())
+
+    // schema not ready because library_plugins is missing
+    expect(await schemaReady(stream)).toBe(false)
+
+    // After adding the plugins table, schema is ready
+    await migrateAddPlugins(stream)
+    expect(await schemaReady(stream)).toBe(true)
+  })
+
+  it('ensurePluginTable creates table only when missing and produces exactly one blob', async () => {
+    const server = new FakeServer()
+    const pglite = new PGlite('memory://')
+    const client = new TributaryClient({ server, db: pglite })
+    const keyPair = nacl.sign.keyPair()
+    const stream = await client.addWriteKey('scribe', keyPair.secretKey)
+
+    // Old schema without library_plugins
+    await stream.exec(`
+      CREATE TABLE IF NOT EXISTS block (
+        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
+        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
+        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
+      )
+    `)
+    await stream.exec(`
+      CREATE TABLE IF NOT EXISTS collection (
+        collection_uuid TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL,
+        parent_collection_uuid TEXT, insert_datetime TEXT NOT NULL,
+        inserter TEXT NOT NULL, linked_stream_id TEXT,
+        linked_stream_key TEXT, slug TEXT NOT NULL
+      )
+    `)
+
+    const blobsBefore = server.getAllBlobs().filter(b => b.pubkey === stream.getId()).length
+
+    // First call creates the table (one blob)
+    await ensurePluginTable(stream)
+    const blobsAfterFirst = server.getAllBlobs().filter(b => b.pubkey === stream.getId()).length
+    expect(blobsAfterFirst).toBe(blobsBefore + 1)
+
+    // Second call is a no-op (table already exists)
+    await ensurePluginTable(stream)
+    const blobsAfterSecond = server.getAllBlobs().filter(b => b.pubkey === stream.getId()).length
+    expect(blobsAfterSecond).toBe(blobsAfterFirst)
   })
 
   it('returns true on a fresh client after syncing and running local migrations', async () => {

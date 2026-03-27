@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } from 'tributary-client'
-import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries, getCachedLinkedLibraries } from 'scribe-data'
+import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries, getCachedLinkedLibraries, ensurePluginTable } from 'scribe-data'
 
 type SyncFocus = { type: 'home' } | { type: 'library'; id: string }
 
@@ -269,6 +269,14 @@ export const SyncStatusProvider: React.FC<{
               // local tables (authoritative_version, indexed_block, etc.)
               // never see synced=true before those tables exist.
               await localMigrations(stream.local())
+
+              // Ensure the library_plugins synced table exists. Only safe to
+              // run once sync is fully complete (no more remote blobs to
+              // interleave with). For libraries created before the plugin
+              // system this creates the table via a synced migration.
+              if (completedStreams.has(id)) {
+                await ensurePluginTable(stream)
+              }
 
               // Mark as synced now that local tables are ready. indexAll and
               // metadata queries below may fail (e.g. empty streams without

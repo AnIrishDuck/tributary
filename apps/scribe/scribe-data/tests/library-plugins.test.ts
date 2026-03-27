@@ -3,7 +3,7 @@ import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { createHomeLibrary, getLibraryPlugins, setLibraryPlugins } from '../src/library.js'
+import { createHomeLibrary, getLibraryPlugins, setLibraryPlugins, ensurePluginTable } from '../src/library.js'
 import { localMigrations } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
@@ -44,55 +44,40 @@ describe('library plugin storage', () => {
     expect(blobCountAfterReads).toBe(blobCountAfterCreate)
   })
 
-  test('getLibraryPlugins creates table via synced migration on pre-plugin library, no redundant blobs', async () => {
-    // Simulate a library created before the plugin system existed:
-    // create a stream with only block + collection tables (no library_plugins)
+  test('getLibraryPlugins throws when library_plugins table is missing (pre-plugin library)', async () => {
     const server = new FakeServer()
     const pglite = new PGlite('memory://')
     const client = new TributaryClient({ server, db: pglite })
     const keyPair = nacl.sign.keyPair()
     const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-    // Manually create only block and collection tables (old schema, no library_plugins)
+    // Old schema without library_plugins
     await stream.exec(`
       CREATE TABLE IF NOT EXISTS block (
-        block_uuid TEXT NOT NULL,
-        block_type TEXT NOT NULL,
-        version_uuid TEXT NOT NULL PRIMARY KEY,
-        prior_version_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        body TEXT NOT NULL,
-        collection_id TEXT,
-        slug TEXT NOT NULL
-      )
-    `)
-    await stream.exec(`
-      CREATE TABLE IF NOT EXISTS collection (
-        collection_uuid TEXT NOT NULL PRIMARY KEY,
-        title TEXT NOT NULL,
-        parent_collection_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        linked_stream_id TEXT,
-        linked_stream_key TEXT,
-        slug TEXT NOT NULL
+        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
+        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
+        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
       )
     `)
     await localMigrations(stream.local())
 
+    // getLibraryPlugins is a pure read — it throws when the table is missing.
+    // The sync loop is responsible for creating the table via ensurePluginTable
+    // once sync is complete, and schemaReady gates pages until it exists.
+    await expect(getLibraryPlugins(stream)).rejects.toThrow()
+
+    // No blobs created by the failed read
     const blobCountBefore = countBlobsForStream(server, stream)
 
-    // First call should create the table (one synced blob)
-    const plugins1 = await getLibraryPlugins(stream)
-    expect(plugins1).toEqual([])
-    const blobCountAfterFirst = countBlobsForStream(server, stream)
-    expect(blobCountAfterFirst).toBe(blobCountBefore + 1)
+    // After ensurePluginTable, getLibraryPlugins works
+    await ensurePluginTable(stream)
+    const plugins = await getLibraryPlugins(stream)
+    expect(plugins).toEqual([])
 
-    // Second call should NOT create any blobs (table already exists)
-    await getLibraryPlugins(stream)
-    const blobCountAfterSecond = countBlobsForStream(server, stream)
-    expect(blobCountAfterSecond).toBe(blobCountAfterFirst)
+    // ensurePluginTable created exactly one blob
+    const blobCountAfter = countBlobsForStream(server, stream)
+    expect(blobCountAfter).toBe(blobCountBefore + 1)
   })
 
   test('setLibraryPlugins creates table on pre-plugin library', async () => {
@@ -105,27 +90,10 @@ describe('library plugin storage', () => {
     // Old schema without library_plugins
     await stream.exec(`
       CREATE TABLE IF NOT EXISTS block (
-        block_uuid TEXT NOT NULL,
-        block_type TEXT NOT NULL,
-        version_uuid TEXT NOT NULL PRIMARY KEY,
-        prior_version_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        body TEXT NOT NULL,
-        collection_id TEXT,
-        slug TEXT NOT NULL
-      )
-    `)
-    await stream.exec(`
-      CREATE TABLE IF NOT EXISTS collection (
-        collection_uuid TEXT NOT NULL PRIMARY KEY,
-        title TEXT NOT NULL,
-        parent_collection_uuid TEXT,
-        insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL,
-        linked_stream_id TEXT,
-        linked_stream_key TEXT,
-        slug TEXT NOT NULL
+        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
+        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
+        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
       )
     `)
     await localMigrations(stream.local())
