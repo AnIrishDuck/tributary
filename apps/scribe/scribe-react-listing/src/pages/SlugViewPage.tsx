@@ -49,7 +49,7 @@ type PageMode =
   | { type: 'editNote'; editBlockUuid: string; noteSlugPath: string; collectionLabel: string }
   | { type: 'resumeDraft'; draftId: string; collectionId?: string; parentSlugPath: string; collectionLabel: string; ancestors: Collection[] }
   | { type: 'image'; body: ImageBlockBody; title: string; slugPath: string; ancestors: Collection[]; libraryName: string; blockUuid: string }
-  | { type: 'missingSlug'; slugPath: string }
+  | { type: 'missingSlug'; slugPath: string; ancestors: Collection[] }
   | { type: 'missingParent'; slugPath: string; resolvedSegments: string[]; missingSegments: string[] }
   | { type: 'librarySettings' }
   | { type: 'history'; blockUuid: string; slugPath: string; ancestors: Collection[]; libraryName: string }
@@ -542,7 +542,8 @@ const SlugViewPage: React.FC = () => {
           const fullSlugPath = segments.join('/')
 
           if (partial.parentExists) {
-            setMode({ type: 'missingSlug', slugPath: fullSlugPath })
+            const missingAncestors = await getCollectionAncestors(localDb, partial.parentUuid)
+            setMode({ type: 'missingSlug', slugPath: fullSlugPath, ancestors: missingAncestors })
           } else {
             setMode({
               type: 'missingParent',
@@ -854,6 +855,7 @@ const SlugViewPage: React.FC = () => {
       <MissingSlugPage
         prefix={prefix || ''}
         slugPath={mode.slugPath}
+        ancestors={mode.ancestors}
       />
     )
   }

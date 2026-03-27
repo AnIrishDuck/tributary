@@ -2,13 +2,16 @@ import React from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeftIcon, DocumentTextIcon, FolderPlusIcon } from '@heroicons/react/24/outline'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
+import { Collection } from 'scribe-data'
 
 export interface MissingSlugPageProps {
   prefix: string
   slugPath: string
+  ancestors: Collection[]
 }
 
-const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath }) => {
+const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath, ancestors }) => {
   const navigate = useNavigate()
   const routeCtx = useRouteContext()
 
@@ -33,14 +36,17 @@ const MissingSlugPage: React.FC<MissingSlugPageProps> = ({ prefix, slugPath }) =
               <ArrowLeftIcon className="w-4 h-4 md:mr-1" />
               <span className="hidden md:inline">Back</span>
             </button>
-            <h1 className="text-xl font-bold text-gray-900">
-              <span className="font-mono text-gray-600">{slugPath}</span>
-            </h1>
           </div>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Breadcrumbs
+          ancestors={ancestors}
+          prefix={prefix}
+          allLinks
+          trailingSlug={slugPath.split('/').pop()}
+        />
         <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
           <div className="text-center mb-8">
             <p className="text-gray-600">
