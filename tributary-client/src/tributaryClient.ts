@@ -1,7 +1,7 @@
 // Main TributaryClient class that manages multiple streams
 import { PGlite, PGliteInterface } from '@electric-sql/pglite';
 import { Server } from './server.js';
-import { TributaryStream, SyncStatus } from './tributaryStream.js';
+import { TributaryStream, SyncStatus, SyncError } from './tributaryStream.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import nacl from 'tweetnacl';
@@ -67,6 +67,23 @@ export class TributaryClient {
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         )`
+      );
+
+      // Create the sync_errors table for tracking errors during sync
+      await this.pglite.exec(
+        `CREATE TABLE IF NOT EXISTS tributary.sync_errors (
+          id TEXT PRIMARY KEY,
+          stream_id TEXT NOT NULL,
+          blob_sequence INTEGER,
+          error_type TEXT NOT NULL,
+          error_message TEXT NOT NULL,
+          occurred_at TEXT NOT NULL,
+          query TEXT,
+          params TEXT
+        )`
+      );
+      await this.pglite.exec(
+        `CREATE INDEX IF NOT EXISTS sync_errors_stream_id ON tributary.sync_errors (stream_id, occurred_at DESC)`
       );
     } catch (err: unknown) {
       warn('Could not initialize tributary schema:', err as Error);
@@ -459,5 +476,26 @@ export class TributaryClient {
     }
     
     return syncStatuses;
+  }
+
+  /**
+   * Get all sync errors across all streams, ordered by most recent first
+   */
+  async getErrors(): Promise<SyncError[]> {
+    await this.initialized;
+    const result: any = await this.pglite.query(
+      `SELECT id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params
+       FROM tributary.sync_errors
+       ORDER BY occurred_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Clear all sync errors across all streams
+   */
+  async clearErrors(): Promise<void> {
+    await this.initialized;
+    await this.pglite.query(`DELETE FROM tributary.sync_errors`);
   }
 }
