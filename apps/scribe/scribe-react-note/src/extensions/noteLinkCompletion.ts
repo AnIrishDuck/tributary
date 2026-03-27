@@ -305,7 +305,6 @@ function completionSource(config: NoteLinkCompletionConfig) {
 
     const options: Completion[] = suggestions.map((s) => ({
       label: s.title,
-      detail: s.slug_path.split('/').pop(),
       type: s.type,
       apply: buildSlugApplyText(s, partialSlug, config.noteSlugPath),
     }))
