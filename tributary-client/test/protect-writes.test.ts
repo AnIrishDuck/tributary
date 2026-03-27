@@ -36,12 +36,19 @@ describe('Write operation protection', () => {
     // Verify NO new blob was sent to the server
     expect(anyFakeServer.blobs.size).toBe(blobCountBefore);
 
+    // Verify the writer's sync index stayed at 2 (the bad op didn't advance it)
+    expect((stream as any).lastSyncIndex).toBe(2);
+
     // Create a separate reader that syncs from the same server
     const readerClient = await createTestClient({ server: testServer });
     const readerStream = await readerClient.addWriteKey('test', testPrivateKeyBase64);
-    await readerStream.sync(100);
+    const syncStatus = await readerStream.sync(100);
 
     // The reader should see only the 2 good operations, not the bad one
+    expect(syncStatus.currentIndex).toBe(2);
+    expect(syncStatus.finalIndex).toBe(2);
+    expect(syncStatus.complete()).toBe(true);
+    expect((readerStream as any).lastSyncIndex).toBe(2);
     const result = await readerStream.query("SELECT * FROM users ORDER BY id");
     expect(result.rows).toEqual([{ id: 1, name: 'Alice' }]);
   });
@@ -66,11 +73,18 @@ describe('Write operation protection', () => {
     // Verify NO new blob was sent to the server
     expect(anyFakeServer.blobs.size).toBe(blobCountBefore);
 
+    // Verify the writer's sync index stayed at 2
+    expect((stream as any).lastSyncIndex).toBe(2);
+
     // Create a separate reader and verify it does not see the bad transaction
     const readerClient = await createTestClient({ server: testServer });
     const readerStream = await readerClient.addWriteKey('test', testPrivateKeyBase64);
-    await readerStream.sync(100);
+    const syncStatus = await readerStream.sync(100);
 
+    expect(syncStatus.currentIndex).toBe(2);
+    expect(syncStatus.finalIndex).toBe(2);
+    expect(syncStatus.complete()).toBe(true);
+    expect((readerStream as any).lastSyncIndex).toBe(2);
     const result = await readerStream.query("SELECT * FROM users ORDER BY id");
     expect(result.rows).toEqual([{ id: 1, name: 'Alice' }]);
   });
