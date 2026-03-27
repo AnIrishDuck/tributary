@@ -20,31 +20,39 @@ function heroiconUrl(d: string): string {
   return `url("data:image/svg+xml,${svg}")`
 }
 
-const iconStyle = {
-  '&::after': { content: "''" },
-  backgroundSize: '16px 16px',
-  backgroundPosition: 'center',
-  backgroundRepeat: 'no-repeat',
+function iconAfterStyle(d: string) {
+  return {
+    width: '1em',
+    '&::after': {
+      content: "' '",
+      display: 'inline-block',
+      width: '1em',
+      height: '1em',
+      verticalAlign: 'text-top',
+      backgroundImage: heroiconUrl(d),
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'center',
+    },
+  }
 }
 
 /**
  * Theme for note-link autocomplete icons.
  * Uses Heroicons outline SVGs (DocumentText, Folder, Photo) rendered
- * as CSS background images in the CodeMirror completionIcon slots.
+ * as CSS background images on the ::after pseudo-element of each
+ * CodeMirror completionIcon slot.
  */
 const noteLinkCompletionTheme = EditorView.baseTheme({
-  '.cm-completionIcon-note': {
-    ...iconStyle,
-    backgroundImage: heroiconUrl('M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z'),
-  },
-  '.cm-completionIcon-collection': {
-    ...iconStyle,
-    backgroundImage: heroiconUrl('M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'),
-  },
-  '.cm-completionIcon-image': {
-    ...iconStyle,
-    backgroundImage: heroiconUrl('m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'),
-  },
+  '.cm-completionIcon-note': iconAfterStyle(
+    'M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z',
+  ),
+  '.cm-completionIcon-collection': iconAfterStyle(
+    'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z',
+  ),
+  '.cm-completionIcon-image': iconAfterStyle(
+    'm2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z',
+  ),
 })
 
 /**
