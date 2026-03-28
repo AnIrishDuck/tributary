@@ -23,6 +23,19 @@ export function buildUploadPlan(
   entries: FolderFileEntry[],
   currentCollectionId: string | null,
 ): BulkUploadPlan {
+  // DEBUG: log file properties to find mtime
+  for (const entry of entries) {
+    const f = entry.file
+    console.log('[buildUploadPlan] file:', f.name, {
+      lastModified: f.lastModified,
+      lastModifiedDate: (f as any).lastModifiedDate,
+      size: f.size,
+      type: f.type,
+      allKeys: Object.keys(f),
+      proto: Object.getOwnPropertyNames(Object.getPrototypeOf(f)),
+    })
+  }
+
   // Sort entries by file modification time (oldest first)
   const sorted = [...entries].sort(
     (a, b) => a.file.lastModified - b.file.lastModified,
