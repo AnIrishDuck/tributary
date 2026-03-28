@@ -217,7 +217,6 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <SortMenu sort={sort} onSortChange={handleSortChange} />
               <button
                 onClick={() => navigate(routeCtx.buildPath('search'))}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
@@ -232,8 +231,8 @@ const NoteListView: React.FC<NoteListViewProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Breadcrumbs + Move button (collection view only) */}
-        {!isRoot && collection && ancestors && (
+        {/* Breadcrumbs + Sort + Move */}
+        {!isRoot && collection && ancestors ? (
           <SlugActionBar
             ancestors={ancestors}
             prefix={prefix}
@@ -241,7 +240,13 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             entityType="collection"
             entityId={collection.collection_uuid}
             onMoved={(newSlugPath) => navigate(routeCtx.buildPath(newSlugPath))}
+            sort={sort}
+            onSortChange={handleSortChange}
           />
+        ) : (
+          <div className="flex justify-end mb-4">
+            <SortMenu sort={sort} onSortChange={handleSortChange} />
+          </div>
         )}
 
         {totalItems === 0 ? (
