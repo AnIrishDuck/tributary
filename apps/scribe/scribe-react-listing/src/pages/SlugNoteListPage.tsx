@@ -43,19 +43,11 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const routeCtx = useRouteContext()
   const isRoot = !collection
 
-  // Sort state (persisted in localStorage per collection)
-  const sortKey = `sort:${prefix}:${collection?.collection_uuid ?? 'root'}`
-  const [sort, setSort] = useState<SortOptions>(() => {
-    try {
-      const stored = localStorage.getItem(sortKey)
-      if (stored) return JSON.parse(stored)
-    } catch {}
-    return { type: 'modified' as const, order: 'desc' as const }
-  })
+  // Sort state
+  const [sort, setSort] = useState<SortOptions>({ type: 'modified', order: 'desc' })
   const handleSortChange = useCallback((newSort: SortOptions) => {
     setSort(newSort)
-    try { localStorage.setItem(sortKey, JSON.stringify(newSort)) } catch {}
-  }, [sortKey])
+  }, [])
 
   // Bulk upload state
   const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
