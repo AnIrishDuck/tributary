@@ -16,7 +16,7 @@ interface ImageRowStatus {
   error?: string
 }
 
-export const PAGE_SIZE = 20
+export const PAGE_SIZE = 10
 
 export interface BulkUploadDialogProps {
   plan: BulkUploadPlan
@@ -174,7 +174,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 flex flex-col" style={{ maxHeight: '80vh' }}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">
