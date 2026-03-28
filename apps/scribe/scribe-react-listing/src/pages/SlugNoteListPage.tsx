@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
+import { SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
@@ -41,6 +42,20 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const { client } = useTributary()
   const routeCtx = useRouteContext()
   const isRoot = !collection
+
+  // Sort state (persisted in localStorage per collection)
+  const sortKey = `sort:${prefix}:${collection?.collection_uuid ?? 'root'}`
+  const [sort, setSort] = useState<SortOptions>(() => {
+    try {
+      const stored = localStorage.getItem(sortKey)
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return { type: 'modified' as const, order: 'desc' as const }
+  })
+  const handleSortChange = useCallback((newSort: SortOptions) => {
+    setSort(newSort)
+    try { localStorage.setItem(sortKey, JSON.stringify(newSort)) } catch {}
+  }, [sortKey])
 
   // Bulk upload state
   const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
@@ -116,15 +131,33 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     return { newNoteDrafts, draftBlockUuids }
   }, [prefix, collectionId])
 
-  // Sort notes: those with drafts first, then by date
+  // Sort notes: those with drafts first, then by user-selected sort
   const sortedNotes = useMemo(() => {
     return [...notes].sort((a, b) => {
       const aDraft = draftBlockUuids.has(a.block_uuid) ? 0 : 1
       const bDraft = draftBlockUuids.has(b.block_uuid) ? 0 : 1
       if (aDraft !== bDraft) return aDraft - bDraft
-      return new Date(b.insert_datetime).getTime() - new Date(a.insert_datetime).getTime()
+      if (sort.type === 'alphabetical') {
+        const cmp = (a.title || '').localeCompare(b.title || '')
+        return sort.order === 'asc' ? cmp : -cmp
+      }
+      const timeCmp = new Date(a.insert_datetime).getTime() - new Date(b.insert_datetime).getTime()
+      return sort.order === 'asc' ? timeCmp : -timeCmp
     })
-  }, [notes, draftBlockUuids])
+  }, [notes, draftBlockUuids, sort])
+
+  // Sort collections by user-selected sort
+  const sortedCollections = useMemo(() => {
+    return [...collections].sort((a, b) => {
+      if (sort.type === 'alphabetical') {
+        const cmp = a.collection.title.localeCompare(b.collection.title)
+        return sort.order === 'asc' ? cmp : -cmp
+      }
+      // For modification time, collections don't have insert_datetime, fall back to title
+      const cmp = a.collection.title.localeCompare(b.collection.title)
+      return sort.order === 'asc' ? cmp : -cmp
+    })
+  }, [collections, sort])
 
   const handleNewNote = () => {
     navigate(routeCtx.buildPath(slugPath ? `${slugPath}/+note` : '+note'))
@@ -207,6 +240,8 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             entityType="collection"
             entityId={collection.collection_uuid}
             onMoved={(newSlugPath) => navigate(routeCtx.buildPath(newSlugPath))}
+            sort={sort}
+            onSortChange={handleSortChange}
           />
         )}
 
@@ -249,7 +284,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             {collections.length > 0 && (
               <div className="mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {collections.map(({ collection: col, slug: collectionSlug }) => {
+                  {sortedCollections.map(({ collection: col, slug: collectionSlug }) => {
                     const hasCollision = collectionSlug ? collidingSlugs?.has(collectionSlug) : false
                     return (
                       <Link
