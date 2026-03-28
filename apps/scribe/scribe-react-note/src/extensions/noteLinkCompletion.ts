@@ -261,7 +261,6 @@ export function buildSlugCompletion(
   const applyText = buildSlugApplyText(suggestion, partialSlug, noteSlugPath)
   return {
     label: applyText,
-    detail: suggestion.title,
     type: suggestion.type,
   }
 }

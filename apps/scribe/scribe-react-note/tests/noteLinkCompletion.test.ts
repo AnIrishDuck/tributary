@@ -167,43 +167,41 @@ describe('buildSlugApplyText', () => {
 })
 
 describe('buildSlugCompletion', () => {
-  it('uses slug as label for markdown link completions, not title', () => {
+  it('uses slug path as label with no detail', () => {
     const completion = buildSlugCompletion(
       { slug_path: 'my-fancy-title', title: 'My Fancy Title', type: 'note' },
       'my',
     )
-    // Label must be the slug (what gets inserted), not the human title
     expect(completion.label).toBe('my-fancy-title')
-    // Title shown as secondary detail for context
-    expect(completion.detail).toBe('My Fancy Title')
+    expect(completion.detail).toBeUndefined()
     expect(completion.type).toBe('note')
   })
 
-  it('uses relative slug as label for ./ paths', () => {
+  it('uses relative path as label for ./ paths', () => {
     const completion = buildSlugCompletion(
       { slug_path: 'cooking/italian/risotto', title: 'Risotto', type: 'note' },
       './ris',
       'cooking/italian/pasta',
     )
     expect(completion.label).toBe('./risotto')
-    expect(completion.detail).toBe('Risotto')
+    expect(completion.detail).toBeUndefined()
   })
 
-  it('uses absolute slug as label for / paths', () => {
+  it('uses absolute path as label for / paths', () => {
     const completion = buildSlugCompletion(
       { slug_path: 'cooking/italian/pasta', title: 'Pasta', type: 'note' },
       '/cook',
     )
     expect(completion.label).toBe('/cooking/italian/pasta')
-    expect(completion.detail).toBe('Pasta')
+    expect(completion.detail).toBeUndefined()
   })
 
-  it('uses nested slug path as label for bare multi-segment paths', () => {
+  it('uses full slug path as label for nested paths', () => {
     const completion = buildSlugCompletion(
       { slug_path: 'cooking/italian/pasta', title: 'Pasta', type: 'note' },
       'cooking/ital',
     )
     expect(completion.label).toBe('cooking/italian/pasta')
-    expect(completion.detail).toBe('Pasta')
+    expect(completion.detail).toBeUndefined()
   })
 })
