@@ -4,7 +4,6 @@ import { ClockIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { Breadcrumbs } from './Breadcrumbs'
 import { MoveModal } from './MoveModal'
-import { SortMenu, SortOptions } from './SortMenu'
 import { useRouteContext } from '../context/routeContext'
 
 export interface SlugActionBarProps {
@@ -19,16 +18,11 @@ export interface SlugActionBarProps {
   readOnly?: boolean
   /** Callback after a successful move */
   onMoved: (newSlugPath: string) => void
-  /** Current sort options (collection view only) */
-  sort?: SortOptions
-  /** Callback when sort changes (collection view only) */
-  onSortChange?: (sort: SortOptions) => void
 }
 
 export const SlugActionBar: React.FC<SlugActionBarProps> = ({
   ancestors, prefix, slugPath, entityType, entityId,
-  showHistory = false, readOnly = false, onMoved,
-  sort, onSortChange
+  showHistory = false, readOnly = false, onMoved
 }) => {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const routeCtx = useRouteContext()
@@ -47,9 +41,6 @@ export const SlugActionBar: React.FC<SlugActionBarProps> = ({
         </div>
         {!readOnly && (
           <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
-            {sort && onSortChange && (
-              <SortMenu sort={sort} onSortChange={onSortChange} />
-            )}
             {showHistory && (
               <Link
                 to={routeCtx.buildPath(`${slugPath}&history`)}
