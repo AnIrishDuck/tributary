@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { buildUploadPlan } from '../src/utils/buildUploadPlan'
 import type { FolderFileEntry } from '../src/utils/readFolderEntries'
 
-function fakeFile(name: string, type: string = 'image/png'): File {
-  return new File([new Uint8Array(8)], name, { type })
+function fakeFile(name: string, type: string = 'image/png', lastModified?: number): File {
+  return new File([new Uint8Array(8)], name, { type, lastModified })
 }
 
-function entry(fileName: string, folderPath: string, type?: string): FolderFileEntry {
-  const file = fakeFile(fileName, type)
+function entry(fileName: string, folderPath: string, type?: string, lastModified?: number): FolderFileEntry {
+  const file = fakeFile(fileName, type, lastModified)
   const relativePath = folderPath ? `${folderPath}/${fileName}` : fileName
   return { file, relativePath, folderPath }
 }
@@ -139,6 +139,38 @@ describe('buildUploadPlan', () => {
     expect(plan.images).toHaveLength(2)
     expect(plan.images[0].folderPath).toBe('')
     expect(plan.images[1].folderPath).toBe('sub')
+  })
+
+  it('sorts images by file mtime oldest first', () => {
+    const entries = [
+      entry('newest.png', '', 'image/png', 3000),
+      entry('oldest.png', '', 'image/png', 1000),
+      entry('middle.png', '', 'image/png', 2000),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+
+    expect(plan.images.map((img) => img.fileName)).toEqual([
+      'oldest.png',
+      'middle.png',
+      'newest.png',
+    ])
+  })
+
+  it('sorts images by mtime across different folders', () => {
+    const entries = [
+      entry('c.png', 'folder-b', 'image/png', 3000),
+      entry('a.png', '', 'image/png', 1000),
+      entry('b.png', 'folder-a', 'image/png', 2000),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+
+    expect(plan.images.map((img) => img.fileName)).toEqual([
+      'a.png',
+      'b.png',
+      'c.png',
+    ])
   })
 
   it('creates intermediate folders that have no direct images', () => {

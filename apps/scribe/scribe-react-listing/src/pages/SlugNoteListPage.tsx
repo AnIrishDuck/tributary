@@ -69,6 +69,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     const entries = await readDroppedItems(e.dataTransfer)
     if (entries.length === 0) return
 
+    // Sort by mtime (oldest first) to match the order buildUploadPlan uses
+    entries.sort((a, b) => a.file.lastModified - b.file.lastModified)
+
     const collectionId = collection?.collection_uuid ?? null
     const plan = buildUploadPlan(entries, collectionId)
 

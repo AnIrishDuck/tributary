@@ -23,9 +23,14 @@ export function buildUploadPlan(
   entries: FolderFileEntry[],
   currentCollectionId: string | null,
 ): BulkUploadPlan {
+  // Sort entries by file modification time (oldest first)
+  const sorted = [...entries].sort(
+    (a, b) => a.file.lastModified - b.file.lastModified,
+  )
+
   // Extract unique non-empty folder paths, including all intermediate ancestors
   const folderPaths = new Set<string>()
-  for (const entry of entries) {
+  for (const entry of sorted) {
     if (entry.folderPath !== '') {
       const segments = entry.folderPath.split('/')
       for (let i = 1; i <= segments.length; i++) {
@@ -50,7 +55,7 @@ export function buildUploadPlan(
     return { folderPath, title, slug, parentFolderPath }
   })
 
-  const images = entries.map((entry) => ({
+  const images = sorted.map((entry) => ({
     blobHash: '',
     contentType: entry.file.type,
     fileName: entry.file.name,
