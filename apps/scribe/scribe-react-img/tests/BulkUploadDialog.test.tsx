@@ -174,6 +174,29 @@ describe('BulkUploadDialog', () => {
     expect(screen.getByText('2 images in 2 collections')).toBeInTheDocument()
   })
 
+  it('renders all images in a scrollable list for large plans', () => {
+    const names = Array.from({ length: 30 }, (_, i) => `img-${i}.png`)
+    const plan = makePlan(names)
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={makeFiles(plan)}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // All images present in the DOM (scrollable)
+    expect(screen.getByText('img-0.png')).toBeInTheDocument()
+    expect(screen.getByText('img-29.png')).toBeInTheDocument()
+    expect(screen.getByText('30 images in 1 collection')).toBeInTheDocument()
+
+    // Upload and Cancel buttons still accessible
+    expect(screen.getByText('Upload')).toBeInTheDocument()
+    expect(screen.getByText('Cancel')).toBeInTheDocument()
+  })
+
   it('calls onCancel when Cancel button is clicked', async () => {
     const onCancel = vi.fn()
     const plan = makePlan(['test.png'])
