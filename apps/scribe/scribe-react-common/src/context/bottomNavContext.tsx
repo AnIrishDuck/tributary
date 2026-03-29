@@ -3,7 +3,8 @@ import { createContext, useContext } from 'react'
 export interface FloatingActionItem {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   label: string
-  to: string
+  to?: string
+  onClick?: () => void
 }
 
 /** @deprecated Use FloatingActionItem instead */

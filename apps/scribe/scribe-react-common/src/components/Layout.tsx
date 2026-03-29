@@ -132,15 +132,17 @@ const Layout: React.FC = () => {
 
       {/* Floating Action Button / Speed-Dial */}
       {fabItems.length > 0 && isSingleFab && (() => {
-        const SingleIcon = fabItems[0].icon
-        return (
-          <Link
-            to={fabItems[0].to}
-            className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
-            aria-label={fabItems[0].label}
-          >
+        const item = fabItems[0]
+        const SingleIcon = item.icon
+        const cls = "fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
+        return item.to ? (
+          <Link to={item.to} className={cls} aria-label={item.label}>
             <SingleIcon className="w-6 h-6" />
           </Link>
+        ) : (
+          <button onClick={item.onClick} className={cls} aria-label={item.label}>
+            <SingleIcon className="w-6 h-6" />
+          </button>
         )
       })()}
       {fabItems.length > 1 && (() => {
@@ -157,20 +159,33 @@ const Layout: React.FC = () => {
             {/* Speed-dial items */}
             {fabOpen && fabItems.map((item, i) => {
               const ItemIcon = item.icon
-              return (
-                <Link
-                  key={i}
-                  to={item.to}
-                  onClick={() => setFabOpen(false)}
-                  className="flex items-center gap-2 group"
-                >
+              const inner = (
+                <>
                   <span className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg shadow-md whitespace-nowrap opacity-90">
                     {item.label}
                   </span>
                   <span className="flex items-center justify-center w-12 h-12 bg-white border border-gray-200 rounded-xl shadow-md text-blue-600 group-hover:bg-blue-50 transition-colors">
                     <ItemIcon className="w-5 h-5" />
                   </span>
+                </>
+              )
+              return item.to ? (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={() => setFabOpen(false)}
+                  className="flex items-center gap-2 group"
+                >
+                  {inner}
                 </Link>
+              ) : (
+                <button
+                  key={i}
+                  onClick={() => { setFabOpen(false); item.onClick?.() }}
+                  className="flex items-center gap-2 group"
+                >
+                  {inner}
+                </button>
               )
             })}
           </div>

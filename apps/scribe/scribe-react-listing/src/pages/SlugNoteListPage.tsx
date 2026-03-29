@@ -1,6 +1,6 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react'
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PhotoIcon, CameraIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import { ViewModeToggle, ViewMode } from 'scribe-react-common/src/components/ViewModeToggle'
@@ -100,7 +100,18 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     setBulkStream(null)
   }, [])
 
-  // Set the floating action buttons for "Add Note", "Add Image", and "Add Collection"
+  // Camera capture input ref
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  const handleCameraCapture = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const base = slugPath ? `${slugPath}/` : ''
+    const newImageUrl = routeCtx.buildPath(`${base}+image`)
+    navigate(newImageUrl, { state: { cameraFile: file } })
+  }, [slugPath, routeCtx, navigate])
+
+  // Set the floating action buttons for "Add Note", "Add Image", "Take Photo", and "Add Collection"
   useEffect(() => {
     const base = slugPath ? `${slugPath}/` : ''
     const newNoteUrl = routeCtx.buildPath(`${base}+note`)
@@ -108,6 +119,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     const newCollectionUrl = routeCtx.buildPath(`${base}+collection`)
     setFloatingAction([
       { icon: DocumentTextIcon, label: 'Add Note', to: newNoteUrl },
+      { icon: CameraIcon, label: 'Take Photo', onClick: () => cameraInputRef.current?.click() },
       { icon: PhotoIcon, label: 'Add Image', to: newImageUrl },
       { icon: FolderPlusIcon, label: 'Add Collection', to: newCollectionUrl },
     ])
@@ -173,6 +185,15 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-50" onDragOver={handleBulkDragOver} onDrop={handleBulkDrop}>
+      {/* Hidden camera capture input */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraCapture}
+      />
       {bulkPlan && bulkStream && (
         <BulkUploadDialog
           plan={bulkPlan}
