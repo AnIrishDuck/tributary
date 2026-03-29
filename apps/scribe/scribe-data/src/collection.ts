@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, Collection, CollectionSlug, CollectionSlugRow } from './types'
+import { Note, Collection, CollectionSlug, CollectionSlugRow, CollectionOptions } from './types'
 import { titleToSlug, getNotesBySlugInCollection } from './indexing.js'
 
 /**
@@ -537,5 +537,53 @@ export async function checkMoveCollision(
   }
 
   return false
+}
+
+/**
+ * Get the options JSON for a collection. Returns an empty object if the
+ * `options` column does not exist yet (library has not been migrated).
+ * This makes the read non-view-blocking — callers never need to wait for
+ * the migration before rendering.
+ *
+ * @param db The TributaryStream database instance
+ * @param collectionUuid The collection UUID
+ * @returns Parsed options object, or {} if the column is missing or the collection is not found
+ */
+export async function getCollectionOptions(
+  db: TributaryStream,
+  collectionUuid: string
+): Promise<CollectionOptions> {
+  try {
+    const result = await db.query(
+      `SELECT options FROM collection WHERE collection_uuid = $1`,
+      [collectionUuid]
+    )
+    if (!result.rows || result.rows.length === 0) {
+      return {}
+    }
+    return JSON.parse((result.rows[0] as any).options)
+  } catch {
+    // Column doesn't exist — library predates the options migration
+    return {}
+  }
+}
+
+/**
+ * Set the options JSON for a collection. The `options` column must already
+ * exist (i.e. the migration must have run). Throws if the column is missing.
+ *
+ * @param db The TributaryStream database instance
+ * @param collectionUuid The collection UUID
+ * @param options The options object to store (will be JSON-serialized)
+ */
+export async function setCollectionOptions(
+  db: TributaryStream,
+  collectionUuid: string,
+  options: CollectionOptions
+): Promise<void> {
+  await db.exec(
+    `UPDATE collection SET options = $1 WHERE collection_uuid = $2`,
+    [JSON.stringify(options), collectionUuid]
+  )
 }
 

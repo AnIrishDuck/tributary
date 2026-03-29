@@ -60,6 +60,7 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
   `)
 
   await migrateAddPlugins(stream)
+  await migrateAddCollectionOptions(stream)
 }
 
 /**
@@ -74,6 +75,18 @@ export async function migrateAddPlugins(stream: TributaryStream): Promise<void> 
       config_json TEXT NOT NULL DEFAULT '{}',
       sort_order INTEGER NOT NULL DEFAULT 0
     )
+  `)
+}
+
+/**
+ * Add the `options` JSON column to the collection synced table if it does not
+ * already exist. Factored out so it can be called both from syncedMigrations
+ * (new libraries) and lazily from ensureCollectionOptions (existing libraries
+ * created before the options column).
+ */
+export async function migrateAddCollectionOptions(stream: TributaryStream): Promise<void> {
+  await stream.exec(`
+    ALTER TABLE collection ADD COLUMN IF NOT EXISTS options TEXT NOT NULL DEFAULT '{}'
   `)
 }
 
@@ -215,6 +228,10 @@ export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): 
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
   await syncedDb.exec('DROP TABLE IF EXISTS library_plugins')
+  // Drop the options column if it exists (ignore errors if column is missing)
+  try {
+    await syncedDb.exec('ALTER TABLE collection DROP COLUMN IF EXISTS options')
+  } catch { /* column may not exist */ }
   await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')
 }
