@@ -566,5 +566,75 @@ describe('MoveModal', () => {
       // Move button inside modal should be disabled with empty slug
       expect(getModalMoveButton()).toBeDisabled()
     })
+
+    it('should reject slug with invalid characters', async () => {
+      const { client, stream, prefix } = await createTestClientWithStream()
+      const base64Part = prefix.split('/')[1]
+
+      await saveNote(stream, '# Test\n\nBody.')
+
+      const router = createMemoryRouter(routes, {
+        initialEntries: [`/pk/${base64Part}/test`]
+      })
+
+      render(
+        <WithProviders client={client}>
+          <RouterProvider router={router} />
+        </WithProviders>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText(/Body\./)).toBeInTheDocument()
+      }, { timeout: 5000 })
+
+      // Open modal
+      fireEvent.click(screen.getByRole('button', { name: /Move/ }))
+      await waitFor(() => {
+        expect(screen.getByText('Move Note')).toBeInTheDocument()
+      })
+
+      // Type a slug with a slash
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: 'bad/slug' } })
+
+      await waitFor(() => {
+        expect(screen.getByText(/invalid characters/)).toBeInTheDocument()
+      })
+      expect(getModalMoveButton()).toBeDisabled()
+    })
+
+    it('should reject slug with uppercase letters', async () => {
+      const { client, stream, prefix } = await createTestClientWithStream()
+      const base64Part = prefix.split('/')[1]
+
+      await saveNote(stream, '# Test\n\nBody.')
+
+      const router = createMemoryRouter(routes, {
+        initialEntries: [`/pk/${base64Part}/test`]
+      })
+
+      render(
+        <WithProviders client={client}>
+          <RouterProvider router={router} />
+        </WithProviders>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText(/Body\./)).toBeInTheDocument()
+      }, { timeout: 5000 })
+
+      fireEvent.click(screen.getByRole('button', { name: /Move/ }))
+      await waitFor(() => {
+        expect(screen.getByText('Move Note')).toBeInTheDocument()
+      })
+
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: 'MyNote' } })
+
+      await waitFor(() => {
+        expect(screen.getByText(/invalid characters/)).toBeInTheDocument()
+      })
+      expect(getModalMoveButton()).toBeDisabled()
+    })
   })
 })

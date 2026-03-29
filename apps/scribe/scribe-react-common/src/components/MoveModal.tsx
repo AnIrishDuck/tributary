@@ -18,6 +18,15 @@ type ValidationState =
   | { status: 'valid'; targetUuid: string | null; resolvedPath: string; newSlug: string; hasCollision: boolean }
   | { status: 'invalid'; message: string }
 
+/** Validate a single slug segment against the allowed character set [a-z0-9-] */
+function validateSlug(slug: string): string | null {
+  if (!slug) return 'Slug cannot be empty'
+  if (/[^a-z0-9-]/.test(slug)) return `Slug "${slug}" contains invalid characters (only lowercase letters, numbers, and hyphens allowed)`
+  if (slug.startsWith('-') || slug.endsWith('-')) return `Slug "${slug}" cannot start or end with a hyphen`
+  if (/--/.test(slug)) return `Slug "${slug}" cannot contain consecutive hyphens`
+  return null
+}
+
 export const MoveModal: React.FC<MoveModalProps> = ({
   isOpen, onClose, entityType, entityId, currentSlugPath, prefix, onMoved
 }) => {
@@ -67,6 +76,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
       return
     }
 
+    // Validate the slug field for non-collections (no /, must match [a-z0-9-])
+    if (isNonCollection) {
+      const slugError = validateSlug(slug.trim())
+      if (slugError) {
+        setValidation({ status: 'invalid', message: slugError })
+        setValidating(false)
+        return
+      }
+    }
+
     if (!pathToValidate.trim()) {
       setValidation({ status: 'empty' })
       setValidating(false)
@@ -90,6 +109,15 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
         const absolutePath = resolved.path
         const segments = absolutePath.split('/').filter(s => s.length > 0)
+
+        // Validate all slug segments
+        for (const seg of segments) {
+          const segError = validateSlug(seg)
+          if (segError) {
+            if (!cancelled) setValidation({ status: 'invalid', message: segError })
+            return
+          }
+        }
 
         // Must have at least one segment (the entity slug)
         if (segments.length === 0) {
@@ -254,7 +282,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                   value={collectionPath}
                   onChange={(e) => setCollectionPath(e.target.value)}
                   placeholder="e.g. /recipes"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm overflow-x-auto"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
@@ -273,7 +301,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g. my-note"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm overflow-x-auto"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
                       onMove()
@@ -297,7 +325,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               value={targetPath}
               onChange={(e) => setTargetPath(e.target.value)}
               placeholder="e.g. /recipes/my-collection or ./new-name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm overflow-x-auto"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
