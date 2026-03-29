@@ -157,8 +157,8 @@ describe('HomePage', () => {
     // Should show "Your Libraries" section
     expect(screen.getByRole('heading', { name: /your libraries/i })).toBeInTheDocument()
 
-    // Should show library count (only linked libraries, not home)
-    expect(screen.getByText(/you have 1 library available/i)).toBeInTheDocument()
+    // Should not show library count text
+    expect(screen.queryByText(/you have.*librar/i)).not.toBeInTheDocument()
 
     // Should show the truncated stream ID with pk/ prefix
     const displayId = `pk/${streamId.substring(0, 16)}...`
@@ -207,8 +207,8 @@ describe('HomePage', () => {
       expect(screen.queryByText(/loading your libraries/i)).not.toBeInTheDocument()
     }, { timeout: 2000 })
 
-    // Should show correct library count (only linked libraries, not home)
-    expect(screen.getByText(/you have 3 libraries available/i)).toBeInTheDocument()
+    // Should not show library count text
+    expect(screen.queryByText(/you have.*librar/i)).not.toBeInTheDocument()
 
     // Should show all three libraries (pk/ prefix followed by truncated stream ID)
     const libraryLinks = screen.getAllByRole('link')

@@ -327,8 +327,6 @@ const HomePage: React.FC = () => {
   }, [])
 
   const hasItems = libraries !== null && libraries.length > 0
-  const itemCount = libraries?.length ?? 0
-  const itemLabel = itemCount === 1 ? 'library' : 'libraries'
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
@@ -342,11 +340,6 @@ const HomePage: React.FC = () => {
             <div className="px-8 py-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-gray-900">Your Libraries</h3>
-                {hasItems && (
-                  <p className="mt-2 text-gray-600">
-                    You have {itemCount} {itemLabel} available.
-                  </p>
-                )}
               </div>
               <div className="flex gap-3">
                 <button
