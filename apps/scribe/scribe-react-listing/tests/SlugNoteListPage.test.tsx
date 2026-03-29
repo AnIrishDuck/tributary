@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
@@ -122,6 +122,112 @@ describe('SlugNoteListPage', () => {
 
     const recipeBadge = screen.getByText('my-recipe')
     expect(recipeBadge.className).toContain('blue')
+  })
+
+  it('should toggle between card and list view modes', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    const col = await createIndexedCollection(stream, 'My Recipes', library!.collection_uuid)
+
+    await saveNote(stream, '# Pasta\n\nDelicious pasta recipe.', 'web-ui', undefined, col.collection_uuid)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/my-recipes`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for page to load in card mode (default)
+    await waitFor(() => {
+      expect(screen.getByText('Pasta')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Card mode should show the grid with slug badges
+    expect(screen.getByText('pasta')).toBeInTheDocument()
+
+    // Toggle to list view
+    const listButton = screen.getByRole('button', { name: 'List view' })
+    fireEvent.click(listButton)
+
+    // Note should still be visible in list mode
+    expect(screen.getByText('Pasta')).toBeInTheDocument()
+
+    // In list mode, slug badges are not rendered (compact rows)
+    expect(screen.queryByText('pasta')).not.toBeInTheDocument()
+
+    // Toggle back to card view
+    const cardButton = screen.getByRole('button', { name: 'Card view' })
+    fireEvent.click(cardButton)
+
+    // Slug badge should reappear in card mode
+    expect(screen.getByText('pasta')).toBeInTheDocument()
+  })
+
+  it('should render collections in list mode as compact rows', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    await createIndexedCollection(stream, 'Appetizers', library!.collection_uuid)
+    await createIndexedCollection(stream, 'Entrees', library!.collection_uuid)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for collections to load
+    await waitFor(() => {
+      expect(screen.getByText('Appetizers')).toBeInTheDocument()
+    }, { timeout: 5000 })
+    expect(screen.getByText('Entrees')).toBeInTheDocument()
+
+    // Switch to list mode
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }))
+
+    // Both collections should still be visible
+    expect(screen.getByText('Appetizers')).toBeInTheDocument()
+    expect(screen.getByText('Entrees')).toBeInTheDocument()
+  })
+
+  it('should show view mode toggle on root page', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // View mode toggle should be present
+    expect(screen.getByRole('button', { name: 'Card view' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'List view' })).toBeInTheDocument()
   })
 
   it('should show collection title as heading and slugs in breadcrumbs', async () => {
