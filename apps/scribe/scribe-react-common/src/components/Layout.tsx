@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Outlet, useLocation, Link } from 'react-router'
-import { ArrowRightStartOnRectangleIcon, TrashIcon, UserCircleIcon } from '@heroicons/react/24/outline'
+import { ArrowRightStartOnRectangleIcon, PlusIcon, TrashIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import OfflineBanner from './OfflineBanner'
 import { useTributary } from '../context/tributaryContext'
 import { BottomNavProvider, FloatingActionItem } from '../context/bottomNavContext'
@@ -144,7 +144,6 @@ const Layout: React.FC = () => {
         )
       })()}
       {fabItems.length > 1 && (() => {
-        const ToggleIcon = fabItems[0].icon
         return (
           <div ref={fabRef} className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex flex-col-reverse items-end gap-3">
             {/* Main FAB toggle */}
@@ -153,7 +152,7 @@ const Layout: React.FC = () => {
               className={`flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white ${fabOpen ? 'rotate-45' : ''}`}
               aria-label={fabOpen ? 'Close menu' : 'Open menu'}
             >
-              <ToggleIcon className="w-6 h-6 transition-transform duration-200" />
+              <PlusIcon className="w-6 h-6 transition-transform duration-200" />
             </button>
             {/* Speed-dial items */}
             {fabOpen && fabItems.map((item, i) => {
