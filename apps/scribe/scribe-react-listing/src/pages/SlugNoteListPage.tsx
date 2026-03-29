@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router'
 import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
+import { ViewModeToggle, ViewMode } from 'scribe-react-common/src/components/ViewModeToggle'
 import { Collection, CollectionSlug, NoteSlugRow } from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
@@ -48,6 +49,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const handleSortChange = useCallback((newSort: SortOptions) => {
     setSort(newSort)
   }, [])
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
 
   // Bulk upload state
   const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
@@ -234,9 +238,12 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             onMoved={(newSlugPath) => navigate(routeCtx.buildPath(newSlugPath))}
             sort={sort}
             onSortChange={handleSortChange}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
           />
         ) : (
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end mb-4 gap-1">
+            <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
             <SortMenu sort={sort} onSortChange={handleSortChange} />
           </div>
         )}
@@ -279,6 +286,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             {/* Collections */}
             {collections.length > 0 && (
               <div className="mb-8">
+                {viewMode === 'card' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {sortedCollections.map(({ collection: col, slug: collectionSlug }) => {
                     const hasCollision = collectionSlug ? collidingSlugs?.has(collectionSlug) : false
@@ -311,10 +319,33 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                     )
                   })}
                 </div>
+                ) : (
+                <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+                  {sortedCollections.map(({ collection: col, slug: collectionSlug }) => {
+                    const hasCollision = collectionSlug ? collidingSlugs?.has(collectionSlug) : false
+                    return (
+                      <Link
+                        key={col.collection_uuid}
+                        to={collectionSlug ? `${linkPrefix}/${collectionSlug}` : routeCtx.buildPath()}
+                        className="group flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <FolderIcon className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                          {col.title}
+                        </span>
+                        {hasCollision && (
+                          <ExclamationTriangleIcon className="w-4 h-4 text-orange-500 flex-shrink-0" title="Slug collision" />
+                        )}
+                      </Link>
+                    )
+                  })}
+                </div>
+                )}
               </div>
             )}
 
             {/* Notes (new-note drafts first, then persisted notes sorted with drafts on top) */}
+            {viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {/* New-note drafts */}
               {newNoteDrafts.map((draft) => (
@@ -446,6 +477,77 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 )
               })}
             </div>
+            ) : (
+            <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+              {/* New-note drafts */}
+              {newNoteDrafts.map((draft) => (
+                <Link
+                  key={`draft-${draft.draftId}`}
+                  to={slugPath
+                    ? `${linkPrefix}/+draft/${draft.draftId}`
+                    : routeCtx.buildPath(`+draft/${draft.draftId}`)}
+                  className="group flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <PencilSquareIcon className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                    {draft.title || 'Untitled'}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 flex-shrink-0">
+                    Draft
+                  </span>
+                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
+                    {new Date(draft.updatedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </span>
+                </Link>
+              ))}
+
+              {/* Persisted notes and images */}
+              {sortedNotes.map((note) => {
+                const hasDraft = draftBlockUuids.has(note.block_uuid)
+                const hasCollision = collidingSlugs?.has(note.slug)
+                const isImage = note.block_type === 'scribe/image'
+
+                const IconComponent = hasDraft ? PencilSquareIcon : isImage ? PhotoIcon : DocumentTextIcon
+                const iconColor = hasDraft ? 'text-amber-600' : isImage ? 'text-green-600' : 'text-blue-600'
+                const hoverColor = hasDraft ? 'group-hover:text-amber-600' : isImage ? 'group-hover:text-green-600' : 'group-hover:text-blue-600'
+
+                return (
+                  <Link
+                    key={note.block_uuid}
+                    to={`${linkPrefix}/${note.slug}${hasDraft ? '&edit' : ''}`}
+                    className="group flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                  >
+                    <IconComponent className={`w-5 h-5 ${iconColor} flex-shrink-0`} />
+                    <span className={`text-sm font-medium text-gray-900 truncate transition-colors ${hoverColor}`}>
+                      {note.title || 'Untitled'}
+                    </span>
+                    {hasCollision && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 flex-shrink-0">
+                        <ExclamationTriangleIcon className="w-3 h-3" />
+                        Collision
+                      </span>
+                    )}
+                    {hasDraft && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 flex-shrink-0">
+                        Draft
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
+                      {new Date(note.insert_datetime).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+            )}
           </>
         )}
 
