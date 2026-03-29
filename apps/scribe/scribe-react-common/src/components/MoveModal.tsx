@@ -22,28 +22,52 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   isOpen, onClose, entityType, entityId, currentSlugPath, prefix, onMoved
 }) => {
   const currentSlug = currentSlugPath.split('/').pop() || ''
+  const currentCollection = '/' + currentSlugPath.split('/').slice(0, -1).join('/')
+  const isNonCollection = entityType === 'note' || entityType === 'image'
+
+  // For non-collections: separate collection path and slug inputs
+  // For collections: single target path input
+  const [collectionPath, setCollectionPath] = useState(currentCollection)
+  const [slug, setSlug] = useState(currentSlug)
   const [targetPath, setTargetPath] = useState(`./${currentSlug}`)
+
+  // Compute the effective target path from the split inputs
+  const effectiveTargetPath = isNonCollection
+    ? (collectionPath.endsWith('/') ? collectionPath : collectionPath + '/') + slug
+    : targetPath
+
   const [validation, setValidation] = useState<ValidationState>({ status: 'empty' })
   const [validating, setValidating] = useState(false)
   const [isMoving, setIsMoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { client } = useTributary()
 
-  // Reset target path when modal opens
+  // Reset inputs when modal opens
   useEffect(() => {
     if (isOpen) {
+      setCollectionPath(currentCollection)
+      setSlug(currentSlug)
       setTargetPath(`./${currentSlug}`)
       setValidation({ status: 'empty' })
       setError(null)
     }
-  }, [isOpen, currentSlug])
+  }, [isOpen, currentSlug, currentCollection])
 
   // Current parent path for relative resolution
   const currentParentPath = currentSlugPath.split('/').slice(0, -1).join('/')
 
   // Validate the target path whenever input changes (debounced)
   useEffect(() => {
-    if (!targetPath.trim()) {
+    const pathToValidate = effectiveTargetPath
+
+    // For non-collections, reject empty slug
+    if (isNonCollection && !slug.trim()) {
+      setValidation({ status: 'invalid', message: 'Slug cannot be empty' })
+      setValidating(false)
+      return
+    }
+
+    if (!pathToValidate.trim()) {
       setValidation({ status: 'empty' })
       setValidating(false)
       return
@@ -58,7 +82,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         const { resolveLink, resolveSlugPath, getLibrary, checkMoveCollision } = await import('scribe-data')
 
         // Resolve relative/absolute link
-        const resolved = resolveLink(currentParentPath, targetPath.trim())
+        const resolved = resolveLink(currentParentPath, pathToValidate.trim())
         if (resolved.type === 'InvalidLink') {
           if (!cancelled) setValidation({ status: 'invalid', message: 'Invalid path: navigates above library root' })
           return
@@ -151,7 +175,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     validate()
     }, 300)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [targetPath, client, prefix, currentParentPath, entityType, entityId])
+  }, [effectiveTargetPath, slug, isNonCollection, client, prefix, currentParentPath, entityType, entityId])
 
   const onMove = useCallback(async () => {
     if (validation.status !== 'valid' || validating || !client) return
@@ -217,28 +241,75 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           </div>
         </div>
 
-        <div className="mb-4">
-          <label htmlFor="move-target" className="block text-sm font-medium text-gray-700 mb-1">
-            Target path
-          </label>
-          <input
-            id="move-target"
-            type="text"
-            value={targetPath}
-            onChange={(e) => setTargetPath(e.target.value)}
-            placeholder="e.g. /recipes/my-note or ./new-name"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
-                onMove()
-              }
-            }}
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            Use absolute paths (/path/name) or relative paths (../sibling/name)
-          </p>
-        </div>
+        {isNonCollection ? (
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <div className="w-[60%] min-w-0">
+                <label htmlFor="move-collection" className="block text-sm font-medium text-gray-700 mb-1">
+                  Collection
+                </label>
+                <input
+                  id="move-collection"
+                  type="text"
+                  value={collectionPath}
+                  onChange={(e) => setCollectionPath(e.target.value)}
+                  placeholder="e.g. /recipes"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
+                      onMove()
+                    }
+                  }}
+                />
+              </div>
+              <div className="w-[40%] min-w-0">
+                <label htmlFor="move-slug" className="block text-sm font-medium text-gray-700 mb-1">
+                  Slug
+                </label>
+                <input
+                  id="move-slug"
+                  type="text"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="e.g. my-note"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
+                      onMove()
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Use absolute paths (/path) or relative paths (../sibling) for the collection
+            </p>
+          </div>
+        ) : (
+          <div className="mb-4">
+            <label htmlFor="move-target" className="block text-sm font-medium text-gray-700 mb-1">
+              Target path
+            </label>
+            <input
+              id="move-target"
+              type="text"
+              value={targetPath}
+              onChange={(e) => setTargetPath(e.target.value)}
+              placeholder="e.g. /recipes/my-collection or ./new-name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm truncate"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && validation.status === 'valid' && !validating && !isMoving) {
+                  onMove()
+                }
+              }}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Use absolute paths (/path/name) or relative paths (../sibling/name)
+            </p>
+          </div>
+        )}
 
         {/* Validation feedback */}
         {validation.status === 'valid' && !validation.hasCollision && (
