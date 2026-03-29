@@ -1,32 +1,7 @@
-import { Logger, ILogObj } from "tslog";
-
-// Create a base logger configuration
-const loggerConfig = {
-  name: "tributary-cli",
-  type: "pretty" as const,
-  minLevel: process.env.TRIBUTARY_LOG_LEVEL ? 
-    parseInt(process.env.TRIBUTARY_LOG_LEVEL) : 3, // Default to INFO level
-  prettyLogTemplate: "{{yyyy}}.{{mm}}.{{dd}} {{hh}}:{{MM}}:{{ss}}:{{ms}}\t{{logLevelName}}\t[{{fileNameWithLine}}]\t",
-  prettyLogStyles: {
-    logLevelName: {
-      "*": ["bold", "black", "dim"],
-      SILLY: ["white"],
-      TRACE: ["whiteBright"],
-      DEBUG: ["green"],
-      INFO: ["blue"],
-      WARN: ["yellow", "bold"],
-      ERROR: ["red", "bold"],
-      FATAL: ["redBright", "bold"],
-    },
-    dateIsoStr: "white",
-    fileNameWithLine: "white",
-    name: ["white", "bold"],
-  },
-  hideLogPositionForProduction: false,
-};
+import { createLogger } from "tributary-client";
 
 // Create the logger instance
-export const logger = new Logger<ILogObj>(loggerConfig);
+export const logger = createLogger("tributary-cli");
 
 // Export different log levels for convenience
 export const silly = logger.silly.bind(logger);

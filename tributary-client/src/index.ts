@@ -12,6 +12,7 @@ export type { SyncStatus, SyncError } from './tributaryStream.js';
 export type { StreamStorageEstimate, QuotaEstimate } from './storage.js';
 export { estimateStreamStorageBytes, estimateQuota } from './storage.js';
 export { computeHash } from './hashUtils.js';
+export { createLogger } from './logger.js';
 export { deriveAuthKey, deriveStreamSeed, deriveStorageKey } from './kdf.js';
 export { EncryptedIdbFs, createEncryptedIdbfs, encryptBlob, decryptBlob } from './encryptedIdbFs.js';
 export {
