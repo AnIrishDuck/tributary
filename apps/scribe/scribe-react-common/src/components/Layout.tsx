@@ -132,15 +132,17 @@ const Layout: React.FC = () => {
 
       {/* Floating Action Button / Speed-Dial */}
       {fabItems.length > 0 && isSingleFab && (() => {
-        const SingleIcon = fabItems[0].icon
-        return (
-          <Link
-            to={fabItems[0].to}
-            className="fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
-            aria-label={fabItems[0].label}
-          >
+        const item = fabItems[0]
+        const SingleIcon = item.icon
+        const cls = "fixed z-50 right-4 bottom-4 md:right-8 md:bottom-8 flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-white"
+        return item.to ? (
+          <Link to={item.to} className={cls} aria-label={item.label}>
             <SingleIcon className="w-6 h-6" />
           </Link>
+        ) : (
+          <button onClick={item.onClick} className={cls} aria-label={item.label}>
+            <SingleIcon className="w-6 h-6" />
+          </button>
         )
       })()}
       {fabItems.length > 1 && (() => {
