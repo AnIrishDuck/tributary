@@ -242,7 +242,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
             onViewModeChange={setViewMode}
           />
         ) : (
-          <div className="flex justify-end mb-4 gap-1">
+          <div className="flex items-center justify-end mb-4 gap-1">
             <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
             <SortMenu sort={sort} onSortChange={handleSortChange} />
           </div>
