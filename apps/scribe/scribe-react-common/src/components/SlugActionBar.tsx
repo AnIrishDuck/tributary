@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router'
-import { ClockIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { ClockIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline'
 import { Collection } from 'scribe-data'
 import { Breadcrumbs } from './Breadcrumbs'
 import { MoveModal } from './MoveModal'
@@ -73,7 +73,7 @@ export const SlugActionBar: React.FC<SlugActionBarProps> = ({
                 aria-label="Move"
                 className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
               >
-                <ArrowRightIcon className="w-4 h-4" />
+                <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
               </button>
             </>
           )}
