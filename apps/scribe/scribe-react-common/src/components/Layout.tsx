@@ -157,20 +157,33 @@ const Layout: React.FC = () => {
             {/* Speed-dial items */}
             {fabOpen && fabItems.map((item, i) => {
               const ItemIcon = item.icon
-              return (
-                <Link
-                  key={i}
-                  to={item.to}
-                  onClick={() => setFabOpen(false)}
-                  className="flex items-center gap-2 group"
-                >
+              const inner = (
+                <>
                   <span className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg shadow-md whitespace-nowrap opacity-90">
                     {item.label}
                   </span>
                   <span className="flex items-center justify-center w-12 h-12 bg-white border border-gray-200 rounded-xl shadow-md text-blue-600 group-hover:bg-blue-50 transition-colors">
                     <ItemIcon className="w-5 h-5" />
                   </span>
+                </>
+              )
+              return item.to ? (
+                <Link
+                  key={i}
+                  to={item.to}
+                  onClick={() => setFabOpen(false)}
+                  className="flex items-center gap-2 group"
+                >
+                  {inner}
                 </Link>
+              ) : (
+                <button
+                  key={i}
+                  onClick={() => { setFabOpen(false); item.onClick?.() }}
+                  className="flex items-center gap-2 group"
+                >
+                  {inner}
+                </button>
               )
             })}
           </div>

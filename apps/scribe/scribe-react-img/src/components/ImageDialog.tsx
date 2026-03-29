@@ -9,6 +9,7 @@ export interface ImageDialogProps {
   prefix: string
   collectionId?: string
   ancestors: Collection[]
+  initialFile?: File
   onSave: (params: {
     file: File
     slug: string
@@ -48,12 +49,13 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
   prefix,
   collectionId,
   ancestors,
+  initialFile,
   onSave,
   onCancel,
 }) => {
-  const [file, setFile] = useState<File | null>(null)
-  const [slug, setSlug] = useState('')
-  const [title, setTitle] = useState('')
+  const [file, setFile] = useState<File | null>(initialFile ?? null)
+  const [slug, setSlug] = useState(() => initialFile ? fileNameToSlug(initialFile.name) : '')
+  const [title, setTitle] = useState(() => initialFile ? fileNameToSlug(initialFile.name) : '')
   const [slugTouched, setSlugTouched] = useState(false)
   const [titleTouched, setTitleTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)

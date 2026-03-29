@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { Collection } from 'scribe-data'
@@ -22,8 +22,12 @@ const ImageAddPage: React.FC<ImageAddPageProps> = ({
   ancestors,
 }) => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { client } = useTributary()
   const routeCtx = useRouteContext()
+
+  // Accept a camera-captured file passed via navigation state
+  const cameraFile = (location.state as { cameraFile?: File } | null)?.cameraFile
 
   const handleSave = async (params: {
     file: File
@@ -71,6 +75,7 @@ const ImageAddPage: React.FC<ImageAddPageProps> = ({
       prefix={prefix}
       collectionId={collectionId}
       ancestors={ancestors}
+      initialFile={cameraFile}
       onSave={handleSave}
       onCancel={handleCancel}
     />
