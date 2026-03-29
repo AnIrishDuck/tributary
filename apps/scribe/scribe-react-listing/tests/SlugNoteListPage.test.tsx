@@ -155,7 +155,7 @@ describe('SlugNoteListPage', () => {
     expect(screen.getByText('pasta')).toBeInTheDocument()
 
     // Toggle to list view
-    const listButton = screen.getByRole('button', { name: 'List view' })
+    const listButton = screen.getByRole('button', { name: 'Switch to list view' })
     fireEvent.click(listButton)
 
     // Note should still be visible in list mode
@@ -165,7 +165,7 @@ describe('SlugNoteListPage', () => {
     expect(screen.queryByText('pasta')).not.toBeInTheDocument()
 
     // Toggle back to card view
-    const cardButton = screen.getByRole('button', { name: 'Card view' })
+    const cardButton = screen.getByRole('button', { name: 'Switch to card view' })
     fireEvent.click(cardButton)
 
     // Slug badge should reappear in card mode
@@ -200,7 +200,7 @@ describe('SlugNoteListPage', () => {
     expect(screen.getByText('Entrees')).toBeInTheDocument()
 
     // Switch to list mode
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to list view' }))
 
     // Both collections should still be visible
     expect(screen.getByText('Appetizers')).toBeInTheDocument()
@@ -225,9 +225,8 @@ describe('SlugNoteListPage', () => {
       expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 5000 })
 
-    // View mode toggle should be present
-    expect(screen.getByRole('button', { name: 'Card view' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'List view' })).toBeInTheDocument()
+    // View mode toggle should be present (shows list icon since default is card mode)
+    expect(screen.getByRole('button', { name: 'Switch to list view' })).toBeInTheDocument()
   })
 
   it('should show collection title as heading and slugs in breadcrumbs', async () => {

@@ -4,60 +4,41 @@ import { describe, expect, it, vi } from 'vitest'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
 describe('ViewModeToggle', () => {
-  it('should render both card and list buttons', () => {
+  it('should render a single button', () => {
     const onModeChange = vi.fn()
     render(<ViewModeToggle mode="card" onModeChange={onModeChange} />)
 
-    expect(screen.getByRole('button', { name: 'Card view' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'List view' })).toBeInTheDocument()
+    expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
-  it('should highlight card button when mode is card', () => {
+  it('should show list icon and switch-to-list label when in card mode', () => {
     const onModeChange = vi.fn()
     render(<ViewModeToggle mode="card" onModeChange={onModeChange} />)
 
-    const cardButton = screen.getByRole('button', { name: 'Card view' })
-    const listButton = screen.getByRole('button', { name: 'List view' })
-
-    // Active button should not have gray text; inactive should
-    expect(cardButton.className).not.toContain('text-gray-500')
-    expect(listButton.className).toContain('text-gray-500')
+    expect(screen.getByRole('button', { name: 'Switch to list view' })).toBeInTheDocument()
   })
 
-  it('should highlight list button when mode is list', () => {
+  it('should show card icon and switch-to-card label when in list mode', () => {
     const onModeChange = vi.fn()
     render(<ViewModeToggle mode="list" onModeChange={onModeChange} />)
 
-    const cardButton = screen.getByRole('button', { name: 'Card view' })
-    const listButton = screen.getByRole('button', { name: 'List view' })
-
-    expect(listButton.className).not.toContain('text-gray-500')
-    expect(cardButton.className).toContain('text-gray-500')
+    expect(screen.getByRole('button', { name: 'Switch to card view' })).toBeInTheDocument()
   })
 
-  it('should call onModeChange with list when list button is clicked', () => {
+  it('should call onModeChange with list when clicked in card mode', () => {
     const onModeChange = vi.fn()
     render(<ViewModeToggle mode="card" onModeChange={onModeChange} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }))
+    fireEvent.click(screen.getByRole('button'))
 
     expect(onModeChange).toHaveBeenCalledWith('list')
   })
 
-  it('should call onModeChange with card when card button is clicked', () => {
+  it('should call onModeChange with card when clicked in list mode', () => {
     const onModeChange = vi.fn()
     render(<ViewModeToggle mode="list" onModeChange={onModeChange} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Card view' }))
-
-    expect(onModeChange).toHaveBeenCalledWith('card')
-  })
-
-  it('should call onModeChange even when clicking the already-active mode', () => {
-    const onModeChange = vi.fn()
-    render(<ViewModeToggle mode="card" onModeChange={onModeChange} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Card view' }))
+    fireEvent.click(screen.getByRole('button'))
 
     expect(onModeChange).toHaveBeenCalledWith('card')
   })

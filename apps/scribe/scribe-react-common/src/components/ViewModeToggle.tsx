@@ -9,30 +9,20 @@ interface ViewModeToggleProps {
 }
 
 export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ mode, onModeChange }) => {
+  const next = mode === 'card' ? 'list' : 'card'
+  const label = mode === 'card' ? 'Switch to list view' : 'Switch to card view'
+
   return (
-    <div className="inline-flex items-center rounded-lg border border-gray-200">
-      <button
-        onClick={() => onModeChange('card')}
-        aria-label="Card view"
-        className={`inline-flex items-center px-2 py-1 rounded-l-lg transition-colors ${
-          mode === 'card'
-            ? 'bg-blue-50 text-blue-600'
-            : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
-        }`}
-      >
-        <Squares2X2Icon className="w-4 h-4" />
-      </button>
-      <button
-        onClick={() => onModeChange('list')}
-        aria-label="List view"
-        className={`inline-flex items-center px-2 py-1 rounded-r-lg transition-colors ${
-          mode === 'list'
-            ? 'bg-blue-50 text-blue-600'
-            : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
-        }`}
-      >
+    <button
+      onClick={() => onModeChange(next)}
+      aria-label={label}
+      className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+    >
+      {mode === 'card' ? (
         <ListBulletIcon className="w-4 h-4" />
-      </button>
-    </div>
+      ) : (
+        <Squares2X2Icon className="w-4 h-4" />
+      )}
+    </button>
   )
 }
