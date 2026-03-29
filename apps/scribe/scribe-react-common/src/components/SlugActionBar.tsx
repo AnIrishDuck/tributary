@@ -5,6 +5,7 @@ import { Collection } from 'scribe-data'
 import { Breadcrumbs } from './Breadcrumbs'
 import { MoveModal } from './MoveModal'
 import { SortMenu, SortOptions } from './SortMenu'
+import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 import { useRouteContext } from '../context/routeContext'
 
 export interface SlugActionBarProps {
@@ -23,12 +24,17 @@ export interface SlugActionBarProps {
   sort?: SortOptions
   /** Callback when sort changes */
   onSortChange?: (sort: SortOptions) => void
+  /** Current view mode */
+  viewMode?: ViewMode
+  /** Callback when view mode changes */
+  onViewModeChange?: (mode: ViewMode) => void
 }
 
 export const SlugActionBar: React.FC<SlugActionBarProps> = ({
   ancestors, prefix, slugPath, entityType, entityId,
   showHistory = false, readOnly = false, onMoved,
-  sort, onSortChange
+  sort, onSortChange,
+  viewMode, onViewModeChange
 }) => {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const routeCtx = useRouteContext()
@@ -46,6 +52,9 @@ export const SlugActionBar: React.FC<SlugActionBarProps> = ({
           />
         </div>
         <div className="flex-shrink-0 ml-2 inline-flex items-center gap-1">
+          {viewMode && onViewModeChange && (
+            <ViewModeToggle mode={viewMode} onModeChange={onViewModeChange} />
+          )}
           {sort && onSortChange && (
             <SortMenu sort={sort} onSortChange={onSortChange} />
           )}

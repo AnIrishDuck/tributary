@@ -34,7 +34,7 @@ export const SortMenu: React.FC<SortMenuProps> = ({ sort, onSortChange }) => {
     : (sort.order === 'asc' ? 'Oldest to newest' : 'Newest to oldest')
 
   return (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef} className="relative inline-flex">
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Sort"
