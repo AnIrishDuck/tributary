@@ -107,7 +107,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     const newImageUrl = routeCtx.buildPath(`${base}+image`)
     const newCollectionUrl = routeCtx.buildPath(`${base}+collection`)
     setFloatingAction([
-      { icon: PlusIcon, label: 'Add Note', to: newNoteUrl },
+      { icon: DocumentTextIcon, label: 'Add Note', to: newNoteUrl },
       { icon: PhotoIcon, label: 'Add Image', to: newImageUrl },
       { icon: FolderPlusIcon, label: 'Add Collection', to: newCollectionUrl },
     ])
