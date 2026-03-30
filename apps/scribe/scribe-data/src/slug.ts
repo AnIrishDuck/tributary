@@ -1,16 +1,7 @@
 import { TributaryLocal } from 'tributary-client'
 import { CollectionSlug, NoteSlug, BlockSlugInfo } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
-import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
-
-function tryParseTitle(body: string): string | null {
-  try {
-    const parsed = JSON.parse(body)
-    return parsed.title || parsed.altText || parsed.fileName || null
-  } catch {
-    return null
-  }
-}
+import { getNotesBySlugInCollection, extractBlockTitle } from './indexing.js'
 
 export interface ResolveResult {
   type: 'note' | 'collection' | 'collision' | 'image'
@@ -301,13 +292,10 @@ export async function suggestSlugs(
       )
 
       for (const row of (noteResult.rows || []) as any[]) {
-        const isImage = row.block_type === 'scribe/image'
         suggestions.push({
           slug_path: pathPrefix + row.slug,
-          title: isImage
-            ? (tryParseTitle(row.body) || '')
-            : (extractTitleFromMarkdown(row.body) || ''),
-          type: isImage ? 'image' : 'note'
+          title: extractBlockTitle(row.body, row.block_type),
+          type: row.block_type === 'scribe/image' ? 'image' : 'note'
         })
       }
     }

@@ -70,13 +70,30 @@ export function slugToTitle(slug: string): string {
  * Try to extract a display title from an image block's JSON body.
  * Returns title, altText, or fileName if present, otherwise null.
  */
-function tryParseImageTitle(body: string): string | null {
+export function tryParseImageTitle(body: string): string | null {
   try {
     const parsed = JSON.parse(body)
     return parsed.title || parsed.altText || parsed.fileName || null
   } catch {
     return null
   }
+}
+
+/**
+ * Extract a display title from a block, dispatching by block type.
+ * For markdown blocks, extracts the first H1 heading.
+ * For image blocks, parses the JSON body for title/altText/fileName.
+ *
+ * @param body The block body content
+ * @param blockType The block type (defaults to 'scribe/markdown')
+ * @returns The extracted title, or empty string if none found
+ */
+export function extractBlockTitle(body: string, blockType?: string | null): string {
+  const resolved = blockType || 'scribe/markdown'
+  if (resolved === 'scribe/image') {
+    return tryParseImageTitle(body) || ''
+  }
+  return extractTitleFromMarkdown(body) || ''
 }
 
 /**
@@ -314,21 +331,10 @@ export async function getNoteSlugByUuid(
 
   const row = result.rows[0] as any
   const blockType = row.block_type || 'scribe/markdown'
-  let title: string
-  if (blockType === 'scribe/image') {
-    try {
-      const parsed = JSON.parse(row.body)
-      title = parsed.title || parsed.altText || parsed.fileName || ''
-    } catch {
-      title = ''
-    }
-  } else {
-    title = extractTitleFromMarkdown(row.body) || ''
-  }
   return {
     block_uuid: row.block_uuid,
     slug: row.slug,
-    title,
+    title: extractBlockTitle(row.body, blockType),
     block_type: blockType
   }
 }
@@ -477,21 +483,10 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
 
   return (result.rows || []).map((row: any) => {
     const blockType = row.block_type || 'scribe/markdown'
-    let title: string
-    if (blockType === 'scribe/image') {
-      try {
-        const parsed = JSON.parse(row.body)
-        title = parsed.title || parsed.altText || parsed.fileName || ''
-      } catch {
-        title = ''
-      }
-    } else {
-      title = extractTitleFromMarkdown(row.body) || ''
-    }
     return {
       block_uuid: row.block_uuid,
       slug: row.slug,
-      title,
+      title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
       block_type: blockType
@@ -543,21 +538,10 @@ export async function getNotesInCollectionWithSlugs(
 
   return (result.rows || []).map((row: any) => {
     const blockType = row.block_type || 'scribe/markdown'
-    let title: string
-    if (blockType === 'scribe/image') {
-      try {
-        const parsed = JSON.parse(row.body)
-        title = parsed.title || parsed.altText || parsed.fileName || ''
-      } catch {
-        title = ''
-      }
-    } else {
-      title = extractTitleFromMarkdown(row.body) || ''
-    }
     return {
       block_uuid: row.block_uuid,
       slug: row.slug,
-      title,
+      title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
       block_type: blockType
@@ -660,9 +644,7 @@ export async function getNotesBySlugInCollection(
   return (result.rows || []).map((row: any) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
-    title: row.block_type === 'scribe/image'
-      ? (tryParseImageTitle(row.body) || '')
-      : (extractTitleFromMarkdown(row.body) || ''),
+    title: extractBlockTitle(row.body, row.block_type),
     block_type: row.block_type || 'scribe/markdown',
   }))
 }
