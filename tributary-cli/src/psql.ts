@@ -1,11 +1,5 @@
-import { TributaryClient, TributaryServer } from 'tributary-client';
-import { PGlite } from '@electric-sql/pglite';
-import { loadKeyPair, generateKeyPair, saveKeyPair } from './key';
-import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs-extra';
-import { info, error as errorLog } from './logger';
-import * as base64url from 'urlsafe-base64';
+import { loadKeyPair } from './key';
+import { info } from './logger';
 import { getClient, validateAuthToken } from './util';
 
 function isReadQuery(sql: string): boolean {
@@ -23,7 +17,7 @@ export async function executeSQL(
     sync?: boolean;
   }
 ): Promise<{ message: string } | { rows: unknown[] }> {
-  const { client, db, server } = await getClient({ db: options.localDb });
+  const { client } = await getClient({ db: options.localDb });
 
   // Load the key pair from database using the client
   const keyPair = await loadKeyPair(client, appId, streamId);

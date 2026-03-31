@@ -40,8 +40,8 @@ keyCmd
       
       // Get database path from global options or use default
       const globalOptions = program.opts();
-      const { client, db, server } = await getClient(globalOptions);
-      
+      const { client } = await getClient(globalOptions);
+
       // Save the key pair to database using the actual stream ID
       const streamId = await saveKeyPair(client, appId, keyPair);
       
@@ -65,8 +65,8 @@ keyCmd
     try {
       // Get database path from global options or use default
       const options = program.opts();
-      const { client, db, server } = await getClient(options);
-      
+      const { client } = await getClient(options);
+
       info(`Available keys for app '${appId}':`);
       const keys = await listKeys(client);
       if (keys.length === 0) {
@@ -108,7 +108,7 @@ keyCmd
 
       // Get database path from global options or use default
       const options = program.opts();
-      const { client, db, server } = await getClient(options);
+      const { client } = await getClient(options);
 
       const keyDetails = await showKey(client, appId, streamId);
       info(`Key: ${streamId}`);
@@ -129,7 +129,7 @@ keyCmd
 
       // Get database path from global options or use default
       const options = program.opts();
-      const { client, db, server } = await getClient(options);
+      const { client } = await getClient(options);
 
       const base64Key = await exportKey(client, appId, streamId);
       // Print to stdout for piping
@@ -148,8 +148,8 @@ keyCmd
     try {
       // Get database path from global options or use default
       const options = program.opts();
-      const { client, db, server } = await getClient(options);
-      
+      const { client } = await getClient(options);
+
       // Read base64 key from stdin
       let base64Key = '';
       if (process.stdin.isTTY) {
