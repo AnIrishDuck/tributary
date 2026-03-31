@@ -553,19 +553,23 @@ export async function getCollectionOptions(
   db: TributaryStream,
   collectionUuid: string
 ): Promise<CollectionOptions> {
+  // Probe whether the options column exists (read-only, no blob).
+  // Only this check is caught — real query errors propagate normally.
   try {
-    const result = await db.query(
-      `SELECT options FROM collection WHERE collection_uuid = $1`,
-      [collectionUuid]
-    )
-    if (!result.rows || result.rows.length === 0) {
-      return {}
-    }
-    return JSON.parse((result.rows[0] as any).options)
+    await db.query('SELECT options FROM collection LIMIT 0', [])
   } catch {
     // Column doesn't exist — library predates the options migration
     return {}
   }
+
+  const result = await db.query(
+    `SELECT options FROM collection WHERE collection_uuid = $1`,
+    [collectionUuid]
+  )
+  if (!result.rows || result.rows.length === 0) {
+    return {}
+  }
+  return JSON.parse((result.rows[0] as any).options)
 }
 
 /**

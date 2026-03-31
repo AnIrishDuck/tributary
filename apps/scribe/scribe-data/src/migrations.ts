@@ -1,11 +1,11 @@
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 
 /**
- * Create library-level tables (synchronized via Tributary)
- * These tables are part of the library and will be synced to all clients
- * This should be called ONLY when creating a new library
+ * Synced migrations up to (and including) the library_plugins table.
+ * Exported so that tests can create a stream at this schema version
+ * without the later options column migration.
  */
-export async function syncedMigrations(stream: TributaryStream): Promise<void> {
+export async function syncedMigrationsV1(stream: TributaryStream): Promise<void> {
   // Create the block table
   await stream.exec(`
     CREATE TABLE IF NOT EXISTS block (
@@ -60,6 +60,15 @@ export async function syncedMigrations(stream: TributaryStream): Promise<void> {
   `)
 
   await migrateAddPlugins(stream)
+}
+
+/**
+ * Create library-level tables (synchronized via Tributary)
+ * These tables are part of the library and will be synced to all clients
+ * This should be called ONLY when creating a new library
+ */
+export async function syncedMigrations(stream: TributaryStream): Promise<void> {
+  await syncedMigrationsV1(stream)
   await migrateAddCollectionOptions(stream)
 }
 

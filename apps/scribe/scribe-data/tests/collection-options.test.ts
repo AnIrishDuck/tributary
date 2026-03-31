@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, ensureCollectionOptions } from '../src/library.js'
 import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection } from '../src/collection.js'
-import { localMigrations } from '../src/migrations.js'
+import { syncedMigrationsV1, localMigrations } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
   const s = server ?? new FakeServer()
@@ -18,55 +18,25 @@ function countBlobsForStream(server: FakeServer, stream: { getId(): string }): n
 }
 
 /**
- * Create a stream with the old schema (no `options` column on collection).
- * Mirrors the pattern in library-plugins.test.ts for pre-migration testing.
+ * Create a stream at the V1 schema (no `options` column on collection).
+ * Uses syncedMigrationsV1 so the test stays in sync with real migrations.
  */
-async function createOldSchemaStream(server: FakeServer) {
+async function createV1SchemaStream(server: FakeServer) {
   const pglite = new PGlite('memory://')
   const client = new TributaryClient({ server, db: pglite })
   const keyPair = nacl.sign.keyPair()
   const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-  // Old schema: block + collection + library_plugins, but NO options column
-  await stream.exec(`
-    CREATE TABLE IF NOT EXISTS block (
-      block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
-      version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
-      insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
-      body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
-    )
-  `)
-  await stream.exec(`
-    CREATE TABLE IF NOT EXISTS collection (
-      collection_uuid TEXT NOT NULL PRIMARY KEY,
-      title TEXT NOT NULL,
-      parent_collection_uuid TEXT,
-      insert_datetime TEXT NOT NULL,
-      inserter TEXT NOT NULL,
-      linked_stream_id TEXT,
-      linked_stream_key TEXT,
-      slug TEXT NOT NULL
-    )
-  `)
-  await stream.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS collection_one_root
-    ON collection ((1)) WHERE parent_collection_uuid IS NULL
-  `)
-  await stream.exec(`
-    CREATE TABLE IF NOT EXISTS library_plugins (
-      plugin_url TEXT NOT NULL PRIMARY KEY,
-      config_json TEXT NOT NULL DEFAULT '{}',
-      sort_order INTEGER NOT NULL DEFAULT 0
-    )
-  `)
+  await syncedMigrationsV1(stream)
   await localMigrations(stream.local())
 
   // Create a root collection so we have something to test against
-  await stream.exec(
-    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
-     VALUES ($1, $2, NULL, $3, $4, NULL, NULL, $5)`,
-    ['root-uuid', 'My Library', new Date().toISOString(), 'user', 'my-library']
-  )
+  await createCollection(stream, {
+    collection_uuid: 'root-uuid',
+    title: 'My Library',
+    inserter: 'user',
+    slug: 'my-library',
+  })
 
   return { client, stream }
 }
@@ -139,7 +109,7 @@ describe('collection options', () => {
 
   test('getCollectionOptions returns {} on pre-migration library (non-view-blocking)', async () => {
     const server = new FakeServer()
-    const { stream } = await createOldSchemaStream(server)
+    const { stream } = await createV1SchemaStream(server)
 
     // The options column does not exist, but getCollectionOptions should NOT throw.
     // It returns {} so that callers can render without waiting for the migration.
@@ -149,7 +119,7 @@ describe('collection options', () => {
 
   test('getCollectionOptions does not create blobs on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createOldSchemaStream(server)
+    const { stream } = await createV1SchemaStream(server)
 
     const blobCountBefore = countBlobsForStream(server, stream)
 
@@ -162,7 +132,7 @@ describe('collection options', () => {
 
   test('setCollectionOptions throws on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createOldSchemaStream(server)
+    const { stream } = await createV1SchemaStream(server)
 
     // setCollectionOptions must error when the options column is missing.
     // The caller is responsible for running ensureCollectionOptions first.
@@ -173,7 +143,7 @@ describe('collection options', () => {
 
   test('ensureCollectionOptions creates the column on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createOldSchemaStream(server)
+    const { stream } = await createV1SchemaStream(server)
 
     const blobCountBefore = countBlobsForStream(server, stream)
 
@@ -194,7 +164,7 @@ describe('collection options', () => {
 
   test('ensureCollectionOptions is idempotent (no extra blobs on second call)', async () => {
     const server = new FakeServer()
-    const { stream } = await createOldSchemaStream(server)
+    const { stream } = await createV1SchemaStream(server)
 
     await ensureCollectionOptions(stream)
     const blobCountAfterFirst = countBlobsForStream(server, stream)
