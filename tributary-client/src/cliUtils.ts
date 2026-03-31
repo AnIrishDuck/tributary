@@ -2,6 +2,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Server } from './server.js';
 import { TributaryServer } from './tributaryServer.js';
 import { deriveAuthKey } from './kdf.js';
+import { logger } from './logger.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -95,7 +96,7 @@ export async function getCliAuthToken(): Promise<string | null> {
     refresh_token: auth.refresh_token,
   });
   if (error || !data.session) {
-    console.warn('Token refresh failed. Please run login again.');
+    logger.warn('Token refresh failed. Please run login again.');
     await supabase.auth.signOut({ scope: 'local' });
     return null;
   }
