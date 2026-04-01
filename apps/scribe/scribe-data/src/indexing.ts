@@ -1,9 +1,9 @@
 import { TributaryLocal } from 'tributary-client'
-import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
+import { NoteSlug, BlockSlugInfo, NoteSlugRow } from './types'
 import { getLibrary } from './collection.js'
 
 
-// Add proper typing for the query results
+// Row types for query results used across this module
 interface UnindexedNote {
   block_uuid: string;
   version_uuid: string;
@@ -13,6 +13,36 @@ interface UnindexedNote {
 
 interface LastEditedResult {
   last_edited: string | null;
+}
+
+interface BlockRow {
+  block_uuid: string;
+  slug: string;
+  body: string;
+  block_type: string | null;
+}
+
+interface BlockRowWithDatetime extends BlockRow {
+  insert_datetime: string;
+  collection_id: string | null;
+}
+
+interface TagRow {
+  tag: string;
+}
+
+interface BlockUuidRow {
+  block_uuid: string;
+}
+
+interface SlugRow {
+  slug: string;
+}
+
+interface LibraryStatsRow {
+  edit_count: number;
+  note_count: number;
+  collection_count: number;
 }
 
 /**
@@ -329,7 +359,7 @@ export async function getNoteSlugByUuid(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0] as BlockRow
   const blockType = row.block_type || 'scribe/markdown'
   return {
     block_uuid: row.block_uuid,
@@ -359,7 +389,7 @@ export async function getNotesBySlug(
     [slug]
   )
 
-  return (result.rows || []).map((row: any) => ({
+  return ((result.rows || []) as BlockRow[]).map((row) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractTitleFromMarkdown(row.body) || ''
@@ -428,7 +458,7 @@ export async function getTagsForNote(
   )
   
   // Extract just the tag strings from the database rows
-  return (result.rows || []).map((row: any) => row.tag)
+  return ((result.rows || []) as TagRow[]).map((row) => row.tag)
 }
 
 /**
@@ -447,7 +477,7 @@ export async function getNotesByTag(
   )
   
   // Extract just the block_uuid strings from the database rows
-  return (result.rows || []).map((row: any) => row.block_uuid)
+  return ((result.rows || []) as BlockUuidRow[]).map((row) => row.block_uuid)
 }
 
 /**
@@ -462,7 +492,7 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
   )
   
   // Extract just the tag strings from the database rows
-  return (result.rows || []).map((row: any) => row.tag)
+  return ((result.rows || []) as TagRow[]).map((row) => row.tag)
 }
 
 /**
@@ -481,7 +511,7 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
     []
   )
 
-  return (result.rows || []).map((row: any) => {
+  return ((result.rows || []) as BlockRowWithDatetime[]).map((row) => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -536,7 +566,7 @@ export async function getNotesInCollectionWithSlugs(
     )
   }
 
-  return (result.rows || []).map((row: any) => {
+  return ((result.rows || []) as BlockRowWithDatetime[]).map((row) => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -596,7 +626,7 @@ export async function getCollidingSlugs(
     `SELECT slug FROM slug_collision WHERE parent_id = $1`,
     [parentId]
   )
-  return new Set((result.rows || []).map((row: any) => row.slug))
+  return new Set(((result.rows || []) as SlugRow[]).map((row) => row.slug))
 }
 
 /**
@@ -641,7 +671,7 @@ export async function getNotesBySlugInCollection(
     )
   }
 
-  return (result.rows || []).map((row: any) => ({
+  return ((result.rows || []) as BlockRow[]).map((row) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractBlockTitle(row.body, row.block_type),
@@ -728,7 +758,7 @@ export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats>
     []
   )
 
-  const row = result.rows?.[0] as any
+  const row = result.rows?.[0] as LibraryStatsRow | undefined
   return {
     editCount: row?.edit_count ?? 0,
     noteCount: row?.note_count ?? 0,
