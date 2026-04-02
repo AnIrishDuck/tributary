@@ -3,7 +3,7 @@ import { TributaryClient, TributaryStream, FakeServer, migrate, hasMigration } f
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, ensureSyncedMigrations } from '../src/library.js'
-import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection } from '../src/collection.js'
+import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection, getCollectionByUuid } from '../src/collection.js'
 import { syncedMigrations, localMigrations, addCollectionOptions, syncedMigrationList } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
@@ -51,6 +51,11 @@ describe('collection options', () => {
 
     const library = await getLibrary(stream)
     expect(library).not.toBeNull()
+
+    // getCollectionByUuid (SELECT *) should include options after migration
+    const fetched = await getCollectionByUuid(stream, library!.collection_uuid)
+    expect(fetched).not.toBeNull()
+    expect(fetched!.options).toBe('{}')
 
     const options = await getCollectionOptions(stream, library!.collection_uuid)
     expect(options).toEqual({})
@@ -112,6 +117,12 @@ describe('collection options', () => {
   test('getCollectionOptions returns {} on pre-migration library (non-view-blocking)', async () => {
     const server = new FakeServer()
     const { stream } = await createPreOptionsStream(server)
+
+    // getCollectionByUuid (SELECT *) should work but options is undefined
+    // because the column doesn't exist yet
+    const fetched = await getCollectionByUuid(stream, 'root-uuid')
+    expect(fetched).not.toBeNull()
+    expect(fetched!.options).toBeUndefined()
 
     // The options column does not exist, but getCollectionOptions should NOT throw.
     // It returns {} so that callers can render without waiting for the migration.
