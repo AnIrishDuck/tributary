@@ -54,8 +54,8 @@ describe('Migration system', () => {
       local = ctx.local;
     });
 
-    it('applies migrations and tracks them', async () => {
-      await migrate(local, [migrationA, migrationB], { tableName: 'local_migrations' });
+    it('applies migrations and tracks them in local_migrations by default', async () => {
+      await migrate(local, [migrationA, migrationB]);
 
       // Tables should exist
       const r1 = await local.query('SELECT * FROM alpha');
@@ -63,7 +63,7 @@ describe('Migration system', () => {
       const r2 = await local.query('SELECT * FROM beta');
       expect(r2.rows).toHaveLength(0);
 
-      // Tracking rows should exist
+      // Tracking rows should exist in the default table
       const tracked = await local.query(
         'SELECT name FROM local_migrations ORDER BY name',
       );
@@ -75,15 +75,13 @@ describe('Migration system', () => {
 
     it('only applies migrations that have not been run already', async () => {
       // First run: apply A and B
-      await migrate(local, [migrationA, migrationB], { tableName: 'local_migrations' });
+      await migrate(local, [migrationA, migrationB]);
 
       // Insert data into alpha to prove it isn't recreated
       await local.exec("INSERT INTO alpha (id, value) VALUES (1, 'keep')");
 
       // Second run: A, B, C — only C should be new
-      await migrate(local, [migrationA, migrationB, migrationC], {
-        tableName: 'local_migrations',
-      });
+      await migrate(local, [migrationA, migrationB, migrationC]);
 
       // alpha data preserved (migration was skipped)
       const r = await local.query('SELECT value FROM alpha WHERE id = 1');
@@ -102,13 +100,12 @@ describe('Migration system', () => {
 
     it('"before" stops at the named migration', async () => {
       await migrate(local, [migrationA, migrationB, migrationC], {
-        tableName: 'local_migrations',
         before: '003_create_gamma',
       });
 
-      expect(await hasMigration(local, '001_create_alpha', { tableName: 'local_migrations' })).toBe(true);
-      expect(await hasMigration(local, '002_create_beta', { tableName: 'local_migrations' })).toBe(true);
-      expect(await hasMigration(local, '003_create_gamma', { tableName: 'local_migrations' })).toBe(false);
+      expect(await hasMigration(local, '001_create_alpha')).toBe(true);
+      expect(await hasMigration(local, '002_create_beta')).toBe(true);
+      expect(await hasMigration(local, '003_create_gamma')).toBe(false);
     });
 
     it('"before" throws when migration name not found', async () => {
@@ -118,18 +115,18 @@ describe('Migration system', () => {
     });
 
     it('hasMigration returns true for applied migration', async () => {
-      await migrate(local, [migrationA], { tableName: 'local_migrations' });
-      expect(await hasMigration(local, '001_create_alpha', { tableName: 'local_migrations' })).toBe(true);
+      await migrate(local, [migrationA]);
+      expect(await hasMigration(local, '001_create_alpha')).toBe(true);
     });
 
     it('hasMigration returns false for unapplied migration', async () => {
-      await migrate(local, [migrationA], { tableName: 'local_migrations' });
-      expect(await hasMigration(local, '002_create_beta', { tableName: 'local_migrations' })).toBe(false);
+      await migrate(local, [migrationA]);
+      expect(await hasMigration(local, '002_create_beta')).toBe(false);
     });
 
     it('hasMigration returns false when tracking table does not exist', async () => {
       // Fresh db, no migrate() call — table doesn't exist
-      const result = await hasMigration(local, 'anything', { tableName: 'local_migrations' });
+      const result = await hasMigration(local, 'anything');
       expect(result).toBe(false);
     });
 
@@ -139,15 +136,15 @@ describe('Migration system', () => {
       await local.exec("INSERT INTO alpha (id, value) VALUES (42, 'existing')");
 
       // Now run formal migrations (idempotent CREATE IF NOT EXISTS)
-      await migrate(local, [migrationA, migrationB], { tableName: 'local_migrations' });
+      await migrate(local, [migrationA, migrationB]);
 
       // Existing data preserved
       const r = await local.query('SELECT value FROM alpha WHERE id = 42');
       expect(r.rows[0].value).toBe('existing');
 
       // Both migrations tracked
-      expect(await hasMigration(local, '001_create_alpha', { tableName: 'local_migrations' })).toBe(true);
-      expect(await hasMigration(local, '002_create_beta', { tableName: 'local_migrations' })).toBe(true);
+      expect(await hasMigration(local, '001_create_alpha')).toBe(true);
+      expect(await hasMigration(local, '002_create_beta')).toBe(true);
     });
 
     it('custom tableName option works', async () => {
@@ -167,7 +164,7 @@ describe('Migration system', () => {
       stream = ctx.stream;
     });
 
-    it('applies migrations and tracks them', async () => {
+    it('applies migrations and tracks them in migrations by default', async () => {
       await migrate(stream, [migrationA, migrationB]);
 
       const r = await stream.query('SELECT * FROM alpha');

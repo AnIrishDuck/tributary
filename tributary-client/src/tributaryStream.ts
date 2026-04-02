@@ -73,6 +73,9 @@ export class TributaryStream {
   private schemaId: string;
   private schemaName: string;
   private searchPathSQL: string;
+
+  /** Default tracking table used by migrate() / hasMigration(). */
+  readonly defaultMigrationsTable = 'migrations';
   private prefetchCache: {
     promise: Promise<{
       blobs: Array<{ sequenceNumber: number; hash: string; data: Uint8Array }>;

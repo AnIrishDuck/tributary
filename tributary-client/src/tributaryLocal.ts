@@ -7,6 +7,9 @@ export class TributaryLocal {
   private schemaName: string;
   private searchPathSQL: string;
 
+  /** Default tracking table used by migrate() / hasMigration(). */
+  readonly defaultMigrationsTable = 'local_migrations';
+
   constructor(pglite: PGliteInterface, schemaName: string) {
     this.pglite = pglite;
     this.schemaName = schemaName;

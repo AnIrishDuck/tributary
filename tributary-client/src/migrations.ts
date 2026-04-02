@@ -11,6 +11,8 @@
 export interface MigratableDb {
   query(sql: string, params?: any[]): Promise<any>;
   exec(sql: string, params?: any[]): Promise<void>;
+  /** Default tracking table name for this db type. */
+  defaultMigrationsTable: string;
 }
 
 /** A single migration with a unique name and up/down functions. */
@@ -22,13 +24,14 @@ export interface Migration {
 
 /** Options for the migrate() function. */
 export interface MigrateOptions {
-  /** Name of the tracking table. Defaults to 'migrations'. */
+  /** Name of the tracking table. Overrides the db's defaultMigrationsTable. */
   tableName?: string;
   /** Stop before this migration (exclusive). Useful for tests. */
   before?: string;
 }
 
-const DEFAULT_TABLE = 'migrations';
+/** PostgreSQL error code for "undefined table". */
+const UNDEFINED_TABLE = '42P01';
 const BATCH_SIZE = 100;
 
 /**
@@ -68,7 +71,7 @@ export async function migrate(
   migrations: Migration[],
   options?: MigrateOptions,
 ): Promise<void> {
-  const tableName = options?.tableName ?? DEFAULT_TABLE;
+  const tableName = options?.tableName ?? db.defaultMigrationsTable;
 
   await ensureTrackingTable(db, tableName);
 
@@ -118,14 +121,17 @@ export async function hasMigration(
   name: string,
   options?: { tableName?: string },
 ): Promise<boolean> {
-  const tableName = options?.tableName ?? DEFAULT_TABLE;
+  const tableName = options?.tableName ?? db.defaultMigrationsTable;
   try {
     const result = await db.query(
       `SELECT 1 FROM "${tableName}" WHERE name = $1`,
       [name],
     );
     return result.rows.length > 0;
-  } catch {
-    return false;
+  } catch (err: any) {
+    if (err?.code === UNDEFINED_TABLE) {
+      return false;
+    }
+    throw err;
   }
 }
