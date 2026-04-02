@@ -1,11 +1,18 @@
-import { TributaryStream, TributaryLocal } from 'tributary-client'
+import { TributaryStream, TributaryLocal, migrate } from 'tributary-client'
+import type { Migration, MigratableDb, MigrateOptions } from 'tributary-client'
 
 /**
- * Synced migrations up to (and including) the library_plugins table.
- * Exported so that tests can create a stream at this schema version
- * without the later options column migration.
+ * Create library-level tables (synchronized via Tributary)
+ * These tables are part of the library and will be synced to all clients
+ * This should be called ONLY when creating a new library
+ *
+ * Accepts an optional `before` option (passed through to `migrate()`) so
+ * tests can create a stream at an earlier schema version.
  */
-export async function syncedMigrationsV1(stream: TributaryStream): Promise<void> {
+export async function syncedMigrations(
+  stream: TributaryStream,
+  options?: Pick<MigrateOptions, 'before'>
+): Promise<void> {
   // Create the block table
   await stream.exec(`
     CREATE TABLE IF NOT EXISTS block (
@@ -60,16 +67,9 @@ export async function syncedMigrationsV1(stream: TributaryStream): Promise<void>
   `)
 
   await migrateAddPlugins(stream)
-}
 
-/**
- * Create library-level tables (synchronized via Tributary)
- * These tables are part of the library and will be synced to all clients
- * This should be called ONLY when creating a new library
- */
-export async function syncedMigrations(stream: TributaryStream): Promise<void> {
-  await syncedMigrationsV1(stream)
-  await migrateAddCollectionOptions(stream)
+  // Run all formal synced migrations (currently: collection options)
+  await migrate(stream, syncedMigrationList, options)
 }
 
 /**
@@ -87,17 +87,30 @@ export async function migrateAddPlugins(stream: TributaryStream): Promise<void> 
   `)
 }
 
-/**
- * Add the `options` JSON column to the collection synced table if it does not
- * already exist. Factored out so it can be called both from syncedMigrations
- * (new libraries) and lazily from ensureCollectionOptions (existing libraries
- * created before the options column).
- */
-export async function migrateAddCollectionOptions(stream: TributaryStream): Promise<void> {
-  await stream.exec(`
-    ALTER TABLE collection ADD COLUMN IF NOT EXISTS options TEXT NOT NULL DEFAULT '{}'
-  `)
+// ---------------------------------------------------------------------------
+// Formal synced migrations (tracked by the tributary migrate() system)
+// ---------------------------------------------------------------------------
+
+/** Add the `options` JSON column to the collection synced table. */
+export const addCollectionOptions: Migration = {
+  name: 'add_collection_options',
+  up: async (db: MigratableDb) => {
+    await db.exec(`
+      ALTER TABLE collection ADD COLUMN IF NOT EXISTS options TEXT NOT NULL DEFAULT '{}'
+    `)
+  },
+  down: async (db: MigratableDb) => {
+    await db.exec(`ALTER TABLE collection DROP COLUMN IF EXISTS options`)
+  },
 }
+
+/**
+ * Ordered list of formal synced migrations.
+ * New synced migrations should be appended here.
+ */
+export const syncedMigrationList: Migration[] = [
+  addCollectionOptions,
+]
 
 /**
  * Create local-only tables (NOT synchronized)
@@ -237,11 +250,10 @@ export async function down(syncedDb: TributaryStream, localDb: TributaryLocal): 
   await localDb.exec('DROP TABLE IF EXISTS authoritative_version')
   await localDb.exec('DROP TABLE IF EXISTS indexed_block')
   await syncedDb.exec('DROP TABLE IF EXISTS library_plugins')
-  // Drop the options column if it exists (ignore errors if column is missing)
-  try {
-    await syncedDb.exec('ALTER TABLE collection DROP COLUMN IF EXISTS options')
-  } catch { /* column may not exist */ }
+  // Run down() for each formal migration in reverse order
+  for (const m of [...syncedMigrationList].reverse()) {
+    await m.down(syncedDb)
+  }
   await syncedDb.exec('DROP TABLE IF EXISTS collection')
   await syncedDb.exec('DROP TABLE IF EXISTS block')
 }
-

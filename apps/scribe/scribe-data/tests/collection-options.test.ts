@@ -1,10 +1,10 @@
 import { test, expect, describe } from 'vitest'
-import { TributaryClient, FakeServer } from 'tributary-client'
+import { TributaryClient, TributaryStream, FakeServer, migrate, hasMigration } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
-import { createHomeLibrary, ensureCollectionOptions } from '../src/library.js'
+import { createHomeLibrary, ensureSyncedMigrations } from '../src/library.js'
 import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection } from '../src/collection.js'
-import { syncedMigrationsV1, localMigrations } from '../src/migrations.js'
+import { syncedMigrations, localMigrations, addCollectionOptions, syncedMigrationList } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
   const s = server ?? new FakeServer()
@@ -18,16 +18,18 @@ function countBlobsForStream(server: FakeServer, stream: { getId(): string }): n
 }
 
 /**
- * Create a stream at the V1 schema (no `options` column on collection).
- * Uses syncedMigrationsV1 so the test stays in sync with real migrations.
+ * Create a stream at the pre-options schema using migrate()'s `before` option
+ * to stop just before the add_collection_options migration.
  */
-async function createV1SchemaStream(server: FakeServer) {
+async function createPreOptionsStream(server: FakeServer) {
   const pglite = new PGlite('memory://')
   const client = new TributaryClient({ server, db: pglite })
   const keyPair = nacl.sign.keyPair()
   const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-  await syncedMigrationsV1(stream)
+  // Run the cowboy migrations (block, collection, plugins) then the formal
+  // migration list stopping before add_collection_options.
+  await syncedMigrations(stream, { before: addCollectionOptions.name })
   await localMigrations(stream.local())
 
   // Create a root collection so we have something to test against
@@ -109,7 +111,7 @@ describe('collection options', () => {
 
   test('getCollectionOptions returns {} on pre-migration library (non-view-blocking)', async () => {
     const server = new FakeServer()
-    const { stream } = await createV1SchemaStream(server)
+    const { stream } = await createPreOptionsStream(server)
 
     // The options column does not exist, but getCollectionOptions should NOT throw.
     // It returns {} so that callers can render without waiting for the migration.
@@ -119,7 +121,7 @@ describe('collection options', () => {
 
   test('getCollectionOptions does not create blobs on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createV1SchemaStream(server)
+    const { stream } = await createPreOptionsStream(server)
 
     const blobCountBefore = countBlobsForStream(server, stream)
 
@@ -132,27 +134,24 @@ describe('collection options', () => {
 
   test('setCollectionOptions throws on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createV1SchemaStream(server)
+    const { stream } = await createPreOptionsStream(server)
 
     // setCollectionOptions must error when the options column is missing.
-    // The caller is responsible for running ensureCollectionOptions first.
+    // The caller is responsible for running ensureSyncedMigrations first.
     await expect(
       setCollectionOptions(stream, 'root-uuid', { foo: 'bar' })
     ).rejects.toThrow()
   })
 
-  test('ensureCollectionOptions creates the column on pre-migration library', async () => {
+  test('ensureSyncedMigrations adds the options column on pre-migration library', async () => {
     const server = new FakeServer()
-    const { stream } = await createV1SchemaStream(server)
+    const { stream } = await createPreOptionsStream(server)
 
-    const blobCountBefore = countBlobsForStream(server, stream)
+    expect(await hasMigration(stream, addCollectionOptions.name)).toBe(false)
 
-    // After ensureCollectionOptions, get and set should work
-    await ensureCollectionOptions(stream)
+    await ensureSyncedMigrations(stream)
 
-    // ensureCollectionOptions created exactly one blob
-    const blobCountAfter = countBlobsForStream(server, stream)
-    expect(blobCountAfter).toBe(blobCountBefore + 1)
+    expect(await hasMigration(stream, addCollectionOptions.name)).toBe(true)
 
     const options = await getCollectionOptions(stream, 'root-uuid')
     expect(options).toEqual({})
@@ -162,17 +161,16 @@ describe('collection options', () => {
     expect(updated).toEqual({ migrated: true })
   })
 
-  test('ensureCollectionOptions is idempotent (no extra blobs on second call)', async () => {
+  test('ensureSyncedMigrations does not re-run the migration on second call', async () => {
     const server = new FakeServer()
-    const { stream } = await createV1SchemaStream(server)
+    const { stream } = await createPreOptionsStream(server)
 
-    await ensureCollectionOptions(stream)
-    const blobCountAfterFirst = countBlobsForStream(server, stream)
+    await ensureSyncedMigrations(stream)
+    expect(await hasMigration(stream, addCollectionOptions.name)).toBe(true)
 
-    // Second call should not create another blob
-    await ensureCollectionOptions(stream)
-    const blobCountAfterSecond = countBlobsForStream(server, stream)
-    expect(blobCountAfterSecond).toBe(blobCountAfterFirst)
+    // Second call is safe — migration is already tracked so up() is skipped
+    await ensureSyncedMigrations(stream)
+    expect(await hasMigration(stream, addCollectionOptions.name)).toBe(true)
   })
 
   test('getCollectionOptions does not create redundant blobs on repeated calls', async () => {

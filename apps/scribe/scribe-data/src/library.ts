@@ -1,7 +1,7 @@
-import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client'
+import { TributaryClient, TributaryStream, TributaryLocal, migrate } from 'tributary-client'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { syncedMigrations, localMigrations, migrateAddPlugins, migrateAddCollectionOptions } from './migrations.js'
+import { syncedMigrations, localMigrations, migrateAddPlugins, syncedMigrationList } from './migrations.js'
 import { createCollection, getLibrary, getLinkedLibraries } from './collection.js'
 import { LinkedLibrary, PluginEntry } from './types.js'
 
@@ -230,21 +230,14 @@ export async function ensurePluginTable(stream: TributaryStream): Promise<void> 
 }
 
 /**
- * Ensure the `options` column exists on the collection synced table.
- * Call this only when sync is complete for the stream — it creates a synced
- * blob if the column is missing, which is safe because no more remote blobs
- * can arrive and interleave.
+ * Run any pending synced migrations for the library.
+ * Call this only when sync is complete for the stream — it may create synced
+ * blobs, which is safe because no more remote blobs can arrive and interleave.
  *
  * @param stream The TributaryStream for the library
  */
-export async function ensureCollectionOptions(stream: TributaryStream): Promise<void> {
-  try {
-    await stream.query('SELECT options FROM collection LIMIT 0', [])
-  } catch {
-    // Column doesn't exist — library predates the options column. Create it now
-    // that sync is complete so the synced blob won't conflict with incoming data.
-    await migrateAddCollectionOptions(stream)
-  }
+export async function ensureSyncedMigrations(stream: TributaryStream): Promise<void> {
+  await migrate(stream, syncedMigrationList)
 }
 
 /**
