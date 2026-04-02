@@ -107,7 +107,7 @@ export class SyncLoop {
   getStatus(): SyncStatusState {
     return {
       perStream: { ...this.latestPerStream },
-      global: this.computeGlobal(),
+      aggregated: this.computeGlobal(),
     }
   }
 
@@ -117,7 +117,7 @@ export class SyncLoop {
     const globalStatus = this.computeGlobal()
     this.config.onStatusChange({
       perStream: { ...this.latestPerStream },
-      global: globalStatus,
+      aggregated: globalStatus,
     })
     return globalStatus.synced
   }
@@ -339,10 +339,11 @@ export class SyncLoop {
       this.hasRunOnce = true
       this.running = false
 
-      // For scheduling purposes, check if all synced streams are actually
-      // idle (not still syncing). The sticky `synced` flag is preserved for
-      // UI purposes, but scheduling should use the live isSyncing state.
-      const allIdle = streamsToSync.every(({ id }) => !this.latestPerStream[id]?.isSyncing)
+      // For scheduling purposes, check if ALL known streams are idle.
+      // Use isSyncing (live state) rather than the sticky synced flag so
+      // the loop speeds up immediately when new data arrives.
+      const allStatuses = Object.values(this.latestPerStream)
+      const allIdle = allStatuses.length === 0 || allStatuses.every(s => !s.isSyncing)
 
       if (this.pendingWakeUp) {
         this.pendingWakeUp = false
@@ -358,7 +359,7 @@ export class SyncLoop {
       // Push error state
       this.config.onStatusChange({
         perStream: { ...this.latestPerStream },
-        global: { ...this.computeGlobal(), isSyncing: false, hasError: true },
+        aggregated: { ...this.computeGlobal(), isSyncing: false, hasError: true },
       })
 
       if (this.pendingWakeUp) {

@@ -44,9 +44,9 @@ export const SyncStatusProvider: React.FC<{
       onStatusChange: (state: SyncStatusState) => {
         setSyncStatus(state.perStream)
         setGlobalSyncStatus(prev => ({
-          ...state.global,
+          ...state.aggregated,
           // Preserve lastSyncedAt from previous state when not complete
-          lastSyncedAt: state.global.synced ? new Date() : prev.lastSyncedAt,
+          lastSyncedAt: state.aggregated.synced ? new Date() : prev.lastSyncedAt,
         }))
       },
     })

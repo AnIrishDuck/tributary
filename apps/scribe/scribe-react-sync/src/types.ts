@@ -15,7 +15,8 @@ export interface SyncStatus {
 
 export interface SyncStatusState {
   perStream: Record<string, SyncStatus>
-  global: SyncStatus
+  /** Aggregated status across all streams. */
+  aggregated: SyncStatus
 }
 
 export const defaultSyncStatus: SyncStatus = {

@@ -334,9 +334,9 @@ describe('SyncLoop', () => {
 
       expect(statuses.length).toBeGreaterThan(0)
       const lastStatus = statuses[statuses.length - 1]
-      expect(lastStatus.global).toBeDefined()
-      expect(typeof lastStatus.global.synced).toBe('boolean')
-      expect(typeof lastStatus.global.currentIndex).toBe('number')
+      expect(lastStatus.aggregated).toBeDefined()
+      expect(typeof lastStatus.aggregated.synced).toBe('boolean')
+      expect(typeof lastStatus.aggregated.currentIndex).toBe('number')
 
       loop.stop()
     })
