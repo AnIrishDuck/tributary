@@ -15,6 +15,24 @@ beforeAll(() => {
   if (!URL.revokeObjectURL) {
     URL.revokeObjectURL = vi.fn()
   }
+
+  // Polyfill canvas for generateThumbnail (jsdom lacks Canvas 2D support)
+  HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement) {
+    return { drawImage: vi.fn() } as any
+  })
+  HTMLCanvasElement.prototype.toBlob = vi.fn(function (
+    this: HTMLCanvasElement,
+    cb: (blob: Blob | null) => void,
+    _type?: string,
+    _quality?: number,
+  ) {
+    const bytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])
+    const blob = new Blob([bytes], { type: 'image/jpeg' })
+    if (!blob.arrayBuffer) {
+      blob.arrayBuffer = () => Promise.resolve(bytes.buffer as ArrayBuffer)
+    }
+    cb(blob)
+  })
 })
 
 /** Build a minimal plan with images at the root (no sub-collections). */

@@ -1,6 +1,7 @@
 import { TributaryStream } from 'tributary-client'
 import * as scribeData from 'scribe-data'
 import type { Note } from 'scribe-data'
+import { generateThumbnail } from '../utils/thumbnail'
 
 export interface SaveImageParams {
   fileData: Uint8Array
@@ -22,6 +23,10 @@ export async function saveImage(
   const blob = stream.blob()
   const blobHash = await blob.upload(params.fileData)
 
+  // Generate and upload thumbnail
+  const thumbData = await generateThumbnail(params.fileData, params.contentType)
+  const thumbBlobHash = await blob.upload(thumbData)
+
   // Create the image block
   const block = await scribeData.createImageBlock(stream, {
     blobHash,
@@ -33,6 +38,7 @@ export async function saveImage(
     height: params.height,
     collectionId: params.collectionId,
     inserter,
+    thumbBlobHash,
   })
 
   // Sync to ensure persistence

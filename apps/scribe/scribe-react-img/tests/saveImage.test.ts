@@ -1,7 +1,57 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
 import { createTestClientWithStream } from './test-utils'
 import { saveImage } from '../src/actions/saveImage'
 import { parseImageBlockBody, getImageBySlug, getLibrary, createCollection, indexAll } from 'scribe-data'
+
+// Polyfill DOM APIs needed by generateThumbnail in jsdom
+beforeAll(() => {
+  if (!URL.createObjectURL) {
+    URL.createObjectURL = vi.fn(() => 'blob:test-url')
+  }
+  if (!URL.revokeObjectURL) {
+    URL.revokeObjectURL = vi.fn()
+  }
+
+  // Mock Image so generateThumbnail can load the blob URL
+  const OriginalImage = globalThis.Image
+  function FakeImage(this: any) {
+    const self = this
+    self.naturalWidth = 200
+    self.naturalHeight = 150
+    self.onload = null as any
+    self.onerror = null as any
+    Object.defineProperty(self, 'src', {
+      set(_value: string) {
+        setTimeout(() => { if (self.onload) self.onload(new Event('load')) }, 0)
+      },
+    })
+  }
+  globalThis.Image = FakeImage as any
+
+  // Mock canvas.toBlob for thumbnail JPEG generation
+  const origCreateElement = document.createElement.bind(document)
+  vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    if (tag === 'canvas') {
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          drawImage: vi.fn(),
+        }),
+        toBlob: (cb: (blob: Blob | null) => void, _type?: string, _quality?: number) => {
+          const bytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])
+          const blob = new Blob([bytes], { type: 'image/jpeg' })
+          // Polyfill arrayBuffer if not available (older jsdom)
+          if (!blob.arrayBuffer) {
+            blob.arrayBuffer = () => Promise.resolve(bytes.buffer as ArrayBuffer)
+          }
+          cb(blob)
+        },
+      } as any
+    }
+    return origCreateElement(tag)
+  })
+})
 
 describe('saveImage', () => {
   beforeEach(() => {
@@ -93,6 +143,27 @@ describe('saveImage', () => {
     // Should NOT be findable at root
     const rootResult = await getImageBySlug(localDb, 'landscape', null)
     expect(rootResult).toBeNull()
+  })
+
+  it('should produce a block whose body includes thumbBlobHash', async () => {
+    const { stream } = await createTestClientWithStream()
+
+    const fileData = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+    const { block } = await saveImage(stream, {
+      fileData,
+      contentType: 'image/png',
+      fileName: 'thumb-test.png',
+      slug: 'thumb-test',
+      width: 800,
+      height: 600,
+    })
+
+    const body = parseImageBlockBody(block)
+    expect(body.thumbBlobHash).toBeDefined()
+    expect(typeof body.thumbBlobHash).toBe('string')
+    expect(body.thumbBlobHash!.length).toBeGreaterThan(0)
+    // thumbBlobHash should differ from blobHash (different data was uploaded)
+    expect(body.thumbBlobHash).not.toBe(body.blobHash)
   })
 
   it('should return a slug path for navigation', async () => {

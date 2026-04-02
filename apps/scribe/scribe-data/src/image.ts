@@ -38,6 +38,7 @@ export async function createImageBlock(
     title?: string
     collectionId?: string | null
     inserter: string
+    thumbBlobHash?: string
   }
 ): Promise<Note> {
   const body: ImageBlockBody = {
@@ -48,6 +49,7 @@ export async function createImageBlock(
     width: data.width,
     height: data.height,
     fileName: data.fileName,
+    thumbBlobHash: data.thumbBlobHash,
   }
 
   return createNote(db, {
@@ -81,6 +83,7 @@ export async function createImageBlocks(
     title?: string
     collectionId?: string | null
     inserter: string
+    thumbBlobHash?: string
   }>
 ): Promise<Note[]> {
   if (items.length === 0) return []
@@ -94,6 +97,7 @@ export async function createImageBlocks(
       width: data.width,
       height: data.height,
       fileName: data.fileName,
+      thumbBlobHash: data.thumbBlobHash,
     }
     return {
       block_type: 'scribe/image' as const,
@@ -126,6 +130,7 @@ export async function updateImageBlock(
     width?: number
     height?: number
     fileName?: string
+    thumbBlobHash?: string
     slug?: string
     collectionId?: string | null
     inserter: string
@@ -146,6 +151,7 @@ export async function updateImageBlock(
     width: updates.width !== undefined ? updates.width : existingBody.width,
     height: updates.height !== undefined ? updates.height : existingBody.height,
     fileName: updates.fileName !== undefined ? updates.fileName : existingBody.fileName,
+    thumbBlobHash: updates.thumbBlobHash !== undefined ? updates.thumbBlobHash : existingBody.thumbBlobHash,
   }
 
   return createNoteVersion(db, blockUuid, {
