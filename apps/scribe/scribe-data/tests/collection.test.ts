@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
-import { up, down } from '../src/migrations.js'
+import { up } from '../src/migrations.js'
 import { createTestDB } from './test-utils.js'
 import {
   createCollection,

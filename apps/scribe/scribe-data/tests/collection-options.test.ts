@@ -1,10 +1,10 @@
 import { test, expect, describe } from 'vitest'
-import { TributaryClient, TributaryStream, FakeServer, migrate, hasMigration } from 'tributary-client'
+import { TributaryClient, FakeServer, hasMigration } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, ensureSyncedMigrations } from '../src/library.js'
 import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection, getCollectionByUuid } from '../src/collection.js'
-import { syncedMigrations, localMigrations, addCollectionOptions, syncedMigrationList } from '../src/migrations.js'
+import { syncedMigrations, localMigrations, addCollectionOptions } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
   const s = server ?? new FakeServer()

@@ -1,7 +1,7 @@
-import { TributaryClient, TributaryStream, TributaryLocal, migrate } from 'tributary-client'
+import { TributaryClient, TributaryStream, TributaryLocal } from 'tributary-client'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
-import { syncedMigrations, localMigrations, migrateAddPlugins, syncedMigrationList } from './migrations.js'
+import { syncedMigrations, localMigrations, migrateAddPlugins } from './migrations.js'
 import { createCollection, getLibrary, getLinkedLibraries } from './collection.js'
 import { LinkedLibrary, PluginEntry } from './types.js'
 
@@ -237,7 +237,7 @@ export async function ensurePluginTable(stream: TributaryStream): Promise<void> 
  * @param stream The TributaryStream for the library
  */
 export async function ensureSyncedMigrations(stream: TributaryStream): Promise<void> {
-  await migrate(stream, syncedMigrationList)
+  await syncedMigrations(stream)
 }
 
 /**
