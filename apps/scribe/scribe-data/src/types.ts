@@ -63,6 +63,12 @@ export interface Note {
 }
 
 /**
+ * JSON options stored on a collection. The shape is intentionally open —
+ * callers store arbitrary configuration here.
+ */
+export type CollectionOptions = Record<string, unknown>
+
+/**
  * Database representation of a collection
  */
 export interface Collection {
@@ -74,6 +80,7 @@ export interface Collection {
   linked_stream_id: string | null
   linked_stream_key: string | null
   slug: string
+  options?: string
 }
 
 /**

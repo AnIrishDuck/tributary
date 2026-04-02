@@ -173,6 +173,12 @@ export interface CollectionTable {
    * URL-friendly slug for this collection, derived from title
    */
   slug: string
+
+  /**
+   * JSON-serialized options for this collection (stored as TEXT).
+   * Added by migrateAddCollectionOptions; may not exist on older libraries.
+   */
+  options?: string
 }
 
 /**

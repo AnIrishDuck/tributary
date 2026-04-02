@@ -230,6 +230,17 @@ export async function ensurePluginTable(stream: TributaryStream): Promise<void> 
 }
 
 /**
+ * Run any pending synced migrations for the library.
+ * Call this only when sync is complete for the stream — it may create synced
+ * blobs, which is safe because no more remote blobs can arrive and interleave.
+ *
+ * @param stream The TributaryStream for the library
+ */
+export async function ensureSyncedMigrations(stream: TributaryStream): Promise<void> {
+  await syncedMigrations(stream)
+}
+
+/**
  * Get all plugin entries for a library, ordered by sort_order.
  *
  * @param stream The TributaryStream for the library
