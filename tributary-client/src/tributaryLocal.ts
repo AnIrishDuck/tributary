@@ -10,6 +10,9 @@ export class TributaryLocal {
   /** Default tracking table used by migrate() / hasMigration(). */
   readonly defaultMigrationsTable = 'local_migrations';
 
+  /** TributaryLocal does not produce blobs. */
+  readonly lastBlobIndex: null = null;
+
   constructor(pglite: PGliteInterface, schemaName: string) {
     this.pglite = pglite;
     this.schemaName = schemaName;

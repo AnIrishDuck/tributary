@@ -154,6 +154,18 @@ describe('Migration system', () => {
       expect(tracked.rows).toHaveLength(1);
       expect(tracked.rows[0].name).toBe('001_create_alpha');
     });
+
+    it('records blob_index as null for local migrations', async () => {
+      await migrate(local, [migrationA, migrationB]);
+
+      const tracked = await local.query(
+        'SELECT name, blob_index FROM local_migrations ORDER BY name',
+      );
+      expect(tracked.rows).toEqual([
+        { name: '001_create_alpha', blob_index: null },
+        { name: '002_create_beta', blob_index: null },
+      ]);
+    });
   });
 
   describe('TributaryStream', () => {
@@ -192,6 +204,21 @@ describe('Migration system', () => {
 
     it('hasMigration works without tracking table', async () => {
       expect(await hasMigration(stream, 'anything')).toBe(false);
+    });
+
+    it('records blob_index for synced migrations', async () => {
+      await migrate(stream, [migrationA, migrationB]);
+
+      const tracked = await stream.query(
+        'SELECT name, blob_index FROM migrations ORDER BY name',
+      );
+      // Each migration's up() produces a blob, so blob_index should be a positive integer
+      for (const row of tracked.rows) {
+        expect(row.blob_index).toBeTypeOf('number');
+        expect(row.blob_index).toBeGreaterThan(0);
+      }
+      // Second migration should have a higher blob_index than the first
+      expect(tracked.rows[1].blob_index).toBeGreaterThan(tracked.rows[0].blob_index);
     });
   });
 });

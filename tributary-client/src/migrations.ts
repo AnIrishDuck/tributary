@@ -13,6 +13,11 @@ export interface MigratableDb {
   exec(sql: string, params?: any[]): Promise<void>;
   /** Default tracking table name for this db type. */
   defaultMigrationsTable: string;
+  /**
+   * The blob index of the last write operation, or null if the db
+   * does not produce blobs (e.g. TributaryLocal).
+   */
+  lastBlobIndex: number | null;
 }
 
 /** A single migration with a unique name and up/down functions. */
@@ -42,7 +47,8 @@ async function ensureTrackingTable(db: MigratableDb, tableName: string): Promise
   await db.exec(
     `CREATE TABLE IF NOT EXISTS "${tableName}" (
       name TEXT PRIMARY KEY,
-      applied_at TEXT NOT NULL
+      applied_at TEXT NOT NULL,
+      blob_index INTEGER
     )`
   );
 }
@@ -103,9 +109,10 @@ export async function migrate(
       if (applied.has(migration.name)) continue;
 
       await migration.up(db);
+      const blobIndex = db.lastBlobIndex;
       await db.exec(
-        `INSERT INTO "${tableName}" (name, applied_at) VALUES ($1, $2)`,
-        [migration.name, new Date().toISOString()],
+        `INSERT INTO "${tableName}" (name, applied_at, blob_index) VALUES ($1, $2, $3)`,
+        [migration.name, new Date().toISOString(), blobIndex],
       );
     }
   }

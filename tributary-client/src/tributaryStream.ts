@@ -76,6 +76,12 @@ export class TributaryStream {
 
   /** Default tracking table used by migrate() / hasMigration(). */
   readonly defaultMigrationsTable = 'migrations';
+
+  /** The blob index of the last write operation, or null before any writes. */
+  get lastBlobIndex(): number | null {
+    return this.sequenceNumber > 0 ? this.sequenceNumber : null;
+  }
+
   private prefetchCache: {
     promise: Promise<{
       blobs: Array<{ sequenceNumber: number; hash: string; data: Uint8Array }>;
