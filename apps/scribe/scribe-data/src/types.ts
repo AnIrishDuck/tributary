@@ -34,6 +34,7 @@ export interface ImageBlockBody {
   width?: number
   height?: number
   fileName?: string
+  thumbBlobHash?: string
 }
 
 /**
