@@ -491,8 +491,8 @@ describe('MoveModal', () => {
       await waitFor(() => {
         expect(screen.getByText('Move Collection')).toBeInTheDocument()
         expect(screen.getByText('/my-collection')).toBeInTheDocument()
-        // Collections use single target path input, prepopulated with ./my-collection
-        expect(screen.getByLabelText('Target path')).toHaveValue('./my-collection')
+        // Collections use single target path input, prepopulated with absolute path
+        expect(screen.getByLabelText('Target path')).toHaveValue('/my-collection')
       })
     })
   })

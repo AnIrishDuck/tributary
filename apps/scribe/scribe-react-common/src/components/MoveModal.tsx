@@ -38,7 +38,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   // For collections: single target path input
   const [collectionPath, setCollectionPath] = useState(currentCollection)
   const [slug, setSlug] = useState(currentSlug)
-  const [targetPath, setTargetPath] = useState(`./${currentSlug}`)
+  const [targetPath, setTargetPath] = useState('/' + currentSlugPath)
 
   // Compute the effective target path from the split inputs
   const effectiveTargetPath = isNonCollection
@@ -56,7 +56,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     if (isOpen) {
       setCollectionPath(currentCollection)
       setSlug(currentSlug)
-      setTargetPath(`./${currentSlug}`)
+      setTargetPath('/' + currentSlugPath)
       setValidation({ status: 'empty' })
       setError(null)
     }
