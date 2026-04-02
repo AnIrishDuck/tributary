@@ -57,6 +57,11 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
       );
     }
     
+    // Handle bulk heads endpoint (before pubkey routing)
+    if (pathParts.includes('heads') && req.method === 'POST') {
+      return handleBulkHeads(req, db);
+    }
+
     // Handle account config endpoints (before pubkey routing)
     if (pathParts.includes('config')) {
       if (req.method === 'GET') {
@@ -275,6 +280,62 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       }
+    );
+  }
+}
+
+// POST /heads
+// Get the latest sequence number for multiple streams in one request
+async function handleBulkHeads(req: Request, db: Database): Promise<Response> {
+  try {
+    const body = await req.json();
+    const { streams } = body;
+
+    if (!Array.isArray(streams)) {
+      return createResponse(
+        JSON.stringify({ error: 'streams must be an array' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    if (streams.length === 0) {
+      return createResponse(
+        JSON.stringify({ latest: {} }),
+        200,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    if (streams.length > 100) {
+      return createResponse(
+        JSON.stringify({ error: 'streams array must not exceed 100 entries' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    if (!streams.every((s: unknown) => typeof s === 'string')) {
+      return createResponse(
+        JSON.stringify({ error: 'all stream entries must be strings' }),
+        400,
+        { 'Content-Type': 'application/json' }
+      );
+    }
+
+    const latest = await db.getLatestBlobsBulk(streams);
+
+    return createResponse(
+      JSON.stringify({ latest }),
+      200,
+      { 'Content-Type': 'application/json' }
+    );
+  } catch (error) {
+    console.error('Error in bulk heads function:', error);
+    return createResponse(
+      JSON.stringify({ error: 'Internal server error' }),
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }

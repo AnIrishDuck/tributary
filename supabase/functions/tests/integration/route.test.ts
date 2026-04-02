@@ -246,6 +246,86 @@ Deno.test('Route testing: Date handling in latest endpoint', async () => {
   }
 });
 
+Deno.test('Route testing: Bulk heads endpoint', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db, fakeAuthenticator);
+
+  // Generate two key pairs and store blobs for each
+  const keyPair1 = nacl.sign.keyPair();
+  const pubkey1 = encodeUrlBase64(keyPair1.publicKey);
+  const keyPair2 = nacl.sign.keyPair();
+  const pubkey2 = encodeUrlBase64(keyPair2.publicKey);
+  // A pubkey with no data
+  const keyPair3 = nacl.sign.keyPair();
+  const pubkey3 = encodeUrlBase64(keyPair3.publicKey);
+
+  // Store 2 blobs for pubkey1
+  let priorHash = '';
+  for (let i = 0; i < 2; i++) {
+    const testData = new TextEncoder().encode(`pk1-blob-${i}`);
+    const chainHash = await computeChainHash(priorHash, testData);
+    const sig = generateTestSignature(new TextEncoder().encode(chainHash), keyPair1);
+    const req = createFakeRequest(createEncodedPath(pubkey1), {
+      method: 'POST',
+      headers: { 'X-Tributary-Hash': chainHash, 'X-Tributary-Authorization': sig },
+      body: testData
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    priorHash = chainHash;
+  }
+
+  // Store 1 blob for pubkey2
+  {
+    const testData = new TextEncoder().encode('pk2-blob-0');
+    const chainHash = await computeChainHash('', testData);
+    const sig = generateTestSignature(new TextEncoder().encode(chainHash), keyPair2);
+    const req = createFakeRequest(createEncodedPath(pubkey2), {
+      method: 'POST',
+      headers: { 'X-Tributary-Hash': chainHash, 'X-Tributary-Authorization': sig },
+      body: testData
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+  }
+
+  // Test bulk heads
+  const headsReq = new Request('http://localhost:54321/functions/v1/stream/heads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ streams: [pubkey1, pubkey2, pubkey3] })
+  });
+  const headsRes = await handler(headsReq);
+  assertEquals(headsRes.status, 200);
+
+  const body = await headsRes.json();
+  assertEquals(body.latest[pubkey1], 2);
+  assertEquals(body.latest[pubkey2], 1);
+  assertEquals(body.latest[pubkey3], undefined);
+
+  // Test empty streams array
+  const emptyReq = new Request('http://localhost:54321/functions/v1/stream/heads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ streams: [] })
+  });
+  const emptyRes = await handler(emptyReq);
+  assertEquals(emptyRes.status, 200);
+  const emptyBody = await emptyRes.json();
+  assertEquals(Object.keys(emptyBody.latest).length, 0);
+
+  // Test invalid input
+  const badReq = new Request('http://localhost:54321/functions/v1/stream/heads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ streams: 'not-an-array' })
+  });
+  const badRes = await handler(badReq);
+  assertEquals(badRes.status, 400);
+
+  console.log('Route testing: Bulk heads endpoint test completed successfully');
+});
+
 Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
   const db = new Database(true);
   const handler = createRouteHandler(db, fakeAuthenticator);

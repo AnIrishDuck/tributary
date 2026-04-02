@@ -107,6 +107,15 @@ export interface Server {
   }>;
 
   /**
+   * Get the latest sequence number for multiple streams in one request
+   * @param streams Array of pubkeys to query
+   * @returns Promise resolving to a map of pubkey -> latest sequence number (only includes streams that have data)
+   */
+  getBulkHeads(
+    streams: string[]
+  ): Promise<Record<string, number>>;
+
+  /**
    * Get all account config entries for the authenticated user
    * @returns Promise resolving to array of {key, value} entries
    */

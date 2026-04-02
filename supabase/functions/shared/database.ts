@@ -366,6 +366,32 @@ export class Database {
     return true;
   }
 
+  // Get the latest sequence_number for multiple pubkeys in a single query
+  async getLatestBlobsBulk(pubkeys: string[]): Promise<Record<string, number>> {
+    if (pubkeys.length === 0) return {};
+
+    // Query max sequence_number per pubkey using individual queries
+    // (Supabase JS client doesn't expose GROUP BY directly)
+    const results: Record<string, number> = {};
+
+    // Use Promise.all for parallel queries, batched per pubkey
+    await Promise.all(pubkeys.map(async (pubkey) => {
+      const { data, error } = await this.client
+        .from('blobs')
+        .select('sequence_number')
+        .eq('pubkey', pubkey)
+        .order('sequence_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        results[pubkey] = data.sequence_number;
+      }
+    }));
+
+    return results;
+  }
+
   // --- Blob Object operations (content-addressed encrypted blobs) ---
 
   async createBlobUpload(upload: Omit<BlobUpload, 'created_at' | 'chunks_uploaded'>): Promise<boolean> {

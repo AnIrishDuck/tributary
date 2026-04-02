@@ -255,6 +255,30 @@ export class TributaryServer implements Server {
     }
   }
 
+  async getBulkHeads(streams: string[]): Promise<Record<string, number>> {
+    const url = `${this.streamUrl}/heads`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ streams })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get bulk heads: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.latest;
+  }
+
   async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
     const url = `${this.streamUrl}/config`;
     const headers: Record<string, string> = {};

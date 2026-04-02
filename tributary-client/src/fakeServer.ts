@@ -182,6 +182,22 @@ export class FakeServer implements Server {
     return latestBlob;
   }
   
+  async getBulkHeads(streams: string[]): Promise<Record<string, number>> {
+    const results: Record<string, number> = {};
+    for (const pubkey of streams) {
+      let latestSequence = -1;
+      for (const blob of this.blobs.values()) {
+        if (blob.pubkey === pubkey && blob.sequenceNumber > latestSequence) {
+          latestSequence = blob.sequenceNumber;
+        }
+      }
+      if (latestSequence >= 0) {
+        results[pubkey] = latestSequence;
+      }
+    }
+    return results;
+  }
+
   async getAllBlobMetadata(
     pubkey: string,
     startSequence?: number,
