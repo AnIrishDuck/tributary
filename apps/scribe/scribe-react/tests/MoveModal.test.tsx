@@ -14,7 +14,7 @@ import * as scribeData from 'scribe-data'
  * "Move Collection".
  */
 function getModalMoveButton(): HTMLElement {
-  const heading = screen.getByText(/^Move (Note|Collection)$/)
+  const heading = screen.getByText(/^Move (Note|Collection|Image)$/)
   // Walk up to the modal container (the overlay root)
   const modal = heading.closest('.fixed')!
   return within(modal as HTMLElement).getByRole('button', { name: 'Move' })
@@ -75,13 +75,16 @@ describe('MoveModal', () => {
       // Click Move button
       fireEvent.click(screen.getByRole('button', { name: /Move/ }))
 
-      // Modal should open with new label and prepopulated value
+      // Modal should open with split inputs prepopulated
       await waitFor(() => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
         expect(screen.getByText('/my-note')).toBeInTheDocument()
-        expect(screen.getByLabelText('Target path')).toBeInTheDocument()
-        // Should be prepopulated with ./my-note
-        expect(screen.getByLabelText('Target path')).toHaveValue('./my-note')
+        expect(screen.getByLabelText('Collection')).toBeInTheDocument()
+        expect(screen.getByLabelText('Slug')).toBeInTheDocument()
+        // Collection defaults to current collection (root = "/")
+        expect(screen.getByLabelText('Collection')).toHaveValue('/')
+        // Slug defaults to current slug
+        expect(screen.getByLabelText('Slug')).toHaveValue('my-note')
       })
     })
 
@@ -111,9 +114,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Type a path whose parent collection doesn't exist
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/nonexistent-collection/test-note' } })
+      // Type a collection path that doesn't exist
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/nonexistent-collection' } })
 
       // Should show invalid path warning about parent
       await waitFor(() => {
@@ -152,9 +155,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Type a path where the parent is a note (not a collection)
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/target-note/source-note' } })
+      // Type a collection path that is actually a note (not a collection)
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/target-note' } })
 
       // Should show "is not a collection" warning
       await waitFor(() => {
@@ -203,9 +206,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Type a full target path (parent collection + entity slug)
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/recipes/my-note' } })
+      // Set collection to /recipes (slug stays as my-note)
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/recipes' } })
 
       // Should show valid status
       await waitFor(() => {
@@ -253,9 +256,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Move to root keeping the slug
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/pasta' } })
+      // Move to root keeping the slug — change collection to /
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/' } })
 
       // Should show valid status for root
       await waitFor(() => {
@@ -292,9 +295,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Type a relative path that goes above the root
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '../../invalid' } })
+      // Type a relative collection path that goes above the root
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '../../invalid' } })
 
       // Should show invalid path warning
       await waitFor(() => {
@@ -342,9 +345,9 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Type the full target path (collection + entity slug)
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/archive/movable-note' } })
+      // Set collection to /archive (slug stays as movable-note)
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/archive' } })
 
       // Wait for validation
       await waitFor(() => {
@@ -405,9 +408,11 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Rename to "pasta" and move to recipes — should collide
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '/recipes/pasta' } })
+      // Move to recipes and rename slug to "pasta" — should collide
+      const collectionInput = screen.getByLabelText('Collection')
+      fireEvent.change(collectionInput, { target: { value: '/recipes' } })
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: 'pasta' } })
 
       // Should show collision warning
       await waitFor(() => {
@@ -486,8 +491,8 @@ describe('MoveModal', () => {
       await waitFor(() => {
         expect(screen.getByText('Move Collection')).toBeInTheDocument()
         expect(screen.getByText('/my-collection')).toBeInTheDocument()
-        // Should be prepopulated with ./my-collection
-        expect(screen.getByLabelText('Target path')).toHaveValue('./my-collection')
+        // Collections use single target path input, prepopulated with absolute path
+        expect(screen.getByLabelText('Target path')).toHaveValue('/my-collection')
       })
     })
   })
@@ -554,11 +559,81 @@ describe('MoveModal', () => {
         expect(screen.getByText('Move Note')).toBeInTheDocument()
       })
 
-      // Clear the prepopulated input
-      const input = screen.getByLabelText('Target path')
-      fireEvent.change(input, { target: { value: '' } })
+      // Clear the slug input
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: '' } })
 
-      // Move button inside modal should be disabled with empty input
+      // Move button inside modal should be disabled with empty slug
+      expect(getModalMoveButton()).toBeDisabled()
+    })
+
+    it('should reject slug with invalid characters', async () => {
+      const { client, stream, prefix } = await createTestClientWithStream()
+      const base64Part = prefix.split('/')[1]
+
+      await saveNote(stream, '# Test\n\nBody.')
+
+      const router = createMemoryRouter(routes, {
+        initialEntries: [`/pk/${base64Part}/test`]
+      })
+
+      render(
+        <WithProviders client={client}>
+          <RouterProvider router={router} />
+        </WithProviders>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText(/Body\./)).toBeInTheDocument()
+      }, { timeout: 5000 })
+
+      // Open modal
+      fireEvent.click(screen.getByRole('button', { name: /Move/ }))
+      await waitFor(() => {
+        expect(screen.getByText('Move Note')).toBeInTheDocument()
+      })
+
+      // Type a slug with a slash
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: 'bad/slug' } })
+
+      await waitFor(() => {
+        expect(screen.getByText(/invalid characters/)).toBeInTheDocument()
+      })
+      expect(getModalMoveButton()).toBeDisabled()
+    })
+
+    it('should reject slug with uppercase letters', async () => {
+      const { client, stream, prefix } = await createTestClientWithStream()
+      const base64Part = prefix.split('/')[1]
+
+      await saveNote(stream, '# Test\n\nBody.')
+
+      const router = createMemoryRouter(routes, {
+        initialEntries: [`/pk/${base64Part}/test`]
+      })
+
+      render(
+        <WithProviders client={client}>
+          <RouterProvider router={router} />
+        </WithProviders>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText(/Body\./)).toBeInTheDocument()
+      }, { timeout: 5000 })
+
+      fireEvent.click(screen.getByRole('button', { name: /Move/ }))
+      await waitFor(() => {
+        expect(screen.getByText('Move Note')).toBeInTheDocument()
+      })
+
+      const slugInput = screen.getByLabelText('Slug')
+      fireEvent.change(slugInput, { target: { value: 'MyNote' } })
+
+      await waitFor(() => {
+        expect(screen.getByText(/invalid characters/)).toBeInTheDocument()
+      })
       expect(getModalMoveButton()).toBeDisabled()
     })
   })
