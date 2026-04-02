@@ -539,6 +539,9 @@ export async function checkMoveCollision(
   return false
 }
 
+/** PostgreSQL error code for "undefined column". */
+const UNDEFINED_COLUMN = '42703'
+
 /**
  * Get the options JSON for a collection. Returns an empty object if the
  * `options` column does not exist yet (library has not been migrated).
@@ -553,23 +556,22 @@ export async function getCollectionOptions(
   db: TributaryStream,
   collectionUuid: string
 ): Promise<CollectionOptions> {
-  // Probe whether the options column exists (read-only, no blob).
-  // Only this check is caught — real query errors propagate normally.
   try {
-    await db.query('SELECT options FROM collection LIMIT 0', [])
-  } catch {
-    // Column doesn't exist — library predates the options migration
-    return {}
+    const result = await db.query(
+      `SELECT options FROM collection WHERE collection_uuid = $1`,
+      [collectionUuid]
+    )
+    if (!result.rows || result.rows.length === 0) {
+      return {}
+    }
+    return JSON.parse((result.rows[0] as any).options)
+  } catch (err: any) {
+    if (err?.code === UNDEFINED_COLUMN) {
+      // Column doesn't exist — library predates the options migration
+      return {}
+    }
+    throw err
   }
-
-  const result = await db.query(
-    `SELECT options FROM collection WHERE collection_uuid = $1`,
-    [collectionUuid]
-  )
-  if (!result.rows || result.rows.length === 0) {
-    return {}
-  }
-  return JSON.parse((result.rows[0] as any).options)
 }
 
 /**
