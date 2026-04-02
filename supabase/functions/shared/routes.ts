@@ -301,7 +301,7 @@ async function handleBulkHeads(req: Request, db: Database): Promise<Response> {
 
     if (streams.length === 0) {
       return createResponse(
-        JSON.stringify({ latest: {} }),
+        JSON.stringify({}),
         200,
         { 'Content-Type': 'application/json' }
       );
@@ -323,10 +323,15 @@ async function handleBulkHeads(req: Request, db: Database): Promise<Response> {
       );
     }
 
-    const latest = await db.getLatestBlobsBulk(streams);
+    const latestMap = await db.getLatestBlobsBulk(streams);
+
+    const result: Record<string, { latest: number }> = {};
+    for (const [pubkey, seq] of Object.entries(latestMap)) {
+      result[pubkey] = { latest: seq };
+    }
 
     return createResponse(
-      JSON.stringify({ latest }),
+      JSON.stringify(result),
       200,
       { 'Content-Type': 'application/json' }
     );

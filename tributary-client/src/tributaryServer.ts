@@ -276,7 +276,11 @@ export class TributaryServer implements Server {
     }
 
     const result = await response.json();
-    return result.latest;
+    const heads: Record<string, number> = {};
+    for (const [pubkey, value] of Object.entries(result)) {
+      heads[pubkey] = (value as { latest: number }).latest;
+    }
+    return heads;
   }
 
   async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {

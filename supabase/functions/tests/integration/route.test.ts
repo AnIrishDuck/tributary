@@ -299,9 +299,9 @@ Deno.test('Route testing: Bulk heads endpoint', async () => {
   assertEquals(headsRes.status, 200);
 
   const body = await headsRes.json();
-  assertEquals(body.latest[pubkey1], 2);
-  assertEquals(body.latest[pubkey2], 1);
-  assertEquals(body.latest[pubkey3], undefined);
+  assertEquals(body[pubkey1].latest, 2);
+  assertEquals(body[pubkey2].latest, 1);
+  assertEquals(body[pubkey3], undefined);
 
   // Test empty streams array
   const emptyReq = new Request('http://localhost:54321/functions/v1/stream/heads', {
@@ -312,7 +312,7 @@ Deno.test('Route testing: Bulk heads endpoint', async () => {
   const emptyRes = await handler(emptyReq);
   assertEquals(emptyRes.status, 200);
   const emptyBody = await emptyRes.json();
-  assertEquals(Object.keys(emptyBody.latest).length, 0);
+  assertEquals(Object.keys(emptyBody).length, 0);
 
   // Test invalid input
   const badReq = new Request('http://localhost:54321/functions/v1/stream/heads', {
