@@ -935,7 +935,7 @@ async function loadNoteContent(
   getAuthoritativeVersionByNoteUuid: (db: any, uuid: string) => Promise<any>,
   getNoteByVersion: (db: any, blockUuid: string, versionUuid: string) => Promise<any>
 ): Promise<{ body: string; version_uuid: string; block_uuid: string }> {
-  const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
+  const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid)
 
   if (!authoritativeVersion) {
     throw new Error('Note version not found')
