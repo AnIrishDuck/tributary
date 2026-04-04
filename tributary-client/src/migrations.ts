@@ -108,6 +108,7 @@ export async function migrate(
     for (const migration of batch) {
       if (applied.has(migration.name)) continue;
 
+      console.info(`[tributary] Running migration "${migration.name}" (table: ${tableName})`);
       await migration.up(db);
       const blobIndex = db.lastBlobIndex;
       await db.exec(
