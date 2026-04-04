@@ -21,6 +21,12 @@ export interface SyncLoopConfig {
    * react to them.
    */
   onStatusChange: (state: SyncStatusState) => void
+  /**
+   * Optional callback to read the current focused library from the caller.
+   * Used by the React wrapper to read a ref that children may have set
+   * before the sync loop starts.
+   */
+  getFocusedLibrary?: () => string | null
 }
 
 /**
@@ -180,7 +186,12 @@ export class SyncLoop {
       if (this.stopped) { this.running = false; return }
 
       // Determine sync focus
-      const focused = this.focusedLibraryId
+      // Read the focused library from the callback if provided (allows the
+      // React wrapper to set focus via a ref before the loop starts), falling
+      // back to the locally stored value.
+      const focused = this.config.getFocusedLibrary
+        ? this.config.getFocusedLibrary()
+        : this.focusedLibraryId
       const syncFocus: SyncFocus = focused
         ? { type: 'library', id: focused }
         : { type: 'home' }

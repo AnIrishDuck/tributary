@@ -34,13 +34,25 @@ export const SyncStatusProvider: React.FC<{
     libraryTitle: null,
   })
   const [focusedLibraryId, setFocusedLibraryState] = useState<string | null>(null)
+  const focusedLibraryRef = useRef<string | null>(null)
   const loopRef = useRef<SyncLoop | null>(null)
+
+  // Keep ref in sync so the async sync loop can read the latest value.
+  // Children may call setFocusedLibrary before the sync loop useEffect runs,
+  // so this ref ensures the first sync iteration sees the correct focus.
+  useEffect(() => {
+    focusedLibraryRef.current = focusedLibraryId
+    if (loopRef.current) {
+      loopRef.current.setFocusedLibrary(focusedLibraryId)
+    }
+  }, [focusedLibraryId])
 
   // Start the sync loop
   useEffect(() => {
     const loop = new SyncLoop({
       client,
       pollInterval,
+      getFocusedLibrary: () => focusedLibraryRef.current,
       onStatusChange: (state: SyncStatusState) => {
         setSyncStatus(state.perStream)
         setGlobalSyncStatus(prev => ({
@@ -69,9 +81,10 @@ export const SyncStatusProvider: React.FC<{
     }
   }, [client, pollInterval])
 
-  // Keep the loop's focused library in sync with React state
   const setFocusedLibrary = useCallback((id: string | null) => {
     setFocusedLibraryState(id)
+    // Update ref immediately so the sync loop sees it on next iteration
+    focusedLibraryRef.current = id
     if (loopRef.current) {
       loopRef.current.setFocusedLibrary(id)
     }
