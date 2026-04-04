@@ -101,6 +101,23 @@ export const addCollectionOptions: Migration = {
   },
 }
 
+/** Add the `archived` column to both block and collection synced tables. */
+export const addArchivedColumn: Migration = {
+  name: '0002_add_archived_column',
+  up: async (db: MigratableDb) => {
+    await db.exec(`
+      ALTER TABLE block ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE
+    `)
+    await db.exec(`
+      ALTER TABLE collection ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE
+    `)
+  },
+  down: async (db: MigratableDb) => {
+    await db.exec(`ALTER TABLE block DROP COLUMN IF EXISTS archived`)
+    await db.exec(`ALTER TABLE collection DROP COLUMN IF EXISTS archived`)
+  },
+}
+
 /**
  * Ordered list of formal synced migrations.
  * New synced migrations should be appended here.
@@ -108,6 +125,7 @@ export const addCollectionOptions: Migration = {
 export const syncedMigrationList: Migration[] = [
   untrackedSyncedMigrations,
   addCollectionOptions,
+  addArchivedColumn,
 ]
 
 // ---------------------------------------------------------------------------
@@ -261,6 +279,10 @@ export async function schemaReady(
     await db.query('SELECT 1 FROM library_plugins LIMIT 0', [])
     await db.query('SELECT 1 FROM authoritative_version LIMIT 0', [])
     await db.query('SELECT 1 FROM slug_collision LIMIT 0', [])
+    // Gate on the archived column so the UI stays in loading state
+    // until the 0002_add_archived_column migration has been applied.
+    await db.query('SELECT archived FROM block LIMIT 0', [])
+    await db.query('SELECT archived FROM collection LIMIT 0', [])
     return true
   } catch {
     return false

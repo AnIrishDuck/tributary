@@ -32,13 +32,13 @@ async function createPreOptionsStream(server: FakeServer) {
   await syncedMigrations(stream, { before: addCollectionOptions.name })
   await localMigrations(stream.local())
 
-  // Create a root collection so we have something to test against
-  await createCollection(stream, {
-    collection_uuid: 'root-uuid',
-    title: 'My Library',
-    inserter: 'user',
-    slug: 'my-library',
-  })
+  // Create a root collection using raw SQL since createCollection()
+  // includes the `archived` column which doesn't exist at this schema version.
+  await stream.exec(
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    ['root-uuid', 'My Library', null, new Date().toISOString(), 'user', null, null, 'my-library']
+  )
 
   return { client, stream }
 }

@@ -25,6 +25,7 @@ export async function createCollection(
     linked_stream_id?: string | null
     linked_stream_key?: string | null
     slug?: string
+    archived?: boolean
   }
 ): Promise<Collection> {
   const now = new Date()
@@ -39,12 +40,13 @@ export async function createCollection(
     inserter: data.inserter,
     linked_stream_id: data.linked_stream_id ?? null,
     linked_stream_key: data.linked_stream_key ?? null,
-    slug
+    slug,
+    archived: data.archived ?? false,
   }
 
   await db.exec(
-    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug, archived)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       newCollection.collection_uuid,
       newCollection.title,
@@ -53,7 +55,8 @@ export async function createCollection(
       newCollection.inserter,
       newCollection.linked_stream_id,
       newCollection.linked_stream_key,
-      newCollection.slug
+      newCollection.slug,
+      newCollection.archived,
     ]
   )
 
@@ -81,6 +84,7 @@ export async function createCollections(
     linked_stream_id?: string | null
     linked_stream_key?: string | null
     slug?: string
+    archived?: boolean
   }>
 ): Promise<Collection[]> {
   if (items.length === 0) return []
@@ -95,27 +99,28 @@ export async function createCollections(
     linked_stream_id: data.linked_stream_id ?? null,
     linked_stream_key: data.linked_stream_key ?? null,
     slug: data.slug !== undefined ? data.slug : titleToSlug(data.title),
+    archived: data.archived ?? false,
   }))
 
-  // Build multi-row INSERT: VALUES ($1,...,$8), ($9,...,$16), ...
-  const cols = 8
+  // Build multi-row INSERT: VALUES ($1,...,$9), ($10,...,$18), ...
+  const cols = 9
   const valueClauses: string[] = []
   const params: any[] = []
   for (let i = 0; i < collections.length; i++) {
     const c = collections[i]
     const base = i * cols
     valueClauses.push(
-      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`
     )
     params.push(
       c.collection_uuid, c.title, c.parent_collection_uuid,
       c.insert_datetime, c.inserter,
-      c.linked_stream_id, c.linked_stream_key, c.slug
+      c.linked_stream_id, c.linked_stream_key, c.slug, c.archived
     )
   }
 
   await db.exec(
-    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug)
+    `INSERT INTO collection (collection_uuid, title, parent_collection_uuid, insert_datetime, inserter, linked_stream_id, linked_stream_key, slug, archived)
      VALUES ${valueClauses.join(', ')}`,
     params
   )
@@ -198,11 +203,13 @@ export async function getLibraryDisplayName(
  * @returns Array of named collection records, sorted by title
  */
 export async function getAllCollections(
-  db: TributaryStream
+  db: TributaryStream,
+  options?: { archived?: boolean }
 ): Promise<Collection[]> {
+  const archived = options?.archived ?? false
   const result = await db.query(
-    `SELECT * FROM collection WHERE parent_collection_uuid IS NOT NULL ORDER BY title`,
-    []
+    `SELECT * FROM collection WHERE parent_collection_uuid IS NOT NULL AND archived = $1 ORDER BY title`,
+    [archived]
   )
 
   return (result.rows || []) as Collection[]
@@ -217,14 +224,16 @@ export async function getAllCollections(
  * @returns Array of collection slug rows
  */
 export async function getAllCollectionsWithSlugs(
-  db: TributaryLocal
+  db: TributaryLocal,
+  options?: { archived?: boolean }
 ): Promise<CollectionSlugRow[]> {
+  const archived = options?.archived ?? false
   const result = await db.query(
-    `SELECT collection_uuid, slug, title, insert_datetime
+    `SELECT collection_uuid, slug, title, insert_datetime, archived
      FROM collection
-     WHERE parent_collection_uuid IS NOT NULL
+     WHERE parent_collection_uuid IS NOT NULL AND archived = $1
      ORDER BY title`,
-    []
+    [archived]
   )
 
   return (result.rows || []) as CollectionSlugRow[]
@@ -287,7 +296,7 @@ export async function getCollectionsBySlug(
 ): Promise<CollectionSlug[]> {
   const result = await db.query(
     `SELECT collection_uuid, slug, title, parent_collection_uuid
-     FROM collection WHERE slug = $1 AND parent_collection_uuid IS NOT NULL`,
+     FROM collection WHERE slug = $1 AND parent_collection_uuid IS NOT NULL AND archived = FALSE`,
     [slug]
   )
 
@@ -303,11 +312,13 @@ export async function getCollectionsBySlug(
  */
 export async function getChildCollections(
   db: TributaryStream | TributaryLocal,
-  parentUuid: string
+  parentUuid: string,
+  options?: { archived?: boolean }
 ): Promise<Collection[]> {
+  const archived = options?.archived ?? false
   const result = await db.query(
-    `SELECT * FROM collection WHERE parent_collection_uuid = $1 ORDER BY title`,
-    [parentUuid]
+    `SELECT * FROM collection WHERE parent_collection_uuid = $1 AND archived = $2 ORDER BY title`,
+    [parentUuid, archived]
   )
 
   return (result.rows || []) as Collection[]
@@ -355,14 +366,17 @@ export async function getCollectionAncestors(
  * @returns Array of linked library records, sorted by title
  */
 export async function getLinkedLibraries(
-  db: TributaryStream
+  db: TributaryStream,
+  options?: { archived?: boolean }
 ): Promise<Collection[]> {
+  const archived = options?.archived ?? false
   const result = await db.query(
     `SELECT * FROM collection
      WHERE parent_collection_uuid IS NOT NULL
        AND linked_stream_id IS NOT NULL
+       AND archived = $1
      ORDER BY title`,
-    []
+    [archived]
   )
 
   return (result.rows || []) as Collection[]
@@ -381,8 +395,10 @@ export async function getLinkedLibraries(
  */
 export async function getNotesInCollection(
   db: TributaryStream,
-  collectionId: string | null
+  collectionId: string | null,
+  options?: { archived?: boolean }
 ): Promise<Note[]> {
+  const archived = options?.archived ?? false
   let resolvedId = collectionId
   if (resolvedId === null) {
     const library = await getLibrary(db)
@@ -400,9 +416,9 @@ export async function getNotesInCollection(
          FROM block
          GROUP BY block_uuid
        ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id IS NULL
+       WHERE b.collection_id IS NULL AND b.archived = $1
        ORDER BY b.insert_datetime DESC`,
-      []
+      [archived]
     )
   } else {
     result = await db.query(
@@ -412,9 +428,9 @@ export async function getNotesInCollection(
          FROM block
          GROUP BY block_uuid
        ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id = $1
+       WHERE b.collection_id = $1 AND b.archived = $2
        ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
+      [resolvedId, archived]
     )
   }
 
@@ -437,7 +453,7 @@ export async function getCollectionBySlugUnderParent(
 ): Promise<CollectionSlug | null> {
   const result = await db.query(
     `SELECT collection_uuid, slug, title, parent_collection_uuid
-     FROM collection WHERE slug = $1 AND parent_collection_uuid = $2`,
+     FROM collection WHERE slug = $1 AND parent_collection_uuid = $2 AND archived = FALSE`,
     [slug, parentUuid]
   )
 

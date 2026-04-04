@@ -45,6 +45,11 @@ export interface NoteTable {
    * URL-friendly slug for this note, derived from title or block_uuid
    */
   slug: string
+
+  /**
+   * Whether this note version is archived
+   */
+  archived: boolean
 }
 
 /**
@@ -179,6 +184,11 @@ export interface CollectionTable {
    * Added by migrateAddCollectionOptions; may not exist on older libraries.
    */
   options?: string
+
+  /**
+   * Whether this collection is archived
+   */
+  archived: boolean
 }
 
 /**

@@ -254,13 +254,13 @@ export async function suggestSlugs(
     : ''
   const suggestions: SlugSuggestion[] = []
 
-  // Query matching collections
+  // Query matching collections (exclude archived)
   if (slugType !== 'note') {
     const likePattern = searchPrefix + '%'
     const collResult = await db.query(
       `SELECT collection_uuid, slug, title, parent_collection_uuid
        FROM collection
-       WHERE parent_collection_uuid = $1 AND slug LIKE $2
+       WHERE parent_collection_uuid = $1 AND slug LIKE $2 AND archived = FALSE
        ORDER BY slug
        LIMIT $3`,
       [parentUuid, likePattern, limit]
@@ -275,7 +275,7 @@ export async function suggestSlugs(
     }
   }
 
-  // Query matching notes
+  // Query matching notes (exclude archived)
   if (slugType !== 'collection') {
     const remaining = limit - suggestions.length
     if (remaining > 0) {
@@ -285,7 +285,7 @@ export async function suggestSlugs(
          FROM block b
          INNER JOIN authoritative_version av
            ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-         WHERE b.collection_id = $1 AND b.slug LIKE $2
+         WHERE b.collection_id = $1 AND b.slug LIKE $2 AND b.archived = FALSE
          ORDER BY b.slug
          LIMIT $3`,
         [parentUuid, likePattern, remaining]
