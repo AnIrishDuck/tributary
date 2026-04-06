@@ -20,6 +20,7 @@ export interface BulkImageEntry {
   width?: number
   height?: number
   folderPath: string
+  lastModified?: number
 }
 
 export interface BulkUploadPlan {

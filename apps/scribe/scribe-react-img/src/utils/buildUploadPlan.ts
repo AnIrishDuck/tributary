@@ -57,6 +57,7 @@ export function buildUploadPlan(
     slug: fileNameToSlug(entry.file.name),
     title: fileNameToTitle(entry.file.name),
     folderPath: entry.folderPath,
+    lastModified: entry.file.lastModified,
   }))
 
   return {

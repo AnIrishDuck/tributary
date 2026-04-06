@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { TributaryStream } from 'tributary-client'
+import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import {
   ensureBulkCollections,
   createImageBlock,
@@ -53,6 +54,23 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
     plan.images.map((_, i) => ({ index: i, status: 'pending' }))
   )
   const [error, setError] = useState<string | null>(null)
+  const [sort, setSort] = useState<SortOptions>({ type: 'modified', order: 'asc' })
+
+  // Compute a sorted order of original indices
+  const sortedIndices = useMemo(() => {
+    const indices = plan.images.map((_, i) => i)
+    indices.sort((a, b) => {
+      const imgA = plan.images[a]
+      const imgB = plan.images[b]
+      if (sort.type === 'alphabetical') {
+        const cmp = imgA.fileName.localeCompare(imgB.fileName)
+        return sort.order === 'asc' ? cmp : -cmp
+      }
+      const cmp = (imgA.lastModified ?? 0) - (imgB.lastModified ?? 0)
+      return sort.order === 'asc' ? cmp : -cmp
+    })
+    return indices
+  }, [plan.images, sort])
 
   const updateStatus = useCallback((index: number, status: ImageStatus, errorMsg?: string) => {
     setStatuses(prev => prev.map(s =>
@@ -68,8 +86,8 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
       // 1. Create sub-collections
       const collectionMap = await ensureBulkCollections(stream, plan, 'web-ui')
 
-      // 2. Upload each image serially
-      for (let i = 0; i < plan.images.length; i++) {
+      // 2. Upload each image serially in sorted order
+      for (const i of sortedIndices) {
         const entry = plan.images[i]
         const file = files.get(i)
         if (!file) {
@@ -115,18 +133,19 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
       setError(err.message || 'Bulk upload failed')
       setPhase('done')
     }
-  }, [stream, plan, files, updateStatus])
+  }, [stream, plan, files, sortedIndices, updateStatus])
 
-  // Group images by collection folder
-  const groupedImages = plan.images.reduce<Map<string, { index: number; slug: string; title?: string; fileName: string }[]>>(
-    (acc, img, i) => {
+  // Group images by collection folder, using sorted order
+  const groupedImages = useMemo(() => {
+    const groups = new Map<string, { index: number; slug: string; title?: string; fileName: string }[]>()
+    for (const i of sortedIndices) {
+      const img = plan.images[i]
       const key = img.folderPath || '(root)'
-      if (!acc.has(key)) acc.set(key, [])
-      acc.get(key)!.push({ index: i, slug: img.slug, title: img.title, fileName: img.fileName })
-      return acc
-    },
-    new Map()
-  )
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push({ index: i, slug: img.slug, title: img.title, fileName: img.fileName })
+    }
+    return groups
+  }, [plan.images, sortedIndices])
 
   const totalImages = plan.images.length
   const totalCollections = plan.collections.length
@@ -152,31 +171,34 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4"
-        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 flex flex-col"
+        style={{ maxHeight: '80vh' }}
       >
         {/* Header */}
         <div
-          className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white rounded-t-2xl"
-          style={{ position: 'sticky', top: 0, zIndex: 10 }}
+          className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white rounded-t-2xl flex-shrink-0 overflow-visible relative z-20"
         >
           <h2 className="text-lg font-bold text-gray-900">
             {phase === 'confirm' ? 'Bulk Upload' : phase === 'uploading' ? 'Uploading...' : 'Upload Complete'}
           </h2>
-          {phase === 'confirm' && (
-            <button
-              onClick={onCancel}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {phase === 'confirm' && (
+              <SortMenu sort={sort} onSortChange={setSort} />
+            )}
+            {phase === 'confirm' && (
+              <button
+                onClick={onCancel}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Summary */}
         <div
-          className="px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm text-gray-600"
-          style={{ position: 'sticky', top: 57, zIndex: 10 }}
+          className="px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm text-gray-600 flex-shrink-0"
         >
           {totalImages} image{totalImages !== 1 ? 's' : ''} in {totalCollections + 1} collection{totalCollections !== 0 ? 's' : ''}
         </div>
@@ -188,7 +210,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
         )}
 
         {/* Image list */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 flex-1" style={{ overflowY: 'auto', minHeight: 0 }}>
           {[...groupedImages.entries()].map(([folder, images]) => (
             <div key={folder} className="mb-4">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -214,8 +236,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 bg-white rounded-b-2xl"
-          style={{ position: 'sticky', bottom: 0, zIndex: 10 }}
+          className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 bg-white rounded-b-2xl flex-shrink-0"
         >
           {phase === 'confirm' && (
             <>
