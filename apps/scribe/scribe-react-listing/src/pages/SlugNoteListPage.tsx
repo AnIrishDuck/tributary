@@ -9,6 +9,7 @@ import type { BulkUploadPlan } from 'scribe-data'
 import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSummary } from 'scribe-react-note/src/drafts/draftStorage'
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
+import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
 import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
@@ -41,6 +42,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const navigate = useNavigate()
   const { setFloatingAction } = useBottomNav()
   const { client } = useTributary()
+  const { requestSync } = useSyncStatus()
   const routeCtx = useRouteContext()
   const isRoot = !collection
 
@@ -90,9 +92,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
     setBulkPlan(null)
     setBulkFiles(new Map())
     setBulkStream(null)
-    // Re-navigate to refresh the listing
-    navigate(0)
-  }, [navigate])
+    // Wake the sync loop so parent re-fetches listing data from local DB
+    requestSync()
+  }, [requestSync])
 
   const handleBulkCancel = useCallback(() => {
     setBulkPlan(null)
