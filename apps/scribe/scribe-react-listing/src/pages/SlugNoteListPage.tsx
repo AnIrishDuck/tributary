@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, PencilIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import { ViewModeToggle, ViewMode } from 'scribe-react-common/src/components/ViewModeToggle'
@@ -13,6 +13,7 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
 import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
 import BulkUploadDialog from 'scribe-react-img/src/components/BulkUploadDialog'
+import { EditCollectionModal } from 'scribe-react-common/src/components/EditCollectionModal'
 import { TributaryStream } from 'tributary-client'
 
 interface NoteListViewProps {
@@ -54,6 +55,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('card')
 
   // Bulk upload state
+  // Edit collection modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+
   const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
   const [bulkFiles, setBulkFiles] = useState<Map<number, File>>(new Map())
   const [bulkStream, setBulkStream] = useState<TributaryStream | null>(null)
@@ -182,6 +186,19 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           onCancel={handleBulkCancel}
         />
       )}
+      {!isRoot && collection && (
+        <EditCollectionModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          collectionUuid={collection.collection_uuid}
+          currentTitle={collection.title}
+          prefix={prefix}
+          onSaved={() => {
+            setShowEditModal(false)
+            navigate(0)
+          }}
+        />
+      )}
       {/* Sticky header group: sync banner + nav header */}
       <div className="sticky top-0 z-40">
       {/* Sync Progress Banner */}
@@ -210,6 +227,15 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 <ArrowLeftIcon className="w-4 h-4" />
               </button>
               <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
+              {!isRoot && collection && (
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  aria-label="Edit collection"
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                >
+                  <PencilIcon className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

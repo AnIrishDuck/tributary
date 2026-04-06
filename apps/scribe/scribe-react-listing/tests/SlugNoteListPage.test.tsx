@@ -260,4 +260,66 @@ describe('SlugNoteListPage', () => {
     expect(screen.getByText('desserts')).toBeInTheDocument()
     expect(screen.getByText('/')).toBeInTheDocument()
   })
+
+  it('should show edit collection button with pencil icon for non-root collections', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    await createIndexedCollection(stream, 'My Recipes', library!.collection_uuid)
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/my-recipes`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText('My Recipes').length).toBeGreaterThanOrEqual(1)
+    }, { timeout: 5000 })
+
+    // Should show the edit collection button
+    const editButton = screen.getByRole('button', { name: 'Edit collection' })
+    expect(editButton).toBeInTheDocument()
+
+    // Clicking it should open the edit modal
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Collection')).toBeInTheDocument()
+    })
+
+    // The modal should have the current title pre-filled
+    const input = screen.getByLabelText('Name')
+    expect(input).toHaveValue('My Recipes')
+  })
+
+  it('should not show edit collection button on root/library view', async () => {
+    const { client, stream, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Notes')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Should NOT show an edit collection button on root view
+    expect(screen.queryByRole('button', { name: 'Edit collection' })).not.toBeInTheDocument()
+  })
 })

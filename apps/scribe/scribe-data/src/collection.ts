@@ -231,6 +231,24 @@ export async function getAllCollectionsWithSlugs(
 }
 
 /**
+ * Rename a collection's title.
+ *
+ * @param db The TributaryStream database instance
+ * @param collectionUuid The UUID of the collection to rename
+ * @param newTitle The new title for the collection
+ */
+export async function renameCollection(
+  db: TributaryStream,
+  collectionUuid: string,
+  newTitle: string
+): Promise<void> {
+  await db.exec(
+    `UPDATE collection SET title = $1 WHERE collection_uuid = $2`,
+    [newTitle, collectionUuid]
+  )
+}
+
+/**
  * Move a collection to a new parent collection, optionally renaming its slug.
  * The collection title is left unchanged.
  *

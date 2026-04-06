@@ -5,6 +5,7 @@ import { createTestDB } from './test-utils.js'
 import {
   createCollection,
   moveCollection,
+  renameCollection,
   getCollectionByUuid,
   getAllCollections,
   getLinkedLibraries,
@@ -1502,6 +1503,55 @@ describe('Collection Operations', () => {
       expect(result.resolvedCollections).toHaveLength(2)
       expect(result.missingSegments).toEqual(['c', 'd', 'e'])
       expect(result.parentUuid).toBe(b.collection_uuid)
+    })
+  })
+
+  describe('Rename Operations', () => {
+    test('renameCollection updates a collection title', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const col = await createCollection(syncedDb, {
+        title: 'Old Title',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await renameCollection(syncedDb, col.collection_uuid, 'New Title')
+
+      const updated = await getCollectionByUuid(syncedDb, col.collection_uuid)
+      expect(updated).toBeDefined()
+      expect(updated!.title).toBe('New Title')
+      // Slug should remain unchanged
+      expect(updated!.slug).toBe('old-title')
+    })
+
+    test('renameCollection does not affect other collections', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const colA = await createCollection(syncedDb, {
+        title: 'Collection A',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const colB = await createCollection(syncedDb, {
+        title: 'Collection B',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      await renameCollection(syncedDb, colA.collection_uuid, 'Renamed A')
+
+      const updatedA = await getCollectionByUuid(syncedDb, colA.collection_uuid)
+      const updatedB = await getCollectionByUuid(syncedDb, colB.collection_uuid)
+      expect(updatedA!.title).toBe('Renamed A')
+      expect(updatedB!.title).toBe('Collection B')
     })
   })
 
