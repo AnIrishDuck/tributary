@@ -171,13 +171,12 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4"
-        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 flex flex-col"
+        style={{ maxHeight: '80vh' }}
       >
         {/* Header */}
         <div
-          className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white rounded-t-2xl"
-          style={{ position: 'sticky', top: 0, zIndex: 10 }}
+          className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white rounded-t-2xl flex-shrink-0"
         >
           <h2 className="text-lg font-bold text-gray-900">
             {phase === 'confirm' ? 'Bulk Upload' : phase === 'uploading' ? 'Uploading...' : 'Upload Complete'}
@@ -199,8 +198,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
 
         {/* Summary */}
         <div
-          className="px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm text-gray-600"
-          style={{ position: 'sticky', top: 57, zIndex: 10 }}
+          className="px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm text-gray-600 flex-shrink-0"
         >
           {totalImages} image{totalImages !== 1 ? 's' : ''} in {totalCollections + 1} collection{totalCollections !== 0 ? 's' : ''}
         </div>
@@ -212,7 +210,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
         )}
 
         {/* Image list */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
           {[...groupedImages.entries()].map(([folder, images]) => (
             <div key={folder} className="mb-4">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -238,8 +236,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 bg-white rounded-b-2xl"
-          style={{ position: 'sticky', bottom: 0, zIndex: 10 }}
+          className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 bg-white rounded-b-2xl flex-shrink-0"
         >
           {phase === 'confirm' && (
             <>
