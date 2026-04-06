@@ -23,6 +23,11 @@ to install all dependencies. Cross-package references use `"*"` versions
 resolved via workspaces. Run `make build-all` to build everything. See
 `make help` for all available targets.
 
+**Always run `make build-all` before assuming an error is pre-existing.** Many
+packages depend on build artifacts from other packages, and missing builds are
+the most common cause of errors. Pre-existing errors are rare — we develop off
+of CI and only merge to main when it is passing.
+
 ## Testing
 
 Run `make test` to run all tests. Components can be tested individually:
