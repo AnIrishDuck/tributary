@@ -17,7 +17,8 @@ import {
   getCollectionBySlugUnderParent,
   getSlugPath,
   getNoteSlugPath,
-  checkMoveCollision
+  checkMoveCollision,
+  getParentChain
 } from '../src/collection.js'
 import { createNote, createNoteVersion, moveNote, getLatestNoteVersion } from '../src/note.js'
 import { getNotesInCollectionWithSlugs, indexAll, getNotesBySlugInCollection } from '../src/indexing.js'
@@ -2012,6 +2013,118 @@ describe('Collection Operations', () => {
         localDb, 'recipes', library.collection_uuid, library.collection_uuid, collection.collection_uuid
       )
       expect(collision).toBe(false)
+    })
+  })
+
+  describe('getParentChain', () => {
+    test('returns single-element array for root collection', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const chain = await getParentChain(syncedDb, library.collection_uuid)
+      expect(chain).toHaveLength(1)
+      expect(chain[0].collection_uuid).toBe(library.collection_uuid)
+    })
+
+    test('returns root-to-leaf order for a two-level chain', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const chain = await getParentChain(syncedDb, child.collection_uuid)
+      expect(chain).toHaveLength(2)
+      expect(chain[0].collection_uuid).toBe(library.collection_uuid)
+      expect(chain[1].collection_uuid).toBe(child.collection_uuid)
+    })
+
+    test('returns full chain for deeply nested collections', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const grandchild = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: child.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const greatGrandchild = await createCollection(syncedDb, {
+        title: 'Pasta',
+        parent_collection_uuid: grandchild.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const chain = await getParentChain(syncedDb, greatGrandchild.collection_uuid)
+      expect(chain).toHaveLength(4)
+      expect(chain[0].collection_uuid).toBe(library.collection_uuid)
+      expect(chain[1].collection_uuid).toBe(child.collection_uuid)
+      expect(chain[2].collection_uuid).toBe(grandchild.collection_uuid)
+      expect(chain[3].collection_uuid).toBe(greatGrandchild.collection_uuid)
+    })
+
+    test('returns empty array for nonexistent collection', async () => {
+      const chain = await getParentChain(syncedDb, 'nonexistent-uuid')
+      expect(chain).toHaveLength(0)
+    })
+
+    test('matches getCollectionAncestors output', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Cooking',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const grandchild = await createCollection(syncedDb, {
+        title: 'Italian',
+        parent_collection_uuid: child.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const chain = await getParentChain(syncedDb, grandchild.collection_uuid)
+      const ancestors = await getCollectionAncestors(syncedDb, grandchild.collection_uuid)
+
+      expect(chain.map(c => c.collection_uuid)).toEqual(
+        ancestors.map(c => c.collection_uuid)
+      )
+    })
+
+    test('works with localDb', async () => {
+      const library = await createCollection(syncedDb, {
+        title: 'My Library',
+        inserter: 'test-user'
+      })
+
+      const child = await createCollection(syncedDb, {
+        title: 'Recipes',
+        parent_collection_uuid: library.collection_uuid,
+        inserter: 'test-user'
+      })
+
+      const chain = await getParentChain(localDb, child.collection_uuid)
+      expect(chain).toHaveLength(2)
+      expect(chain[0].collection_uuid).toBe(library.collection_uuid)
+      expect(chain[1].collection_uuid).toBe(child.collection_uuid)
     })
   })
 })

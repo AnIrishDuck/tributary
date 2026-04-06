@@ -3,7 +3,7 @@ import { TributaryClient, FakeServer, hasMigration } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
 import { createHomeLibrary, ensureSyncedMigrations } from '../src/library.js'
-import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection, getCollectionByUuid } from '../src/collection.js'
+import { getCollectionOptions, setCollectionOptions, getLibrary, createCollection, getCollectionByUuid, mergeParentChainOptions } from '../src/collection.js'
 import { syncedMigrations, localMigrations, addCollectionOptions } from '../src/migrations.js'
 
 function makeClient(server?: FakeServer) {
@@ -199,5 +199,121 @@ describe('collection options', () => {
 
     const blobCountAfterReads = countBlobsForStream(server, stream)
     expect(blobCountAfterReads).toBe(blobCountAfterCreate)
+  })
+})
+
+describe('mergeParentChainOptions', () => {
+  test('returns {} for nonexistent collection', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const merged = await mergeParentChainOptions(stream, 'nonexistent-uuid')
+    expect(merged).toEqual({})
+  })
+
+  test('returns own options when collection has no parent options', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const library = await getLibrary(stream)
+    const child = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'user',
+    })
+
+    await setCollectionOptions(stream, child.collection_uuid, { view: 'grid' })
+
+    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(merged).toEqual({ view: 'grid' })
+  })
+
+  test('inherits options from parent', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const library = await getLibrary(stream)
+    await setCollectionOptions(stream, library!.collection_uuid, { theme: 'dark', fontSize: 14 })
+
+    const child = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'user',
+    })
+
+    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(merged).toEqual({ theme: 'dark', fontSize: 14 })
+  })
+
+  test('child options override parent keys', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const library = await getLibrary(stream)
+    await setCollectionOptions(stream, library!.collection_uuid, { theme: 'dark', fontSize: 14 })
+
+    const child = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'user',
+    })
+    await setCollectionOptions(stream, child.collection_uuid, { theme: 'light' })
+
+    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(merged).toEqual({ theme: 'light', fontSize: 14 })
+  })
+
+  test('merges across three levels', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const library = await getLibrary(stream)
+    await setCollectionOptions(stream, library!.collection_uuid, { a: 1, b: 2, c: 3 })
+
+    const child = await createCollection(stream, {
+      title: 'Cooking',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'user',
+    })
+    await setCollectionOptions(stream, child.collection_uuid, { b: 20, d: 4 })
+
+    const grandchild = await createCollection(stream, {
+      title: 'Italian',
+      parent_collection_uuid: child.collection_uuid,
+      inserter: 'user',
+    })
+    await setCollectionOptions(stream, grandchild.collection_uuid, { c: 30, e: 5 })
+
+    const merged = await mergeParentChainOptions(stream, grandchild.collection_uuid)
+    expect(merged).toEqual({ a: 1, b: 20, c: 30, d: 4, e: 5 })
+  })
+
+  test('returns {} when all collections have empty options', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const { stream } = await createHomeLibrary(client, 'Home', keyPair)
+
+    const library = await getLibrary(stream)
+    const child = await createCollection(stream, {
+      title: 'Recipes',
+      parent_collection_uuid: library!.collection_uuid,
+      inserter: 'user',
+    })
+
+    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(merged).toEqual({})
+  })
+
+  test('returns {} on pre-migration library (non-view-blocking)', async () => {
+    const server = new FakeServer()
+    const { stream } = await createPreOptionsStream(server)
+
+    const merged = await mergeParentChainOptions(stream, 'root-uuid')
+    expect(merged).toEqual({})
   })
 })

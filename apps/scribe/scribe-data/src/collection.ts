@@ -539,6 +539,84 @@ export async function checkMoveCollision(
   return false
 }
 
+/**
+ * Get the full parent chain for a collection using a single recursive CTE query.
+ * Returns an array ordered from root (library) to the given collection, inclusive.
+ *
+ * @param db The TributaryStream or TributaryLocal database instance
+ * @param collectionUuid The UUID of the collection to start from
+ * @returns Array of collections from root (library) to the given collection
+ */
+export async function getParentChain(
+  db: TributaryStream | TributaryLocal,
+  collectionUuid: string
+): Promise<Collection[]> {
+  const result = await db.query(
+    `WITH RECURSIVE chain AS (
+       SELECT *, 0 AS depth FROM collection WHERE collection_uuid = $1
+       UNION ALL
+       SELECT c.*, chain.depth + 1 FROM collection c
+       INNER JOIN chain ON c.collection_uuid = chain.parent_collection_uuid
+     )
+     SELECT * FROM chain ORDER BY depth DESC`,
+    [collectionUuid]
+  )
+
+  if (!result.rows) return []
+
+  // Strip the depth column from results
+  return result.rows.map((row: any) => {
+    const { depth, ...collection } = row
+    return collection as Collection
+  })
+}
+
+/**
+ * Get the merged options for a collection by walking its full parent chain.
+ * Options are merged additively from root to leaf — child keys override
+ * parent keys when present (shallow merge).
+ *
+ * Uses a single SQL query to fetch the entire chain with options.
+ * Returns {} gracefully if the options column does not exist (pre-migration).
+ *
+ * @param db The TributaryStream database instance
+ * @param collectionUuid The UUID of the collection
+ * @returns Merged options object
+ */
+export async function mergeParentChainOptions(
+  db: TributaryStream,
+  collectionUuid: string
+): Promise<CollectionOptions> {
+  try {
+    const result = await db.query(
+      `WITH RECURSIVE chain AS (
+         SELECT collection_uuid, parent_collection_uuid, options, 0 AS depth
+         FROM collection WHERE collection_uuid = $1
+         UNION ALL
+         SELECT c.collection_uuid, c.parent_collection_uuid, c.options, chain.depth + 1
+         FROM collection c
+         INNER JOIN chain ON c.collection_uuid = chain.parent_collection_uuid
+       )
+       SELECT options FROM chain ORDER BY depth DESC`,
+      [collectionUuid]
+    )
+
+    if (!result.rows || result.rows.length === 0) return {}
+
+    let merged: CollectionOptions = {}
+    for (const row of result.rows) {
+      const opts = JSON.parse((row as any).options)
+      merged = { ...merged, ...opts }
+    }
+    return merged
+  } catch (err: any) {
+    if (err?.code === UNDEFINED_COLUMN) {
+      return {}
+    }
+    throw err
+  }
+}
+
 /** PostgreSQL error code for "undefined column". */
 const UNDEFINED_COLUMN = '42703'
 
