@@ -66,7 +66,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
         const cmp = imgA.fileName.localeCompare(imgB.fileName)
         return sort.order === 'asc' ? cmp : -cmp
       }
-      const cmp = imgA.lastModified - imgB.lastModified
+      const cmp = (imgA.lastModified ?? 0) - (imgB.lastModified ?? 0)
       return sort.order === 'asc' ? cmp : -cmp
     })
     return indices
