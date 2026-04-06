@@ -480,6 +480,254 @@ describe('archived behavior', () => {
   })
 
   // -----------------------------------------------------------------------
+  // Transition: unarchived → archived notes
+  // -----------------------------------------------------------------------
+
+  test('archiving a note via createNoteVersion removes it from listings and slug lookups', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta Recipe',
+      inserter: 'user',
+      collection_id: libraryUuid,
+    })
+    await indexAll(localDb)
+
+    // Visible before archiving
+    expect(await getNotesBySlug(localDb, 'pasta-recipe')).toHaveLength(1)
+    expect(await getAllNotesWithTitles(localDb)).toHaveLength(1)
+
+    // Archive via new version
+    await createNoteVersion(syncedDb, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta Recipe',
+      inserter: 'user',
+      archived: true,
+    })
+    await indexAll(localDb)
+
+    // No longer in active listings or slug lookups
+    expect(await getNotesBySlug(localDb, 'pasta-recipe')).toHaveLength(0)
+    expect(await getAllNotesWithTitles(localDb)).toHaveLength(0)
+    expect(await getNotesInCollectionWithSlugs(localDb, libraryUuid)).toHaveLength(0)
+
+    // Shows up in archived listing and UUID lookup
+    expect(await getAllNotesWithTitles(localDb, { archived: true })).toHaveLength(1)
+    const byUuid = await getNoteSlugByUuid(localDb, note.block_uuid)
+    expect(byUuid).not.toBeNull()
+    expect(byUuid!.slug).toBe('pasta-recipe')
+  })
+
+  test('archiving a note removes it from slug collisions', async () => {
+    const note1 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      collection_id: libraryUuid,
+    })
+    const note2 = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      collection_id: libraryUuid,
+    })
+    await indexAll(localDb)
+
+    // Both active — should collide
+    expect((await getCollidingSlugs(localDb, libraryUuid)).has('pasta')).toBe(true)
+
+    // Archive one
+    await createNoteVersion(syncedDb, note2.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      archived: true,
+    })
+    await indexAll(localDb)
+
+    // No more collision
+    expect((await getCollidingSlugs(localDb, libraryUuid)).has('pasta')).toBe(false)
+  })
+
+  test('archiving a note removes it from slug resolution and title index', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      collection_id: libraryUuid,
+    })
+    await indexAll(localDb)
+
+    expect(await resolveSlugPath(localDb, ['pasta'], libraryUuid)).not.toBeNull()
+    expect(await lookupByTitle(localDb, 'Pasta')).toHaveLength(1)
+
+    await createNoteVersion(syncedDb, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      archived: true,
+    })
+    await indexAll(localDb)
+
+    expect(await resolveSlugPath(localDb, ['pasta'], libraryUuid)).toBeNull()
+    expect(await lookupByTitle(localDb, 'Pasta')).toHaveLength(0)
+  })
+
+  test('archiving a note keeps it in search but ranked last', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pancake Recipe\n\nDelicious pancakes.',
+      inserter: 'user',
+      collection_id: libraryUuid,
+    })
+    await indexAll(localDb)
+
+    let results = await searchNotes(localDb, 'pancake')
+    expect(results).toHaveLength(1)
+    expect(results[0].archived).toBe(false)
+
+    await createNoteVersion(syncedDb, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Pancake Recipe\n\nDelicious pancakes.',
+      inserter: 'user',
+      archived: true,
+    })
+    await indexAll(localDb)
+
+    results = await searchNotes(localDb, 'pancake')
+    expect(results).toHaveLength(1)
+    expect(results[0].archived).toBe(true)
+  })
+
+  test('unarchiving a note restores it to listings and slug lookups', async () => {
+    const note = await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      collection_id: libraryUuid,
+      archived: true,
+    })
+    await indexAll(localDb)
+
+    expect(await getAllNotesWithTitles(localDb)).toHaveLength(0)
+    expect(await getNotesBySlug(localDb, 'pasta')).toHaveLength(0)
+
+    // Unarchive
+    await createNoteVersion(syncedDb, note.block_uuid, {
+      block_type: 'scribe/markdown',
+      body: '# Pasta',
+      inserter: 'user',
+      archived: false,
+    })
+    await indexAll(localDb)
+
+    expect(await getAllNotesWithTitles(localDb)).toHaveLength(1)
+    expect(await getNotesBySlug(localDb, 'pasta')).toHaveLength(1)
+    expect(await resolveSlugPath(localDb, ['pasta'], libraryUuid)).not.toBeNull()
+  })
+
+  // -----------------------------------------------------------------------
+  // Transition: unarchived → archived collections
+  // -----------------------------------------------------------------------
+
+  test('archiving a collection via UPDATE removes it from listings and slug lookups', async () => {
+    const coll = await createCollection(syncedDb, {
+      title: 'Recipes',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'user',
+    })
+
+    // Visible before archiving
+    expect(await getAllCollections(syncedDb)).toHaveLength(1)
+    expect(await getCollectionBySlug(localDb, 'recipes')).not.toBeNull()
+    expect(await getChildCollections(syncedDb, libraryUuid)).toHaveLength(1)
+
+    // Archive via UPDATE
+    await syncedDb.exec(
+      `UPDATE collection SET archived = TRUE WHERE collection_uuid = $1`,
+      [coll.collection_uuid]
+    )
+
+    // No longer in active listings or slug lookups
+    expect(await getAllCollections(syncedDb)).toHaveLength(0)
+    expect(await getCollectionBySlug(localDb, 'recipes')).toBeNull()
+    expect(await getCollectionBySlugUnderParent(localDb, 'recipes', libraryUuid)).toBeNull()
+    expect(await getChildCollections(syncedDb, libraryUuid)).toHaveLength(0)
+    expect(await resolveSlugPath(localDb, ['recipes'], libraryUuid)).toBeNull()
+
+    // Shows up in archived listing
+    expect(await getAllCollections(syncedDb, { archived: true })).toHaveLength(1)
+    expect(await getChildCollections(syncedDb, libraryUuid, { archived: true })).toHaveLength(1)
+  })
+
+  test('archiving a collection removes it from title index', async () => {
+    const coll = await createCollection(syncedDb, {
+      title: 'Recipes',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'user',
+    })
+    await indexAll(localDb)
+
+    expect(await lookupByTitle(localDb, 'Recipes')).toHaveLength(1)
+
+    await syncedDb.exec(
+      `UPDATE collection SET archived = TRUE WHERE collection_uuid = $1`,
+      [coll.collection_uuid]
+    )
+    await indexAll(localDb)
+
+    expect(await lookupByTitle(localDb, 'Recipes')).toHaveLength(0)
+  })
+
+  test('archiving a collection removes its slug collision with another collection', async () => {
+    const c1 = await createCollection(syncedDb, {
+      title: 'Recipes',
+      slug: 'recipes',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'user',
+    })
+    await createNote(syncedDb, {
+      block_type: 'scribe/markdown',
+      body: '# Recipes',
+      inserter: 'user',
+      collection_id: libraryUuid,
+      slug: 'recipes',
+    })
+    await indexAll(localDb)
+
+    expect((await getCollidingSlugs(localDb, libraryUuid)).has('recipes')).toBe(true)
+
+    await syncedDb.exec(
+      `UPDATE collection SET archived = TRUE WHERE collection_uuid = $1`,
+      [c1.collection_uuid]
+    )
+    await indexAll(localDb)
+
+    expect((await getCollidingSlugs(localDb, libraryUuid)).has('recipes')).toBe(false)
+  })
+
+  test('unarchiving a collection restores it to listings and slug lookups', async () => {
+    const coll = await createCollection(syncedDb, {
+      title: 'Recipes',
+      parent_collection_uuid: libraryUuid,
+      inserter: 'user',
+      archived: true,
+    })
+
+    expect(await getAllCollections(syncedDb)).toHaveLength(0)
+    expect(await getCollectionBySlug(localDb, 'recipes')).toBeNull()
+
+    // Unarchive
+    await syncedDb.exec(
+      `UPDATE collection SET archived = FALSE WHERE collection_uuid = $1`,
+      [coll.collection_uuid]
+    )
+
+    expect(await getAllCollections(syncedDb)).toHaveLength(1)
+    expect(await getCollectionBySlug(localDb, 'recipes')).not.toBeNull()
+    expect(await resolveSlugPath(localDb, ['recipes'], libraryUuid)).not.toBeNull()
+  })
+
+  // -----------------------------------------------------------------------
   // Migration: existing items default to archived=false
   // -----------------------------------------------------------------------
 

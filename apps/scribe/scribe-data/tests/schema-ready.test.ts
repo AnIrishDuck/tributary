@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
-import { syncedMigrations, localMigrations, schemaReady, migrateAddPlugins } from '../src/migrations'
+import { syncedMigrations, localMigrations, schemaReady, migrateAddPlugins, addArchivedColumn } from '../src/migrations'
 import { ensurePluginTable } from '../src/library'
 
 function makeClient(server?: FakeServer) {
@@ -153,32 +153,15 @@ describe('schemaReady', () => {
     const keyPair = nacl.sign.keyPair()
     const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-    // Create tables without the archived column
-    await stream.exec(`
-      CREATE TABLE IF NOT EXISTS block (
-        block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
-        version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
-        insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
-        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
-      )
-    `)
-    await stream.exec(`
-      CREATE TABLE IF NOT EXISTS collection (
-        collection_uuid TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL,
-        parent_collection_uuid TEXT, insert_datetime TEXT NOT NULL,
-        inserter TEXT NOT NULL, linked_stream_id TEXT,
-        linked_stream_key TEXT, slug TEXT NOT NULL
-      )
-    `)
-    await migrateAddPlugins(stream)
+    // Run synced migrations stopping before the archived column migration
+    await syncedMigrations(stream, { before: addArchivedColumn.name })
     await localMigrations(stream.local())
 
     // Schema not ready because archived column is missing
     expect(await schemaReady(stream)).toBe(false)
 
-    // After adding the archived column, schema is ready
-    await stream.exec(`ALTER TABLE block ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE`)
-    await stream.exec(`ALTER TABLE collection ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE`)
+    // After running the remaining migrations, schema is ready
+    await syncedMigrations(stream)
     expect(await schemaReady(stream)).toBe(true)
   })
 

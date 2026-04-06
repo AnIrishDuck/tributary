@@ -279,8 +279,8 @@ export async function schemaReady(
     await db.query('SELECT 1 FROM library_plugins LIMIT 0', [])
     await db.query('SELECT 1 FROM authoritative_version LIMIT 0', [])
     await db.query('SELECT 1 FROM slug_collision LIMIT 0', [])
-    // Gate on the archived column so the UI stays in loading state
-    // until the 0002_add_archived_column migration has been applied.
+    // Most listing functions now filter on the archived column and would
+    // throw without it, so gate on its existence.
     await db.query('SELECT archived FROM block LIMIT 0', [])
     await db.query('SELECT archived FROM collection LIMIT 0', [])
     return true
