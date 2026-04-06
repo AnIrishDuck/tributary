@@ -17,6 +17,8 @@ export interface ImageDialogProps {
     height: number
   }) => Promise<void>
   onCancel: () => void
+  /** Called when multiple files are selected (e.g. on mobile). */
+  onBulkFiles?: (files: File[]) => void
 }
 
 /** Derive a slug from a filename by stripping the extension and slugifying. */
@@ -50,6 +52,7 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
   ancestors,
   onSave,
   onCancel,
+  onBulkFiles,
 }) => {
   const [file, setFile] = useState<File | null>(null)
   const [slug, setSlug] = useState('')
@@ -194,9 +197,19 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const selected = e.target.files?.[0]
+                const fileList = e.target.files
+                if (!fileList || fileList.length === 0) return
+                if (fileList.length > 1 && onBulkFiles) {
+                  const images = Array.from(fileList).filter(f => f.type.startsWith('image/'))
+                  if (images.length > 1) {
+                    onBulkFiles(images)
+                    return
+                  }
+                }
+                const selected = fileList[0]
                 if (selected) handleFileSelect(selected)
               }}
             />
