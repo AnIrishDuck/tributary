@@ -203,16 +203,17 @@ describe('collection options', () => {
 })
 
 describe('mergeParentChainOptions', () => {
-  test('returns {} for nonexistent collection', async () => {
+  test('returns empty merged and sources for nonexistent collection', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
 
-    const merged = await mergeParentChainOptions(stream, 'nonexistent-uuid')
-    expect(merged).toEqual({})
+    const result = await mergeParentChainOptions(stream, 'nonexistent-uuid')
+    expect(result.merged).toEqual({})
+    expect(result.sources).toEqual({})
   })
 
-  test('returns own options when collection has no parent options', async () => {
+  test('returns own options and sources when collection has no parent options', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
@@ -226,11 +227,12 @@ describe('mergeParentChainOptions', () => {
 
     await setCollectionOptions(stream, child.collection_uuid, { view: 'grid' })
 
-    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
-    expect(merged).toEqual({ view: 'grid' })
+    const result = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(result.merged).toEqual({ view: 'grid' })
+    expect(result.sources).toEqual({ view: child.collection_uuid })
   })
 
-  test('inherits options from parent', async () => {
+  test('inherits options from parent and tracks source', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
@@ -244,11 +246,15 @@ describe('mergeParentChainOptions', () => {
       inserter: 'user',
     })
 
-    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
-    expect(merged).toEqual({ theme: 'dark', fontSize: 14 })
+    const result = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(result.merged).toEqual({ theme: 'dark', fontSize: 14 })
+    expect(result.sources).toEqual({
+      theme: library!.collection_uuid,
+      fontSize: library!.collection_uuid,
+    })
   })
 
-  test('child options override parent keys', async () => {
+  test('child options override parent keys and sources reflect winner', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
@@ -263,11 +269,15 @@ describe('mergeParentChainOptions', () => {
     })
     await setCollectionOptions(stream, child.collection_uuid, { theme: 'light' })
 
-    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
-    expect(merged).toEqual({ theme: 'light', fontSize: 14 })
+    const result = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(result.merged).toEqual({ theme: 'light', fontSize: 14 })
+    expect(result.sources).toEqual({
+      theme: child.collection_uuid,
+      fontSize: library!.collection_uuid,
+    })
   })
 
-  test('merges across three levels', async () => {
+  test('merges across three levels with correct sources', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
@@ -289,11 +299,18 @@ describe('mergeParentChainOptions', () => {
     })
     await setCollectionOptions(stream, grandchild.collection_uuid, { c: 30, e: 5 })
 
-    const merged = await mergeParentChainOptions(stream, grandchild.collection_uuid)
-    expect(merged).toEqual({ a: 1, b: 20, c: 30, d: 4, e: 5 })
+    const result = await mergeParentChainOptions(stream, grandchild.collection_uuid)
+    expect(result.merged).toEqual({ a: 1, b: 20, c: 30, d: 4, e: 5 })
+    expect(result.sources).toEqual({
+      a: library!.collection_uuid,
+      b: child.collection_uuid,
+      c: grandchild.collection_uuid,
+      d: child.collection_uuid,
+      e: grandchild.collection_uuid,
+    })
   })
 
-  test('returns {} when all collections have empty options', async () => {
+  test('returns empty merged and sources when all collections have empty options', async () => {
     const { client } = makeClient()
     const keyPair = nacl.sign.keyPair()
     const { stream } = await createHomeLibrary(client, 'Home', keyPair)
@@ -305,15 +322,17 @@ describe('mergeParentChainOptions', () => {
       inserter: 'user',
     })
 
-    const merged = await mergeParentChainOptions(stream, child.collection_uuid)
-    expect(merged).toEqual({})
+    const result = await mergeParentChainOptions(stream, child.collection_uuid)
+    expect(result.merged).toEqual({})
+    expect(result.sources).toEqual({})
   })
 
-  test('returns {} on pre-migration library (non-view-blocking)', async () => {
+  test('returns empty result on pre-migration library (non-view-blocking)', async () => {
     const server = new FakeServer()
     const { stream } = await createPreOptionsStream(server)
 
-    const merged = await mergeParentChainOptions(stream, 'root-uuid')
-    expect(merged).toEqual({})
+    const result = await mergeParentChainOptions(stream, 'root-uuid')
+    expect(result.merged).toEqual({})
+    expect(result.sources).toEqual({})
   })
 })

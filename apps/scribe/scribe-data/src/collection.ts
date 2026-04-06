@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, Collection, CollectionSlug, CollectionSlugRow, CollectionOptions } from './types'
+import { Note, Collection, CollectionSlug, CollectionSlugRow, CollectionOptions, MergedCollectionOptions } from './types'
 import { titleToSlug, getNotesBySlugInCollection } from './indexing.js'
 
 /**
@@ -577,16 +577,16 @@ export async function getParentChain(
  * parent keys when present (shallow merge).
  *
  * Uses a single SQL query to fetch the entire chain with options.
- * Returns {} gracefully if the options column does not exist (pre-migration).
+ * Returns empty results gracefully if the options column does not exist (pre-migration).
  *
  * @param db The TributaryStream database instance
  * @param collectionUuid The UUID of the collection
- * @returns Merged options object
+ * @returns `merged`: the final options object; `sources`: map of each key to the collection_uuid it came from
  */
 export async function mergeParentChainOptions(
   db: TributaryStream,
   collectionUuid: string
-): Promise<CollectionOptions> {
+): Promise<MergedCollectionOptions> {
   try {
     const result = await db.query(
       `WITH RECURSIVE chain AS (
@@ -597,21 +597,26 @@ export async function mergeParentChainOptions(
          FROM collection c
          INNER JOIN chain ON c.collection_uuid = chain.parent_collection_uuid
        )
-       SELECT options FROM chain ORDER BY depth DESC`,
+       SELECT collection_uuid, options FROM chain ORDER BY depth DESC`,
       [collectionUuid]
     )
 
-    if (!result.rows || result.rows.length === 0) return {}
+    if (!result.rows || result.rows.length === 0) return { merged: {}, sources: {} }
 
     let merged: CollectionOptions = {}
+    const sources: Record<string, string> = {}
     for (const row of result.rows) {
+      const uuid = (row as any).collection_uuid as string
       const opts = JSON.parse((row as any).options)
+      for (const key of Object.keys(opts)) {
+        sources[key] = uuid
+      }
       merged = { ...merged, ...opts }
     }
-    return merged
+    return { merged, sources }
   } catch (err: any) {
     if (err?.code === UNDEFINED_COLUMN) {
-      return {}
+      return { merged: {}, sources: {} }
     }
     throw err
   }
