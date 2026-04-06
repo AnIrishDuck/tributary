@@ -21,13 +21,14 @@ beforeAll(() => {
 function makePlan(imageNames: string[], rootCollectionId: string | null = null): BulkUploadPlan {
   return {
     collections: [],
-    images: imageNames.map((name) => ({
+    images: imageNames.map((name, i) => ({
       blobHash: '',
       contentType: 'image/png',
       fileName: name,
       slug: name.replace(/\.[^.]+$/, '').toLowerCase().replace(/\s+/g, '-'),
       title: name.replace(/\.[^.]+$/, ''),
       folderPath: '',
+      lastModified: (i + 1) * 1000,
     })),
     rootCollectionId,
   }
@@ -42,11 +43,11 @@ function makePlanWithFolders(rootCollectionId: string | null = null): BulkUpload
     images: [
       {
         blobHash: '', contentType: 'image/png', fileName: 'root.png',
-        slug: 'root', title: 'root', folderPath: '',
+        slug: 'root', title: 'root', folderPath: '', lastModified: 1000,
       },
       {
         blobHash: '', contentType: 'image/jpeg', fileName: 'mountain.jpg',
-        slug: 'mountain', title: 'mountain', folderPath: 'landscapes',
+        slug: 'mountain', title: 'mountain', folderPath: 'landscapes', lastModified: 2000,
       },
     ],
     rootCollectionId,
@@ -213,6 +214,44 @@ describe('BulkUploadDialog', () => {
 
     await userEvent.click(screen.getByText('Cancel'))
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows sort menu and reorders images when sort changes', async () => {
+    const plan: BulkUploadPlan = {
+      collections: [],
+      images: [
+        { blobHash: '', contentType: 'image/png', fileName: 'charlie.png', slug: 'charlie', title: 'charlie', folderPath: '', lastModified: 1000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'alpha.png', slug: 'alpha', title: 'alpha', folderPath: '', lastModified: 3000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'bravo.png', slug: 'bravo', title: 'bravo', folderPath: '', lastModified: 2000 },
+      ],
+      rootCollectionId: null,
+    }
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Sort button is present
+    const sortButton = screen.getByRole('button', { name: 'Sort' })
+    expect(sortButton).toBeInTheDocument()
+
+    // Default sort is mtime asc — charlie (1000), bravo (2000), alpha (3000)
+    let items = screen.getAllByText(/\.png$/)
+    expect(items.map(el => el.textContent)).toEqual(['charlie.png', 'bravo.png', 'alpha.png'])
+
+    // Switch to alphabetical sort
+    await userEvent.click(sortButton)
+    await userEvent.click(screen.getByText('Alphabetical'))
+
+    items = screen.getAllByText(/\.png$/)
+    expect(items.map(el => el.textContent)).toEqual(['alpha.png', 'bravo.png', 'charlie.png'])
   })
 
   it('uploads images and transitions through phases to done', async () => {

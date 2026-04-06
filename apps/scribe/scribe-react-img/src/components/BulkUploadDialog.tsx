@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { TributaryStream } from 'tributary-client'
+import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import {
   ensureBulkCollections,
   createImageBlock,
@@ -53,6 +54,23 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
     plan.images.map((_, i) => ({ index: i, status: 'pending' }))
   )
   const [error, setError] = useState<string | null>(null)
+  const [sort, setSort] = useState<SortOptions>({ type: 'modified', order: 'asc' })
+
+  // Compute a sorted order of original indices
+  const sortedIndices = useMemo(() => {
+    const indices = plan.images.map((_, i) => i)
+    indices.sort((a, b) => {
+      const imgA = plan.images[a]
+      const imgB = plan.images[b]
+      if (sort.type === 'alphabetical') {
+        const cmp = imgA.fileName.localeCompare(imgB.fileName)
+        return sort.order === 'asc' ? cmp : -cmp
+      }
+      const cmp = imgA.lastModified - imgB.lastModified
+      return sort.order === 'asc' ? cmp : -cmp
+    })
+    return indices
+  }, [plan.images, sort])
 
   const updateStatus = useCallback((index: number, status: ImageStatus, errorMsg?: string) => {
     setStatuses(prev => prev.map(s =>
@@ -68,8 +86,8 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
       // 1. Create sub-collections
       const collectionMap = await ensureBulkCollections(stream, plan, 'web-ui')
 
-      // 2. Upload each image serially
-      for (let i = 0; i < plan.images.length; i++) {
+      // 2. Upload each image serially in sorted order
+      for (const i of sortedIndices) {
         const entry = plan.images[i]
         const file = files.get(i)
         if (!file) {
@@ -115,18 +133,19 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
       setError(err.message || 'Bulk upload failed')
       setPhase('done')
     }
-  }, [stream, plan, files, updateStatus])
+  }, [stream, plan, files, sortedIndices, updateStatus])
 
-  // Group images by collection folder
-  const groupedImages = plan.images.reduce<Map<string, { index: number; slug: string; title?: string; fileName: string }[]>>(
-    (acc, img, i) => {
+  // Group images by collection folder, using sorted order
+  const groupedImages = useMemo(() => {
+    const groups = new Map<string, { index: number; slug: string; title?: string; fileName: string }[]>()
+    for (const i of sortedIndices) {
+      const img = plan.images[i]
       const key = img.folderPath || '(root)'
-      if (!acc.has(key)) acc.set(key, [])
-      acc.get(key)!.push({ index: i, slug: img.slug, title: img.title, fileName: img.fileName })
-      return acc
-    },
-    new Map()
-  )
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push({ index: i, slug: img.slug, title: img.title, fileName: img.fileName })
+    }
+    return groups
+  }, [plan.images, sortedIndices])
 
   const totalImages = plan.images.length
   const totalCollections = plan.collections.length
@@ -163,14 +182,19 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
           <h2 className="text-lg font-bold text-gray-900">
             {phase === 'confirm' ? 'Bulk Upload' : phase === 'uploading' ? 'Uploading...' : 'Upload Complete'}
           </h2>
-          {phase === 'confirm' && (
-            <button
-              onClick={onCancel}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {phase === 'confirm' && (
+              <SortMenu sort={sort} onSortChange={setSort} />
+            )}
+            {phase === 'confirm' && (
+              <button
+                onClick={onCancel}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Summary */}

@@ -23,27 +23,9 @@ export function buildUploadPlan(
   entries: FolderFileEntry[],
   currentCollectionId: string | null,
 ): BulkUploadPlan {
-  // DEBUG: log file properties to find mtime
-  for (const entry of entries) {
-    const f = entry.file
-    console.log('[buildUploadPlan] file:', f.name, {
-      lastModified: f.lastModified,
-      lastModifiedDate: (f as any).lastModifiedDate,
-      size: f.size,
-      type: f.type,
-      allKeys: Object.keys(f),
-      proto: Object.getOwnPropertyNames(Object.getPrototypeOf(f)),
-    })
-  }
-
-  // Sort entries by file modification time (oldest first)
-  const sorted = [...entries].sort(
-    (a, b) => a.file.lastModified - b.file.lastModified,
-  )
-
   // Extract unique non-empty folder paths, including all intermediate ancestors
   const folderPaths = new Set<string>()
-  for (const entry of sorted) {
+  for (const entry of entries) {
     if (entry.folderPath !== '') {
       const segments = entry.folderPath.split('/')
       for (let i = 1; i <= segments.length; i++) {
@@ -68,13 +50,14 @@ export function buildUploadPlan(
     return { folderPath, title, slug, parentFolderPath }
   })
 
-  const images = sorted.map((entry) => ({
+  const images = entries.map((entry) => ({
     blobHash: '',
     contentType: entry.file.type,
     fileName: entry.file.name,
     slug: fileNameToSlug(entry.file.name),
     title: fileNameToTitle(entry.file.name),
     folderPath: entry.folderPath,
+    lastModified: entry.file.lastModified,
   }))
 
   return {

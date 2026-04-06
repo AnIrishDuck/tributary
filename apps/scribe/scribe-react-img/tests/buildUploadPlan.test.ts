@@ -141,35 +141,33 @@ describe('buildUploadPlan', () => {
     expect(plan.images[1].folderPath).toBe('sub')
   })
 
-  it('sorts images by file mtime oldest first', () => {
+  it('populates lastModified from file entries', () => {
     const entries = [
-      entry('newest.png', '', 'image/png', 3000),
-      entry('oldest.png', '', 'image/png', 1000),
-      entry('middle.png', '', 'image/png', 2000),
+      entry('a.png', '', 'image/png', 1000),
+      entry('b.png', '', 'image/png', 2000),
+      entry('c.png', '', 'image/png', 3000),
     ]
 
     const plan = buildUploadPlan(entries, null)
 
-    expect(plan.images.map((img) => img.fileName)).toEqual([
-      'oldest.png',
-      'middle.png',
-      'newest.png',
-    ])
+    expect(plan.images[0].lastModified).toBe(1000)
+    expect(plan.images[1].lastModified).toBe(2000)
+    expect(plan.images[2].lastModified).toBe(3000)
   })
 
-  it('sorts images by mtime across different folders', () => {
+  it('preserves entry order (no implicit sorting)', () => {
     const entries = [
-      entry('c.png', 'folder-b', 'image/png', 3000),
+      entry('c.png', '', 'image/png', 3000),
       entry('a.png', '', 'image/png', 1000),
-      entry('b.png', 'folder-a', 'image/png', 2000),
+      entry('b.png', '', 'image/png', 2000),
     ]
 
     const plan = buildUploadPlan(entries, null)
 
     expect(plan.images.map((img) => img.fileName)).toEqual([
+      'c.png',
       'a.png',
       'b.png',
-      'c.png',
     ])
   })
 
