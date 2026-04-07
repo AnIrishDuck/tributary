@@ -16,6 +16,40 @@ const Layout: React.FC = () => {
 
   useDocumentTitle()
 
+  // Debug: log drag/drop events at document level to diagnose empty DataTransfer
+  useEffect(() => {
+    let enterCount = 0
+    const onDragEnter = (e: DragEvent) => {
+      enterCount++
+      if (enterCount === 1) {
+        console.log('[doc] dragenter target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.slice(0, 60), 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
+      }
+    }
+    const onDragOver = (e: DragEvent) => {
+      // Don't log every dragover (too noisy), but DO prevent default at
+      // document level as a safety net so the browser accepts the drop.
+      e.preventDefault()
+    }
+    const onDrop = (e: DragEvent) => {
+      enterCount = 0
+      console.log('[doc] drop target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.slice(0, 60), 'files:', e.dataTransfer?.files.length, 'items:', e.dataTransfer?.items.length, 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
+      // Prevent browser from navigating to the dropped file
+      e.preventDefault()
+    }
+    const onDragLeave = () => {
+      enterCount = Math.max(0, enterCount - 1)
+    }
+    document.addEventListener('dragenter', onDragEnter)
+    document.addEventListener('dragover', onDragOver)
+    document.addEventListener('drop', onDrop)
+    document.addEventListener('dragleave', onDragLeave)
+    return () => {
+      document.removeEventListener('dragenter', onDragEnter)
+      document.removeEventListener('dragover', onDragOver)
+      document.removeEventListener('drop', onDrop)
+      document.removeEventListener('dragleave', onDragLeave)
+    }
+  }, [])
 
   const handleLogout = async () => {
     if (!logout || loggingOut) return
