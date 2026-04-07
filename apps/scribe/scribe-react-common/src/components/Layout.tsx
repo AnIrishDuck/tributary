@@ -16,44 +16,6 @@ const Layout: React.FC = () => {
 
   useDocumentTitle()
 
-  // Debug: log drag/drop events at document level to diagnose empty DataTransfer
-  useEffect(() => {
-    let dragOverLogged = false
-    const onDragEnter = (e: DragEvent) => {
-      console.log('[doc] dragenter types:', Array.from(e.dataTransfer?.types || []), 'effectAllowed:', e.dataTransfer?.effectAllowed, 'dropEffect:', e.dataTransfer?.dropEffect)
-    }
-    const onDragOver = (e: DragEvent) => {
-      if (!dragOverLogged) {
-        console.log('[doc] first dragover types:', Array.from(e.dataTransfer?.types || []), 'effectAllowed:', e.dataTransfer?.effectAllowed, 'dropEffect:', e.dataTransfer?.dropEffect)
-        dragOverLogged = true
-      }
-      // Prevent default at document level so the browser accepts the drop.
-      // Setting dropEffect = 'copy' is required by Firefox to populate
-      // dataTransfer.files on the subsequent drop event.
-      e.preventDefault()
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
-    }
-    const onDrop = (e: DragEvent) => {
-      dragOverLogged = false
-      console.log('[doc] drop target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.slice(0, 60), 'files:', e.dataTransfer?.files.length, 'items:', e.dataTransfer?.items.length, 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
-      // Prevent browser from navigating to the dropped file
-      e.preventDefault()
-    }
-    const onDragLeave = () => {
-      dragOverLogged = false
-    }
-    document.addEventListener('dragenter', onDragEnter)
-    document.addEventListener('dragover', onDragOver)
-    document.addEventListener('drop', onDrop)
-    document.addEventListener('dragleave', onDragLeave)
-    return () => {
-      document.removeEventListener('dragenter', onDragEnter)
-      document.removeEventListener('dragover', onDragOver)
-      document.removeEventListener('drop', onDrop)
-      document.removeEventListener('dragleave', onDragLeave)
-    }
-  }, [])
-
   const handleLogout = async () => {
     if (!logout || loggingOut) return
     setMenuOpen(false)

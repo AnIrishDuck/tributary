@@ -72,15 +72,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   const handleBulkDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
-    console.log('[BulkDrop] raw React event:', e)
-    console.log('[BulkDrop] nativeEvent:', e.nativeEvent)
-    console.log('[BulkDrop] dataTransfer:', e.dataTransfer)
-    console.log('[BulkDrop] nativeEvent.dataTransfer:', e.nativeEvent.dataTransfer)
-    console.log('[BulkDrop] files:', e.dataTransfer.files.length, 'items:', e.dataTransfer.items?.length, 'types:', Array.from(e.dataTransfer.types || []), 'dropEffect:', e.dataTransfer.dropEffect, 'effectAllowed:', e.dataTransfer.effectAllowed)
     if (!client || !prefix) return
 
     const entries = await readDroppedItems(e.dataTransfer)
-    console.log('[BulkDrop] readDroppedItems returned', entries.length, 'entries')
     if (entries.length === 0) return
 
     const collectionId = collection?.collection_uuid ?? null
