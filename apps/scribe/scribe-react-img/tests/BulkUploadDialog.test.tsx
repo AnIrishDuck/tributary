@@ -1,39 +1,11 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkUploadDialog from '../src/components/BulkUploadDialog'
 import { createTestClientWithStream } from './test-utils'
 import * as scribeData from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
-
-// jsdom doesn't have URL.createObjectURL
-beforeAll(() => {
-  if (!URL.createObjectURL) {
-    URL.createObjectURL = vi.fn(() => 'blob:test-url')
-  }
-  if (!URL.revokeObjectURL) {
-    URL.revokeObjectURL = vi.fn()
-  }
-
-  // Polyfill canvas for generateThumbnail (jsdom lacks Canvas 2D support)
-  HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement) {
-    return { drawImage: vi.fn() } as any
-  })
-  HTMLCanvasElement.prototype.toBlob = vi.fn(function (
-    this: HTMLCanvasElement,
-    cb: (blob: Blob | null) => void,
-    _type?: string,
-    _quality?: number,
-  ) {
-    const bytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])
-    const blob = new Blob([bytes], { type: 'image/jpeg' })
-    if (!blob.arrayBuffer) {
-      blob.arrayBuffer = () => Promise.resolve(bytes.buffer as ArrayBuffer)
-    }
-    cb(blob)
-  })
-})
 
 /** Build a minimal plan with images at the root (no sub-collections). */
 function makePlan(imageNames: string[], rootCollectionId: string | null = null): BulkUploadPlan {
