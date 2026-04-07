@@ -23,6 +23,8 @@ import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { createNote, createNoteVersion } from '../src/note.js'
 import { createCollection, getCollectionsBySlug } from '../src/collection.js'
+import { createImageBlock } from '../src/image.js'
+import { tryParseThumbBlobHash } from '../src/indexing.js'
 
 describe('scribe-data indexing', () => {
   let syncedDb: TributaryStream
@@ -946,6 +948,113 @@ describe('scribe-data indexing', () => {
       const freeNote = allNotes.find(n => n.title === 'Free Note')
       expect(freeNote).toBeDefined()
       expect(freeNote!.collection_id).toBe(root.collection_uuid)
+    })
+  })
+
+  describe('thumbBlobHash extraction', () => {
+    test('tryParseThumbBlobHash returns hash when present', () => {
+      const body = JSON.stringify({ blobHash: 'abc', contentType: 'image/png', thumbBlobHash: 'thumb123' })
+      expect(tryParseThumbBlobHash(body)).toBe('thumb123')
+    })
+
+    test('tryParseThumbBlobHash returns undefined when missing', () => {
+      const body = JSON.stringify({ blobHash: 'abc', contentType: 'image/png' })
+      expect(tryParseThumbBlobHash(body)).toBeUndefined()
+    })
+
+    test('tryParseThumbBlobHash returns undefined for invalid JSON', () => {
+      expect(tryParseThumbBlobHash('not json')).toBeUndefined()
+    })
+
+    test('tryParseThumbBlobHash returns undefined for markdown blocks', () => {
+      expect(tryParseThumbBlobHash('# Hello World')).toBeUndefined()
+    })
+
+    test('getAllNotesWithTitles returns thumbBlobHash for image blocks', async () => {
+      // Create a root collection
+      const root = await createCollection(syncedDb, {
+        title: 'Library',
+        inserter: 'tester',
+      })
+
+      // Create an image block with thumbBlobHash
+      await createImageBlock(syncedDb, {
+        blobHash: 'blob123',
+        contentType: 'image/jpeg',
+        fileName: 'photo.jpg',
+        slug: 'photo',
+        inserter: 'tester',
+        collectionId: root.collection_uuid,
+        thumbBlobHash: 'thumb456',
+      })
+
+      // Create a markdown note (no thumbBlobHash)
+      await createNote(syncedDb, {
+        block_type: 'scribe/markdown',
+        body: '# My Note\n\nSome text.',
+        inserter: 'tester',
+        collection_id: root.collection_uuid,
+        slug: 'my-note',
+      })
+
+      await indexAll(localDb)
+
+      const notes = await getAllNotesWithTitles(localDb)
+      expect(notes).toHaveLength(2)
+
+      const image = notes.find(n => n.slug === 'photo')
+      expect(image).toBeDefined()
+      expect(image!.thumbBlobHash).toBe('thumb456')
+
+      const markdown = notes.find(n => n.slug === 'my-note')
+      expect(markdown).toBeDefined()
+      expect(markdown!.thumbBlobHash).toBeUndefined()
+    })
+
+    test('getNotesInCollectionWithSlugs returns thumbBlobHash for image blocks', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Library',
+        inserter: 'tester',
+      })
+
+      await createImageBlock(syncedDb, {
+        blobHash: 'blob789',
+        contentType: 'image/png',
+        fileName: 'sunset.png',
+        slug: 'sunset',
+        inserter: 'tester',
+        collectionId: root.collection_uuid,
+        thumbBlobHash: 'thumbABC',
+      })
+
+      await indexAll(localDb)
+
+      const notes = await getNotesInCollectionWithSlugs(localDb, root.collection_uuid)
+      expect(notes).toHaveLength(1)
+      expect(notes[0].thumbBlobHash).toBe('thumbABC')
+    })
+
+    test('getNotesInCollectionWithSlugs returns undefined thumbBlobHash for images without one', async () => {
+      const root = await createCollection(syncedDb, {
+        title: 'Library',
+        inserter: 'tester',
+      })
+
+      await createImageBlock(syncedDb, {
+        blobHash: 'blob000',
+        contentType: 'image/png',
+        fileName: 'old-photo.png',
+        slug: 'old-photo',
+        inserter: 'tester',
+        collectionId: root.collection_uuid,
+        // no thumbBlobHash
+      })
+
+      await indexAll(localDb)
+
+      const notes = await getNotesInCollectionWithSlugs(localDb, root.collection_uuid)
+      expect(notes).toHaveLength(1)
+      expect(notes[0].thumbBlobHash).toBeUndefined()
     })
   })
 })

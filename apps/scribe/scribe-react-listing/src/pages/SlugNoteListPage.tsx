@@ -16,6 +16,7 @@ import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
 import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
 import BulkUploadDialog from 'scribe-react-img/src/components/BulkUploadDialog'
 import { EditCollectionModal } from 'scribe-react-common/src/components/EditCollectionModal'
+import ThumbnailImage from 'scribe-react-img/src/components/ThumbnailImage'
 import { TributaryStream } from 'tributary-client'
 
 interface NoteListViewProps {
@@ -62,6 +63,17 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('card')
+
+  // Stream for thumbnail image loading
+  const [stream, setStream] = useState<TributaryStream | null>(null)
+  useEffect(() => {
+    if (!client || !prefix) return
+    let cancelled = false
+    client.get('scribe', prefix).then((s) => {
+      if (!cancelled && s) setStream(s)
+    })
+    return () => { cancelled = true }
+  }, [client, prefix])
 
   // Bulk upload state
   // Edit collection modal state
@@ -472,15 +484,29 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                             </h3>
                           </div>
                           <div className="flex-shrink-0">
-                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${iconBgClass}`}>
-                              {hasDraft ? (
-                                <PencilSquareIcon className="w-6 h-6 text-amber-600" />
-                              ) : isImage ? (
-                                <PhotoIcon className="w-6 h-6 text-green-600" />
-                              ) : (
-                                <DocumentTextIcon className="w-6 h-6 text-blue-600" />
-                              )}
-                            </div>
+                            {isImage && note.thumbBlobHash ? (
+                              <ThumbnailImage
+                                blobHash={note.thumbBlobHash}
+                                stream={stream}
+                                alt={note.title || 'Image'}
+                                className="h-10 w-10 rounded-lg object-cover"
+                                fallback={
+                                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${iconBgClass}`}>
+                                    <PhotoIcon className="w-6 h-6 text-green-600" />
+                                  </div>
+                                }
+                              />
+                            ) : (
+                              <div className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors ${iconBgClass}`}>
+                                {hasDraft ? (
+                                  <PencilSquareIcon className="w-6 h-6 text-amber-600" />
+                                ) : isImage ? (
+                                  <PhotoIcon className="w-6 h-6 text-green-600" />
+                                ) : (
+                                  <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -559,7 +585,17 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                     to={`${linkPrefix}/${note.slug}${hasDraft ? '&edit' : ''}`}
                     className="group flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                   >
-                    <IconComponent className={`w-5 h-5 ${iconColor} flex-shrink-0`} />
+                    {isImage && note.thumbBlobHash ? (
+                      <ThumbnailImage
+                        blobHash={note.thumbBlobHash}
+                        stream={stream}
+                        alt={note.title || 'Image'}
+                        className="w-5 h-5 rounded object-cover flex-shrink-0"
+                        fallback={<PhotoIcon className="w-5 h-5 text-green-600 flex-shrink-0" />}
+                      />
+                    ) : (
+                      <IconComponent className={`w-5 h-5 ${iconColor} flex-shrink-0`} />
+                    )}
                     <span className={`text-sm font-medium text-gray-900 truncate transition-colors ${hoverColor}`}>
                       {note.title || 'Untitled'}
                     </span>

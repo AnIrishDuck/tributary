@@ -168,6 +168,7 @@ export interface NoteSlugRow {
   insert_datetime: string // ISO string - when the note was last edited
   collection_id: string | null
   block_type: string
+  thumbBlobHash?: string
 }
 
 /**
