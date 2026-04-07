@@ -62,24 +62,21 @@ const NoteListView: React.FC<NoteListViewProps> = ({
 
   const handleBulkDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleBulkDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleBulkDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
-    console.log('[BulkDrop] files:', e.dataTransfer.files.length, 'items:', e.dataTransfer.items?.length, 'types:', Array.from(e.dataTransfer.types || []))
-    for (let i = 0; i < e.dataTransfer.files.length; i++) {
-      const f = e.dataTransfer.files[i]
-      console.log('[BulkDrop] file', i, f.name, f.type, f.size)
-    }
-    for (let i = 0; i < (e.dataTransfer.items?.length || 0); i++) {
-      const item = e.dataTransfer.items[i]
-      console.log('[BulkDrop] item', i, 'kind:', item.kind, 'type:', item.type, 'hasWebkitEntry:', !!item.webkitGetAsEntry)
-    }
-    console.log('[BulkDrop] client:', !!client, 'prefix:', prefix)
+    console.log('[BulkDrop] raw React event:', e)
+    console.log('[BulkDrop] nativeEvent:', e.nativeEvent)
+    console.log('[BulkDrop] dataTransfer:', e.dataTransfer)
+    console.log('[BulkDrop] nativeEvent.dataTransfer:', e.nativeEvent.dataTransfer)
+    console.log('[BulkDrop] files:', e.dataTransfer.files.length, 'items:', e.dataTransfer.items?.length, 'types:', Array.from(e.dataTransfer.types || []), 'dropEffect:', e.dataTransfer.dropEffect, 'effectAllowed:', e.dataTransfer.effectAllowed)
     if (!client || !prefix) return
 
     const entries = await readDroppedItems(e.dataTransfer)

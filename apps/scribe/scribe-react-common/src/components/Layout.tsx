@@ -18,17 +18,20 @@ const Layout: React.FC = () => {
 
   // Debug: log drag/drop events at document level to diagnose empty DataTransfer
   useEffect(() => {
-    let enterCount = 0
+    let dragOverLogged = false
     const onDragEnter = (e: DragEvent) => {
-      enterCount++
-      if (enterCount === 1) {
-        console.log('[doc] dragenter target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.slice(0, 60), 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
-      }
+      console.log('[doc] dragenter types:', Array.from(e.dataTransfer?.types || []), 'effectAllowed:', e.dataTransfer?.effectAllowed, 'dropEffect:', e.dataTransfer?.dropEffect)
     }
     const onDragOver = (e: DragEvent) => {
-      // Don't log every dragover (too noisy), but DO prevent default at
-      // document level as a safety net so the browser accepts the drop.
+      if (!dragOverLogged) {
+        console.log('[doc] first dragover types:', Array.from(e.dataTransfer?.types || []), 'effectAllowed:', e.dataTransfer?.effectAllowed, 'dropEffect:', e.dataTransfer?.dropEffect)
+        dragOverLogged = true
+      }
+      // Prevent default at document level so the browser accepts the drop.
+      // Setting dropEffect = 'copy' is required by Firefox to populate
+      // dataTransfer.files on the subsequent drop event.
       e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     }
     const onDrop = (e: DragEvent) => {
       enterCount = 0
@@ -37,7 +40,7 @@ const Layout: React.FC = () => {
       e.preventDefault()
     }
     const onDragLeave = () => {
-      enterCount = Math.max(0, enterCount - 1)
+      dragOverLogged = false
     }
     document.addEventListener('dragenter', onDragEnter)
     document.addEventListener('dragover', onDragOver)

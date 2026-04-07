@@ -101,10 +101,12 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleSlugChange = (value: string) => {
