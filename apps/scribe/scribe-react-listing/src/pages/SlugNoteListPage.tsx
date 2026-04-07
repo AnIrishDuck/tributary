@@ -234,15 +234,17 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               >
                 <ArrowLeftIcon className="w-4 h-4" />
               </button>
-              <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
-              {editableUuid && (
+              {editableUuid ? (
                 <button
                   onClick={() => setShowEditModal(true)}
                   aria-label="Edit collection"
-                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  className="group/title flex items-center gap-1.5 text-xl font-bold text-gray-900 hover:text-gray-700 transition-colors"
                 >
-                  <PencilIcon className="w-4 h-4" />
+                  {isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}
+                  <PencilIcon className="w-4 h-4 text-gray-400 opacity-0 group-hover/title:opacity-100 transition-opacity" />
                 </button>
+              ) : (
+                <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
               )}
             </div>
 
