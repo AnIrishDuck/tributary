@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkUploadDialog from '../src/components/BulkUploadDialog'
 import { createTestClientWithStream } from './test-utils'
@@ -347,6 +347,270 @@ describe('BulkUploadDialog', () => {
     const landscapeNotes = await scribeData.getNotesInCollectionWithSlugs(localDb, landscapes!.collection_uuid)
     const mountainImage = landscapeNotes.find(n => n.slug === 'mountain')
     expect(mountainImage).toBeDefined()
+
+    restoreImage()
+  })
+
+  it('shows edit button on hover and opens inline editor for image title/slug', async () => {
+    const plan = makePlan(['beach.png'])
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Click the edit button for the image
+    const editButton = screen.getByLabelText('Edit beach.png')
+    await userEvent.click(editButton)
+
+    // Title and slug inputs should now be visible
+    const titleInput = screen.getByTestId('image-title-0')
+    const slugInput = screen.getByTestId('image-slug-0')
+    expect(titleInput).toBeInTheDocument()
+    expect(slugInput).toBeInTheDocument()
+    expect((titleInput as HTMLInputElement).value).toBe('beach')
+    expect((slugInput as HTMLInputElement).value).toBe('beach')
+  })
+
+  it('allows editing image title and auto-derives slug', async () => {
+    const plan = makePlan(['beach.png'])
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByLabelText('Edit beach.png'))
+
+    const titleInput = screen.getByTestId('image-title-0')
+    await userEvent.clear(titleInput)
+    await userEvent.type(titleInput, 'My Great Photo')
+
+    // Slug should auto-derive from title
+    const slugInput = screen.getByTestId('image-slug-0')
+    expect((slugInput as HTMLInputElement).value).toBe('my-great-photo')
+  })
+
+  it('allows editing image slug independently', async () => {
+    const plan = makePlan(['beach.png'])
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByLabelText('Edit beach.png'))
+
+    const slugInput = screen.getByTestId('image-slug-0')
+    await userEvent.clear(slugInput)
+    await userEvent.type(slugInput, 'custom-slug')
+
+    expect((slugInput as HTMLInputElement).value).toBe('custom-slug')
+
+    // Title should remain unchanged
+    const titleInput = screen.getByTestId('image-title-0')
+    expect((titleInput as HTMLInputElement).value).toBe('beach')
+  })
+
+  it('disables Upload button when plan has validation errors', async () => {
+    // Create a plan with duplicate slugs in the same folder
+    const plan: BulkUploadPlan = {
+      collections: [],
+      images: [
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+      ],
+      rootCollectionId: null,
+    }
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    const uploadButton = screen.getByText('Upload')
+    expect(uploadButton).toBeDisabled()
+  })
+
+  it('shows validation error banner when plan has errors', async () => {
+    const plan: BulkUploadPlan = {
+      collections: [],
+      images: [
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+      ],
+      rootCollectionId: null,
+    }
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText(/validation errors/i)).toBeInTheDocument()
+  })
+
+  it('enables Upload button after fixing slug conflicts', async () => {
+    const plan: BulkUploadPlan = {
+      collections: [],
+      images: [
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+      ],
+      rootCollectionId: null,
+    }
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Upload should be disabled initially
+    expect(screen.getByText('Upload')).toBeDisabled()
+
+    // Edit the second image's slug to resolve the conflict
+    await userEvent.click(screen.getByLabelText('Edit b.png'))
+    const slugInput = screen.getByTestId('image-slug-1')
+    await userEvent.clear(slugInput)
+    await userEvent.type(slugInput, 'different')
+
+    // Upload should now be enabled
+    expect(screen.getByText('Upload')).not.toBeDisabled()
+  })
+
+  it('shows inline slug error messages in edit mode', async () => {
+    const plan: BulkUploadPlan = {
+      collections: [],
+      images: [
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+      ],
+      rootCollectionId: null,
+    }
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByLabelText('Edit a.png'))
+    expect(screen.getAllByText(/Duplicate slug/).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('allows editing collection title and slug', async () => {
+    const plan = makePlanWithFolders()
+    const files = makeFiles(plan)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={{} as any}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Click edit on the collection header
+    const editColButton = screen.getByLabelText('Edit collection landscapes')
+    await userEvent.click(editColButton)
+
+    // Collection title and slug inputs should appear
+    const titleInput = screen.getByTestId('collection-title-0')
+    const slugInput = screen.getByTestId('collection-slug-0')
+    expect(titleInput).toBeInTheDocument()
+    expect(slugInput).toBeInTheDocument()
+
+    // Edit the title, slug should auto-derive
+    await userEvent.clear(titleInput)
+    await userEvent.type(titleInput, 'Nature Photos')
+
+    expect((slugInput as HTMLInputElement).value).toBe('nature-photos')
+  })
+
+  it('uploads with edited slug values', async () => {
+    const { stream } = await createTestClientWithStream()
+    const localDb = stream.local()
+    const library = await scribeData.getLibrary(localDb)
+    expect(library).toBeDefined()
+
+    const plan = makePlan(['photo.png'], library!.collection_uuid)
+    const files = makeFiles(plan)
+    const restoreImage = mockImage(100, 50)
+
+    render(
+      <BulkUploadDialog
+        plan={plan}
+        files={files}
+        stream={stream}
+        onComplete={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Edit the slug before uploading
+    await userEvent.click(screen.getByLabelText('Edit photo.png'))
+    const slugInput = screen.getByTestId('image-slug-0')
+    await userEvent.clear(slugInput)
+    await userEvent.type(slugInput, 'custom-name')
+
+    // Close editor and upload
+    await userEvent.click(screen.getByText('Done editing'))
+    await userEvent.click(screen.getByText('Upload'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Upload Complete')).toBeInTheDocument()
+    }, { timeout: 10000 })
+
+    // Verify the image was created with the custom slug
+    await stream.sync(1000)
+    await scribeData.indexAll(localDb)
+    const notes = await scribeData.getNotesInCollectionWithSlugs(localDb, null)
+    const imageNote = notes.find(n => n.slug === 'custom-name')
+    expect(imageNote).toBeDefined()
+    expect(imageNote!.block_type).toBe('scribe/image')
 
     restoreImage()
   })

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildUploadPlan } from '../src/utils/buildUploadPlan'
+import { validateBulkUploadPlan } from 'scribe-data'
 import type { FolderFileEntry } from '../src/utils/readFolderEntries'
 
 function fakeFile(name: string, type: string = 'image/png', lastModified?: number): File {
@@ -188,5 +189,76 @@ describe('buildUploadPlan', () => {
     expect(plan.collections[0].parentFolderPath).toBeNull()
     expect(plan.collections[1].parentFolderPath).toBe('a')
     expect(plan.collections[2].parentFolderPath).toBe('a/b')
+  })
+})
+
+describe('buildUploadPlan validation integration', () => {
+  it('plan from typical folder drop is valid', () => {
+    const entries = [
+      entry('beach.jpg', 'vacation', 'image/jpeg'),
+      entry('sunset.png', 'vacation'),
+      entry('selfie.png', ''),
+    ]
+
+    const plan = buildUploadPlan(entries, 'root-id')
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(true)
+  })
+
+  it('detects duplicate slugs when filenames collide after slugification', () => {
+    // "My Photo.png" and "my-photo.png" produce the same slug "my-photo"
+    const entries = [
+      entry('My Photo.png', ''),
+      entry('my-photo.png', ''),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+    expect(plan.images[0].slug).toBe('my-photo')
+    expect(plan.images[1].slug).toBe('my-photo')
+
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(false)
+    const dupeErrors = result.errors.filter(e => e.message.includes('Duplicate slug'))
+    expect(dupeErrors).toHaveLength(2)
+  })
+
+  it('detects image-collection slug conflict from folder name matching file name', () => {
+    // File "photos.png" at root and folder "photos" at root have the same slug
+    const entries = [
+      entry('photos.png', ''),
+      entry('inner.png', 'photos'),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(false)
+    const conflictErrors = result.errors.filter(e => e.message.includes('conflicts with a collection'))
+    expect(conflictErrors).toHaveLength(1)
+  })
+
+  it('no conflict when same-named file is inside the folder, not alongside it', () => {
+    // File "photos.png" inside "photos" folder — different scope from the collection "photos" at root
+    const entries = [
+      entry('photos.png', 'photos'),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+    const result = validateBulkUploadPlan(plan)
+    // The image is at folderPath "photos", the collection "photos" has parentFolderPath null.
+    // Image scope: "photos", collection parent scope: "". These are different, so no conflict.
+    expect(result.valid).toBe(true)
+  })
+
+  it('special characters in filenames produce valid slugs', () => {
+    const entries = [
+      entry('Hello World!.png', ''),
+      entry("Bob's Photo (2).jpg", '', 'image/jpeg'),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(true)
+    expect(plan.images[0].slug).toBe('hello-world')
+    expect(plan.images[1].slug).toBe('bobs-photo-2')
   })
 })
