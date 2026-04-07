@@ -16,34 +16,6 @@ const Layout: React.FC = () => {
 
   useDocumentTitle()
 
-  // Debug: log all drag/drop events at document level
-  useEffect(() => {
-    let dragEnterLogged = false
-    const onDragEnter = (e: DragEvent) => {
-      if (!dragEnterLogged) {
-        console.log('[Layout document] dragenter', e.target, 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
-        dragEnterLogged = true
-      }
-    }
-    const onDragOver = (e: DragEvent) => {}
-    const onDrop = (e: DragEvent) => {
-      dragEnterLogged = false
-      console.log('[Layout document] drop', e.target, 'files:', e.dataTransfer?.files.length, 'items:', e.dataTransfer?.items.length, 'defaultPrevented:', e.defaultPrevented)
-    }
-    const onDragLeave = (e: DragEvent) => {
-      if (e.target === document.documentElement) dragEnterLogged = false
-    }
-    document.addEventListener('dragenter', onDragEnter)
-    document.addEventListener('dragover', onDragOver)
-    document.addEventListener('drop', onDrop)
-    document.addEventListener('dragleave', onDragLeave)
-    return () => {
-      document.removeEventListener('dragenter', onDragEnter)
-      document.removeEventListener('dragover', onDragOver)
-      document.removeEventListener('drop', onDrop)
-      document.removeEventListener('dragleave', onDragLeave)
-    }
-  }, [])
 
   const handleLogout = async () => {
     if (!logout || loggingOut) return
