@@ -60,6 +60,10 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const [bulkFiles, setBulkFiles] = useState<Map<number, File>>(new Map())
   const [bulkStream, setBulkStream] = useState<TributaryStream | null>(null)
 
+  const handleBulkDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+  }, [])
+
   const handleBulkDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
   }, [])
@@ -177,7 +181,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const totalItems = notes.length + collections.length + newNoteDrafts.length
 
   return (
-    <div className="min-h-screen bg-gray-50" onDragOver={handleBulkDragOver} onDrop={handleBulkDrop}>
+    <div className="min-h-screen bg-gray-50" onDragEnter={handleBulkDragEnter} onDragOver={handleBulkDragOver} onDrop={handleBulkDrop}>
       {bulkPlan && bulkStream && (
         <BulkUploadDialog
           plan={bulkPlan}

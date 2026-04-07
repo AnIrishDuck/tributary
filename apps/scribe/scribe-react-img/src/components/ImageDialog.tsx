@@ -97,6 +97,10 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
     if (droppedFile) handleFileSelect(droppedFile)
   }, [handleFileSelect, onBulkFiles])
 
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+  }, [])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
   }, [])
@@ -189,6 +193,7 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
             <div
               ref={dropZoneRef}
               onDrop={handleDrop}
+              onDragEnter={handleDragEnter}
               onDragOver={handleDragOver}
               onClick={() => fileInputRef.current?.click()}
               className="cursor-pointer"
