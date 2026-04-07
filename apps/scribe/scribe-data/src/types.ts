@@ -69,6 +69,17 @@ export interface Note {
 export type CollectionOptions = Record<string, unknown>
 
 /**
+ * Result of merging options across a collection's parent chain.
+ * `merged` is the final shallow-merged options object.
+ * `sources` maps each key to the collection_uuid it came from
+ * (the deepest collection that set that key wins).
+ */
+export interface MergedCollectionOptions {
+  merged: CollectionOptions
+  sources: Record<string, string>
+}
+
+/**
  * Database representation of a collection
  */
 export interface Collection {
