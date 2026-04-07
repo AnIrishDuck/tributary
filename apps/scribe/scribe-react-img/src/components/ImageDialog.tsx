@@ -82,15 +82,18 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    console.log('[ImageDialog] drop event fired, files:', e.dataTransfer.files.length, 'items:', e.dataTransfer.items.length)
     const files = e.dataTransfer.files
     if (files.length > 1 && onBulkFiles) {
       const images = Array.from(files).filter(f => f.type.startsWith('image/'))
+      console.log('[ImageDialog] multiple files dropped, images:', images.length)
       if (images.length > 1) {
         onBulkFiles(images)
         return
       }
     }
     const droppedFile = files[0]
+    console.log('[ImageDialog] single file:', droppedFile?.name, droppedFile?.type)
     if (droppedFile) handleFileSelect(droppedFile)
   }, [handleFileSelect, onBulkFiles])
 

@@ -16,6 +16,22 @@ const Layout: React.FC = () => {
 
   useDocumentTitle()
 
+  // Debug: log all drag/drop events at document level
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      console.log('[Layout document] dragover', e.target, 'defaultPrevented:', e.defaultPrevented)
+    }
+    const onDrop = (e: DragEvent) => {
+      console.log('[Layout document] drop', e.target, 'files:', e.dataTransfer?.files.length, 'items:', e.dataTransfer?.items.length, 'defaultPrevented:', e.defaultPrevented)
+    }
+    document.addEventListener('dragover', onDragOver)
+    document.addEventListener('drop', onDrop)
+    return () => {
+      document.removeEventListener('dragover', onDragOver)
+      document.removeEventListener('drop', onDrop)
+    }
+  }, [])
+
   const handleLogout = async () => {
     if (!logout || loggingOut) return
     setMenuOpen(false)
