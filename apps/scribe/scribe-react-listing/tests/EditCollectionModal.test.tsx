@@ -79,7 +79,7 @@ describe('EditCollectionModal', () => {
     // Save
     fireEvent.click(getModalSaveButton())
 
-    // Wait for the page to reload (navigate(0))
+    // Modal should close
     await waitFor(() => {
       expect(screen.queryByText('Edit Collection')).not.toBeInTheDocument()
     }, { timeout: 10000 })
@@ -90,6 +90,11 @@ describe('EditCollectionModal', () => {
     expect(updated!.title).toBe('New Name')
     // Slug should be unchanged
     expect(updated!.slug).toBe('old-name')
+
+    // The page title should update via sync (no navigate(0) needed)
+    await waitFor(() => {
+      expect(screen.getByText('New Name')).toBeInTheDocument()
+    }, { timeout: 10000 })
 
     unmount()
   })

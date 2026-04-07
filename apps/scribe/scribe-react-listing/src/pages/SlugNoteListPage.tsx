@@ -10,6 +10,7 @@ import { getDraftSummariesForCollection, getBlockUuidsWithDrafts, type DraftSumm
 import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatusOptional } from 'scribe-react-common/src/context/syncStatusContext'
 import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
 import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
 import BulkUploadDialog from 'scribe-react-img/src/components/BulkUploadDialog'
@@ -44,6 +45,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const { setFloatingAction } = useBottomNav()
   const { client } = useTributary()
   const routeCtx = useRouteContext()
+  const syncCtx = useSyncStatusOptional()
   const isRoot = !collection
 
   // UUID and title for editing — works for both root (library) and sub-collections
@@ -201,7 +203,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           syncing={syncProgress != null && !syncProgress.synced}
           onSaved={() => {
             setShowEditModal(false)
-            navigate(0)
+            syncCtx?.requestSync()
           }}
         />
       )}
