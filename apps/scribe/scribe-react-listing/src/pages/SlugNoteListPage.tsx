@@ -193,6 +193,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           collectionUuid={collection.collection_uuid}
           currentTitle={collection.title}
           prefix={prefix}
+          syncing={syncProgress != null && !syncProgress.synced}
           onSaved={() => {
             setShowEditModal(false)
             navigate(0)

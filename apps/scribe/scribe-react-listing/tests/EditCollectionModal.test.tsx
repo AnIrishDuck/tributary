@@ -3,7 +3,9 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { routes } from '../src/route'
-import { createTestClientWithStream, WithProviders } from './test-utils'
+import { createTestClientWithStream, WithProviders, WithFastSyncProviders } from './test-utils'
+import { EditCollectionModal } from 'scribe-react-common/src/components/EditCollectionModal'
+import { TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import * as scribeData from 'scribe-data'
 
 describe('EditCollectionModal', () => {
@@ -29,6 +31,13 @@ describe('EditCollectionModal', () => {
     return within(modal as HTMLElement).getByRole('button', { name: /Save/ })
   }
 
+  /** Wait for the modal's Save button to become enabled (sync completed) */
+  async function waitForSaveEnabled() {
+    await waitFor(() => {
+      expect(getModalSaveButton()).not.toBeDisabled()
+    }, { timeout: 5000 })
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -45,10 +54,10 @@ describe('EditCollectionModal', () => {
       initialEntries: [`/pk/${base64Part}/old-name`]
     })
 
-    render(
-      <WithProviders client={client}>
+    const { unmount } = render(
+      <WithFastSyncProviders client={client}>
         <RouterProvider router={router} />
-      </WithProviders>
+      </WithFastSyncProviders>
     )
 
     // Wait for collection page to load
@@ -61,6 +70,7 @@ describe('EditCollectionModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Edit Collection')).toBeInTheDocument()
     })
+    await waitForSaveEnabled()
 
     // Change the title
     const input = screen.getByLabelText('Name')
@@ -80,6 +90,8 @@ describe('EditCollectionModal', () => {
     expect(updated!.title).toBe('New Name')
     // Slug should be unchanged
     expect(updated!.slug).toBe('old-name')
+
+    unmount()
   })
 
   it('should display an error when the rename fails', async () => {
@@ -95,9 +107,9 @@ describe('EditCollectionModal', () => {
     })
 
     render(
-      <WithProviders client={client}>
+      <WithFastSyncProviders client={client}>
         <RouterProvider router={router} />
-      </WithProviders>
+      </WithFastSyncProviders>
     )
 
     await waitFor(() => {
@@ -109,6 +121,7 @@ describe('EditCollectionModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Edit Collection')).toBeInTheDocument()
     })
+    await waitForSaveEnabled()
 
     // Sabotage the client so the rename fails
     const origGet = client.get.bind(client)
@@ -144,9 +157,9 @@ describe('EditCollectionModal', () => {
     })
 
     render(
-      <WithProviders client={client}>
+      <WithFastSyncProviders client={client}>
         <RouterProvider router={router} />
-      </WithProviders>
+      </WithFastSyncProviders>
     )
 
     await waitFor(() => {
@@ -158,6 +171,7 @@ describe('EditCollectionModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Edit Collection')).toBeInTheDocument()
     })
+    await waitForSaveEnabled()
 
     // Clear the input
     const input = screen.getByLabelText('Name')
@@ -188,9 +202,9 @@ describe('EditCollectionModal', () => {
     })
 
     render(
-      <WithProviders client={client}>
+      <WithFastSyncProviders client={client}>
         <RouterProvider router={router} />
-      </WithProviders>
+      </WithFastSyncProviders>
     )
 
     await waitFor(() => {
@@ -202,6 +216,7 @@ describe('EditCollectionModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Edit Collection')).toBeInTheDocument()
     })
+    await waitForSaveEnabled()
 
     // Make client.get hang so we can observe the saving state
     let resolveGet: (v: any) => void
@@ -246,9 +261,9 @@ describe('EditCollectionModal', () => {
     })
 
     render(
-      <WithProviders client={client}>
+      <WithFastSyncProviders client={client}>
         <RouterProvider router={router} />
-      </WithProviders>
+      </WithFastSyncProviders>
     )
 
     await waitFor(() => {
@@ -260,6 +275,7 @@ describe('EditCollectionModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Edit Collection')).toBeInTheDocument()
     })
+    await waitForSaveEnabled()
 
     // Change the title but cancel
     const input = screen.getByLabelText('Name')
@@ -274,5 +290,84 @@ describe('EditCollectionModal', () => {
     // Database should still have the original title
     const unchanged = await scribeData.getCollectionByUuid(stream, col.collection_uuid)
     expect(unchanged!.title).toBe('My Collection')
+  })
+
+  it('should disable Save button and show message while library is syncing', async () => {
+    const { client } = await createTestClientWithStream()
+
+    render(
+      <TributaryProvider client={client}>
+        <EditCollectionModal
+          isOpen={true}
+          onClose={() => {}}
+          collectionUuid="test-uuid"
+          currentTitle="My Collection"
+          prefix="scribe/test"
+          syncing={true}
+          onSaved={() => {}}
+        />
+      </TributaryProvider>
+    )
+
+    // Modal should be open with the syncing message
+    expect(screen.getByText('Edit Collection')).toBeInTheDocument()
+    expect(screen.getByText(/syncing/i)).toBeInTheDocument()
+
+    // Save button should be disabled even though the title is non-empty
+    const heading = screen.getByText('Edit Collection')
+    const modal = heading.closest('.fixed')!
+    const saveBtn = within(modal as HTMLElement).getByRole('button', { name: 'Save' })
+    expect(saveBtn).toBeDisabled()
+
+    // Typing a new title should still leave Save disabled
+    const input = screen.getByLabelText('Name')
+    fireEvent.change(input, { target: { value: 'New Title' } })
+    expect(saveBtn).toBeDisabled()
+  })
+
+  it('should enable Save button once syncing completes', async () => {
+    const { client } = await createTestClientWithStream()
+
+    const { rerender } = render(
+      <TributaryProvider client={client}>
+        <EditCollectionModal
+          isOpen={true}
+          onClose={() => {}}
+          collectionUuid="test-uuid"
+          currentTitle="My Collection"
+          prefix="scribe/test"
+          syncing={true}
+          onSaved={() => {}}
+        />
+      </TributaryProvider>
+    )
+
+    // Save should be disabled while syncing
+    const heading = screen.getByText('Edit Collection')
+    const modal = heading.closest('.fixed')!
+    const saveBtn = within(modal as HTMLElement).getByRole('button', { name: 'Save' })
+    expect(saveBtn).toBeDisabled()
+    expect(screen.getByText(/syncing/i)).toBeInTheDocument()
+
+    // Re-render with syncing=false (sync completed)
+    rerender(
+      <TributaryProvider client={client}>
+        <EditCollectionModal
+          isOpen={true}
+          onClose={() => {}}
+          collectionUuid="test-uuid"
+          currentTitle="My Collection"
+          prefix="scribe/test"
+          syncing={false}
+          onSaved={() => {}}
+        />
+      </TributaryProvider>
+    )
+
+    // Syncing message should be gone
+    expect(screen.queryByText(/syncing/i)).not.toBeInTheDocument()
+
+    // Save should now be enabled (title is non-empty)
+    expect(saveBtn).not.toBeDisabled()
   })
 })

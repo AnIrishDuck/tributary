@@ -8,11 +8,13 @@ export interface EditCollectionModalProps {
   collectionUuid: string
   currentTitle: string
   prefix: string
+  /** When true, the library is still syncing and saves are disabled. */
+  syncing?: boolean
   onSaved: (newTitle: string) => void
 }
 
 export const EditCollectionModal: React.FC<EditCollectionModalProps> = ({
-  isOpen, onClose, collectionUuid, currentTitle, prefix, onSaved
+  isOpen, onClose, collectionUuid, currentTitle, prefix, syncing, onSaved
 }) => {
   const [title, setTitle] = useState(currentTitle)
   const [isSaving, setIsSaving] = useState(false)
@@ -60,7 +62,7 @@ export const EditCollectionModal: React.FC<EditCollectionModalProps> = ({
   if (!isOpen) return null
 
   const trimmed = title.trim()
-  const canSave = trimmed.length > 0 && !isSaving
+  const canSave = trimmed.length > 0 && !isSaving && !syncing
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -90,6 +92,12 @@ export const EditCollectionModal: React.FC<EditCollectionModalProps> = ({
             }}
           />
         </div>
+
+        {syncing && (
+          <div className="mb-4 text-blue-700 bg-blue-50 px-3 py-2 rounded-lg text-sm">
+            Library is syncing — editing will be available once sync completes.
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 text-red-700 bg-red-50 px-3 py-2 rounded-lg text-sm">
