@@ -402,6 +402,41 @@ describe('NoteListPage', () => {
     expect(screen.queryByText(/schema could not be loaded/)).toBeNull()
   })
 
+  it('should show edit button on root library view and open edit modal', async () => {
+    const { client, prefix } = await createTestClientWithStream()
+    const base64Part = prefix.split('/')[1]
+
+    const router = createMemoryRouter(routes, {
+      initialEntries: [`/pk/${base64Part}/`]
+    })
+
+    render(
+      <WithProviders client={client}>
+        <RouterProvider router={router} />
+      </WithProviders>
+    )
+
+    // Wait for the root page to load (library name = 'Test Stream')
+    await waitFor(() => {
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
+    }, { timeout: 5000 })
+
+    // Edit collection button should be present on the root view
+    const editButton = screen.getByRole('button', { name: 'Edit collection' })
+    expect(editButton).toBeInTheDocument()
+
+    // Click it to open the modal
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Collection')).toBeInTheDocument()
+    })
+
+    // Modal should have the library name pre-filled
+    const input = screen.getByLabelText('Name')
+    expect(input).toHaveValue('Test Stream')
+  })
+
   it('should show schema error when library is fully synced but schema is missing', async () => {
     const server = new TestFakeServer()
 

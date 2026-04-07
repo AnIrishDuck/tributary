@@ -301,7 +301,7 @@ describe('SlugNoteListPage', () => {
     expect(input).toHaveValue('My Recipes')
   })
 
-  it('should not show edit collection button on root/library view', async () => {
+  it('should show edit collection button on root/library view', async () => {
     const { client, stream, prefix } = await createTestClientWithStream()
     const base64Part = prefix.split('/')[1]
 
@@ -315,11 +315,12 @@ describe('SlugNoteListPage', () => {
       </WithProviders>
     )
 
+    // Wait for the library name to appear (indicates data is loaded)
     await waitFor(() => {
-      expect(screen.getByText('Notes')).toBeInTheDocument()
+      expect(screen.getByText('Test Stream')).toBeInTheDocument()
     }, { timeout: 5000 })
 
-    // Should NOT show an edit collection button on root view
-    expect(screen.queryByRole('button', { name: 'Edit collection' })).not.toBeInTheDocument()
+    // Edit button should be present on root view too
+    expect(screen.getByRole('button', { name: 'Edit collection' })).toBeInTheDocument()
   })
 })

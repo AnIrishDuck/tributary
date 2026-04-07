@@ -24,6 +24,7 @@ interface NoteListViewProps {
 
   // Root view props
   libraryName?: string | null
+  libraryUuid?: string | null
   syncProgress?: { currentIndex: number; finalIndex: number; synced: boolean } | null
 
   // Collection view props
@@ -36,7 +37,7 @@ interface NoteListViewProps {
 
 const NoteListView: React.FC<NoteListViewProps> = ({
   collections, notes, prefix, slugPath,
-  libraryName, syncProgress,
+  libraryName, libraryUuid, syncProgress,
   collection, ancestors, collidingSlugs
 }) => {
   const navigate = useNavigate()
@@ -44,6 +45,10 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const { client } = useTributary()
   const routeCtx = useRouteContext()
   const isRoot = !collection
+
+  // UUID and title for editing — works for both root (library) and sub-collections
+  const editableUuid = isRoot ? (libraryUuid ?? null) : (collection?.collection_uuid ?? null)
+  const editableTitle = isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')
 
   // Sort state
   const [sort, setSort] = useState<SortOptions>({ type: 'modified', order: 'desc' })
@@ -186,12 +191,12 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           onCancel={handleBulkCancel}
         />
       )}
-      {!isRoot && collection && (
+      {editableUuid && (
         <EditCollectionModal
           isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
-          collectionUuid={collection.collection_uuid}
-          currentTitle={collection.title}
+          collectionUuid={editableUuid}
+          currentTitle={editableTitle}
           prefix={prefix}
           syncing={syncProgress != null && !syncProgress.synced}
           onSaved={() => {
@@ -228,7 +233,7 @@ const NoteListView: React.FC<NoteListViewProps> = ({
                 <ArrowLeftIcon className="w-4 h-4" />
               </button>
               <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
-              {!isRoot && collection && (
+              {editableUuid && (
                 <button
                   onClick={() => setShowEditModal(true)}
                   aria-label="Edit collection"

@@ -15,6 +15,7 @@ const NoteListPage: React.FC = () => {
   const [collections, setCollections] = useState<{ collection: Collection; slug: string | null }[]>([])
   const [collidingSlugsSet, setCollidingSlugsSet] = useState<Set<string>>(new Set())
   const [libraryName, setLibraryName] = useState<string | null>(null)
+  const [libraryUuid, setLibraryUuid] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -99,6 +100,7 @@ const NoteListPage: React.FC = () => {
         setCollections(loadedCollections)
         setCollidingSlugsSet(loadedCollisions)
         setLibraryName(loadedName)
+        setLibraryUuid(library?.collection_uuid ?? null)
         setError(null)
         setLoading(false)
       } catch (err) {
@@ -129,6 +131,7 @@ const NoteListPage: React.FC = () => {
         prefix={prefix || ''}
         slugPath=""
         libraryName={libraryName}
+        libraryUuid={libraryUuid}
         syncProgress={librarySyncStatus ? {
           currentIndex: librarySyncStatus.currentIndex,
           finalIndex: librarySyncStatus.finalIndex,
@@ -165,6 +168,7 @@ const NoteListPage: React.FC = () => {
       prefix={prefix || ''}
       slugPath=""
       libraryName={libraryName}
+      libraryUuid={libraryUuid}
       syncProgress={librarySyncStatus ? {
         currentIndex: librarySyncStatus.currentIndex,
         finalIndex: librarySyncStatus.finalIndex,
