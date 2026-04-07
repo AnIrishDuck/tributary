@@ -31,9 +31,7 @@ export async function saveNote(
 
   // Sync to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
-  const syncStatus = await stream.sync(1000)
-  console.log(`Note saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
-
+  await stream.sync(1000)
   // After sync, run indexing on the local database
   const localDb = stream.local()
   await scribeData.indexAll(localDb)

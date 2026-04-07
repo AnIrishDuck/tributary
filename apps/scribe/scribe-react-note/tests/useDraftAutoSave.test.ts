@@ -49,8 +49,6 @@ describe('useDraftAutoSave', () => {
 
     // saveNow (same function the auto-save interval calls) should NOT
     // re-create the draft after it was explicitly cleared.
-    // BUG: clearDraft sets lastSavedBodyRef to null, so saveNow sees
-    // body !== null and re-creates the draft.
     act(() => {
       result.current.saveNow()
     })

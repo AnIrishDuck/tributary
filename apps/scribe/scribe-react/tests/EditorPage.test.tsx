@@ -404,9 +404,6 @@ describe('EditorPage sync gate bug', () => {
     router.navigate(`/pk/${base64Part}/+note`)
 
     // The editor should appear within a reasonable time.
-    // BUG: globalSyncStatus.synced stays false because the home library is
-    // permanently incomplete (never re-synced while focused library is set).
-    // EditorPage gates on this and shows the sync screen instead.
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Test Stream' })).toBeInTheDocument()
     }, { timeout: 5000 })

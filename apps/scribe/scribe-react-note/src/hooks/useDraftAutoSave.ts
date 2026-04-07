@@ -57,7 +57,7 @@ export function useDraftAutoSave({
     })
   }, [prefix, draftId, blockUuid, collectionId, getBody, getBaseVersionUuid])
 
-  // Set up the 30-second interval.
+  // Set up the auto-save interval.
   useEffect(() => {
     const id = setInterval(save, AUTO_SAVE_INTERVAL_MS)
     return () => clearInterval(id)
