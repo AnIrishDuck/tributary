@@ -126,4 +126,42 @@ describe('ImageDialog', () => {
     expect(screen.getByText('Slug is required')).toBeDefined()
     expect(onSave).not.toHaveBeenCalled()
   })
+
+  it('calls onBulkFiles when multiple images are dropped', () => {
+    const onBulkFiles = vi.fn()
+    renderDialog({ onBulkFiles })
+
+    const dropZone = screen.getByText(/click to select or drag and drop/i).closest('div[class*="cursor-pointer"]')!
+
+    const file1 = new File(['a'], 'a.png', { type: 'image/png' })
+    const file2 = new File(['b'], 'b.png', { type: 'image/png' })
+
+    fireEvent.drop(dropZone, {
+      dataTransfer: {
+        files: [file1, file2],
+      },
+    })
+
+    expect(onBulkFiles).toHaveBeenCalledTimes(1)
+    expect(onBulkFiles).toHaveBeenCalledWith([file1, file2])
+  })
+
+  it('handles single file drop normally even when onBulkFiles is provided', () => {
+    const onBulkFiles = vi.fn()
+    renderDialog({ onBulkFiles })
+
+    const dropZone = screen.getByText(/click to select or drag and drop/i).closest('div[class*="cursor-pointer"]')!
+
+    const file = new File(['a'], 'a.png', { type: 'image/png' })
+
+    fireEvent.drop(dropZone, {
+      dataTransfer: {
+        files: [file],
+      },
+    })
+
+    expect(onBulkFiles).not.toHaveBeenCalled()
+    const slugInput = screen.getByLabelText(/slug/i) as HTMLInputElement
+    expect(slugInput.value).toBe('a')
+  })
 })

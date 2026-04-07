@@ -174,4 +174,42 @@ describe('readDroppedItems', () => {
     const results = await readDroppedItems(dt)
     expect(results).toEqual([])
   })
+
+  it('collects all entries synchronously before async traversal', async () => {
+    // Simulate the real browser behavior: dataTransfer.items is cleared
+    // once the event handler yields (i.e. after the first await).
+    const img1 = new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })
+    const img2 = new File([new Uint8Array(4)], 'b.png', { type: 'image/png' })
+    const entries = [
+      fakeFileEntry('a.png', img1),
+      fakeFileEntry('b.png', img2),
+    ]
+    const items = entries.map((entry) => ({
+      webkitGetAsEntry: () => entry,
+    }))
+
+    let cleared = false
+    const dt = {
+      items: {
+        get length() { return cleared ? 0 : items.length },
+        [Symbol.iterator]: function* () { if (!cleared) yield* items },
+        0: items[0],
+        1: items[1],
+      },
+    } as unknown as DataTransfer
+
+    // Patch traverseEntry indirectly: after the first file resolves the
+    // browser would have cleared items. We simulate this by flipping the
+    // flag after the first microtask.
+    const origReadDroppedItems = readDroppedItems
+    const p = origReadDroppedItems(dt)
+    // The function should have already read all items synchronously,
+    // so clearing now should not affect the result.
+    cleared = true
+
+    const results = await p
+    expect(results).toHaveLength(2)
+    expect(results[0].file.name).toBe('a.png')
+    expect(results[1].file.name).toBe('b.png')
+  })
 })

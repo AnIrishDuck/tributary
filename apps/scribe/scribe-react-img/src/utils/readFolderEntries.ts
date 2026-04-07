@@ -69,12 +69,21 @@ async function traverseEntry(
 export async function readDroppedItems(dataTransfer: DataTransfer): Promise<FolderFileEntry[]> {
   const results: FolderFileEntry[] = []
 
+  // Collect all entries synchronously before any async work.
+  // The browser clears dataTransfer.items once the drop event handler
+  // returns (i.e. after the first await), so webkitGetAsEntry() must be
+  // called in the same microtask as the event.
+  const entries: FileSystemEntry[] = []
   for (let i = 0; i < dataTransfer.items.length; i++) {
     const item = dataTransfer.items[i]
     const entry = item.webkitGetAsEntry?.()
     if (entry) {
-      await traverseEntry(entry, '', results)
+      entries.push(entry)
     }
+  }
+
+  for (const entry of entries) {
+    await traverseEntry(entry, '', results)
   }
 
   return results
