@@ -95,6 +95,27 @@ describe('saveImage', () => {
     expect(rootResult).toBeNull()
   })
 
+  it('should produce a block whose body includes thumbBlobHash', async () => {
+    const { stream } = await createTestClientWithStream()
+
+    const fileData = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+    const { block } = await saveImage(stream, {
+      fileData,
+      contentType: 'image/png',
+      fileName: 'thumb-test.png',
+      slug: 'thumb-test',
+      width: 800,
+      height: 600,
+    })
+
+    const body = parseImageBlockBody(block)
+    expect(body.thumbBlobHash).toBeDefined()
+    expect(typeof body.thumbBlobHash).toBe('string')
+    expect(body.thumbBlobHash!.length).toBeGreaterThan(0)
+    // thumbBlobHash should differ from blobHash (different data was uploaded)
+    expect(body.thumbBlobHash).not.toBe(body.blobHash)
+  })
+
   it('should return a slug path for navigation', async () => {
     const { stream } = await createTestClientWithStream()
 

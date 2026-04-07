@@ -1,6 +1,49 @@
 // Setup file for vitest
 import '@testing-library/jest-dom'
 
+// Polyfill URL.createObjectURL / revokeObjectURL (jsdom doesn't implement them).
+// Needed by generateThumbnail and any code that creates blob URLs.
+if (!URL.createObjectURL) {
+  URL.createObjectURL = () => 'blob:test-url'
+}
+if (!URL.revokeObjectURL) {
+  URL.revokeObjectURL = () => {}
+}
+
+// Polyfill HTMLCanvasElement 2D context and toBlob (jsdom lacks Canvas support).
+// Needed by generateThumbnail which renders images onto a <canvas>.
+HTMLCanvasElement.prototype.getContext = function () {
+  return { drawImage() {} } as any
+}
+HTMLCanvasElement.prototype.toBlob = function (
+  cb: (blob: Blob | null) => void,
+  _type?: string,
+  _quality?: number,
+) {
+  const bytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])
+  const blob = new Blob([bytes], { type: 'image/jpeg' })
+  if (!blob.arrayBuffer) {
+    ;(blob as any).arrayBuffer = () => Promise.resolve(bytes.buffer)
+  }
+  cb(blob)
+}
+
+// Polyfill Image constructor for offscreen image loading in generateThumbnail.
+const _OrigImage = globalThis.Image
+function FakeImage(this: any) {
+  const self = this
+  self.naturalWidth = 200
+  self.naturalHeight = 150
+  self.onload = null as any
+  self.onerror = null as any
+  Object.defineProperty(self, 'src', {
+    set() {
+      setTimeout(() => { if (self.onload) self.onload(new Event('load')) }, 0)
+    },
+  })
+}
+globalThis.Image = FakeImage as any
+
 // Fix AbortSignal compatibility with react-router v7 in jsdom environment.
 //
 // jsdom replaces globalThis.AbortController/AbortSignal with its own

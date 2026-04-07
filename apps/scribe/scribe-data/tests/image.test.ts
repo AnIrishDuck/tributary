@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'vitest'
 import { up } from '../src/migrations.js'
 import {
   createImageBlock,
+  createImageBlocks,
   updateImageBlock,
   parseImageBlockBody,
   getImageBySlug,
@@ -488,6 +489,98 @@ describe('scribe-data image blocks', () => {
     const imageBlock = notes.find((n: any) => n.block_type === 'scribe/image')
     expect(markdownBlock).toBeDefined()
     expect(imageBlock).toBeDefined()
+  })
+
+  test('createImageBlock with thumbBlobHash round-trips through parseImageBlockBody', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashWithThumb',
+      contentType: 'image/png',
+      thumbBlobHash: 'thumb-hash-123',
+      slug: 'with-thumb',
+      inserter: 'test-user',
+    })
+
+    const body = parseImageBlockBody(image)
+    expect(body.thumbBlobHash).toBe('thumb-hash-123')
+    expect(body.blobHash).toBe('hashWithThumb')
+  })
+
+  test('createImageBlock without thumbBlobHash still works (backward compat)', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashNoThumb',
+      contentType: 'image/jpeg',
+      slug: 'no-thumb',
+      inserter: 'test-user',
+    })
+
+    const body = parseImageBlockBody(image)
+    expect(body.thumbBlobHash).toBeUndefined()
+    expect(body.blobHash).toBe('hashNoThumb')
+  })
+
+  test('createImageBlocks (batch) includes thumbBlobHash in each block body', async () => {
+    const images = await createImageBlocks(syncedDb, [
+      {
+        blobHash: 'batch-hash-1',
+        contentType: 'image/png',
+        thumbBlobHash: 'batch-thumb-1',
+        slug: 'batch-1',
+        inserter: 'test-user',
+      },
+      {
+        blobHash: 'batch-hash-2',
+        contentType: 'image/jpeg',
+        thumbBlobHash: 'batch-thumb-2',
+        slug: 'batch-2',
+        inserter: 'test-user',
+      },
+    ])
+
+    expect(images).toHaveLength(2)
+    const body0 = parseImageBlockBody(images[0])
+    const body1 = parseImageBlockBody(images[1])
+    expect(body0.thumbBlobHash).toBe('batch-thumb-1')
+    expect(body1.thumbBlobHash).toBe('batch-thumb-2')
+  })
+
+  test('updateImageBlock preserves thumbBlobHash when not in updates', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashPreserveThumb',
+      contentType: 'image/png',
+      thumbBlobHash: 'existing-thumb',
+      slug: 'preserve-thumb',
+      inserter: 'test-user',
+    })
+
+    const updated = await updateImageBlock(syncedDb, image.block_uuid, {
+      title: 'New Title',
+      inserter: 'test-user',
+    })
+
+    const body = parseImageBlockBody(updated)
+    expect(body.thumbBlobHash).toBe('existing-thumb')
+    expect(body.title).toBe('New Title')
+  })
+
+  test('updateImageBlock can set thumbBlobHash', async () => {
+    const image = await createImageBlock(syncedDb, {
+      blobHash: 'hashSetThumb',
+      contentType: 'image/png',
+      slug: 'set-thumb',
+      inserter: 'test-user',
+    })
+
+    const body0 = parseImageBlockBody(image)
+    expect(body0.thumbBlobHash).toBeUndefined()
+
+    const updated = await updateImageBlock(syncedDb, image.block_uuid, {
+      thumbBlobHash: 'new-thumb-hash',
+      inserter: 'test-user',
+    })
+
+    const body = parseImageBlockBody(updated)
+    expect(body.thumbBlobHash).toBe('new-thumb-hash')
+    expect(body.blobHash).toBe('hashSetThumb')
   })
 
   test('resolveSlugPath returns type note for a markdown block', async () => {

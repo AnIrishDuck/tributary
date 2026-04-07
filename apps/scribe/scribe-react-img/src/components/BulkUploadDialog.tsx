@@ -8,6 +8,7 @@ import {
   indexAll,
 } from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
+import { generateThumbnail } from '../utils/thumbnail'
 
 type ImageStatus = 'pending' | 'uploading' | 'done' | 'error'
 
@@ -102,6 +103,10 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
           const { width, height } = await getImageDimensions(file)
           const blobHash = await stream.blob().upload(fileData)
 
+          // Generate and upload thumbnail
+          const thumbData = await generateThumbnail(fileData, entry.contentType)
+          const thumbBlobHash = await stream.blob().upload(thumbData)
+
           const collectionId = entry.folderPath === ''
             ? plan.rootCollectionId ?? undefined
             : collectionMap.get(entry.folderPath)
@@ -116,6 +121,7 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
             height,
             collectionId: collectionId ?? null,
             inserter: 'web-ui',
+            thumbBlobHash,
           })
 
           updateStatus(i, 'done')

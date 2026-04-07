@@ -1,21 +1,11 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkUploadDialog from '../src/components/BulkUploadDialog'
 import { createTestClientWithStream } from './test-utils'
 import * as scribeData from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
-
-// jsdom doesn't have URL.createObjectURL
-beforeAll(() => {
-  if (!URL.createObjectURL) {
-    URL.createObjectURL = vi.fn(() => 'blob:test-url')
-  }
-  if (!URL.revokeObjectURL) {
-    URL.revokeObjectURL = vi.fn()
-  }
-})
 
 /** Build a minimal plan with images at the root (no sub-collections). */
 function makePlan(imageNames: string[], rootCollectionId: string | null = null): BulkUploadPlan {
