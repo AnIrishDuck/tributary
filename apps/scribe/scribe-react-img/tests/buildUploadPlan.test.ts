@@ -205,50 +205,6 @@ describe('buildUploadPlan validation integration', () => {
     expect(result.valid).toBe(true)
   })
 
-  it('detects duplicate slugs when filenames collide after slugification', () => {
-    // "My Photo.png" and "my-photo.png" produce the same slug "my-photo"
-    const entries = [
-      entry('My Photo.png', ''),
-      entry('my-photo.png', ''),
-    ]
-
-    const plan = buildUploadPlan(entries, null)
-    expect(plan.images[0].slug).toBe('my-photo')
-    expect(plan.images[1].slug).toBe('my-photo')
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(false)
-    const dupeErrors = result.errors.filter(e => e.message.includes('Duplicate slug'))
-    expect(dupeErrors).toHaveLength(2)
-  })
-
-  it('detects image-collection slug conflict from folder name matching file name', () => {
-    // File "photos.png" at root and folder "photos" at root have the same slug
-    const entries = [
-      entry('photos.png', ''),
-      entry('inner.png', 'photos'),
-    ]
-
-    const plan = buildUploadPlan(entries, null)
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(false)
-    const conflictErrors = result.errors.filter(e => e.message.includes('conflicts with a collection'))
-    expect(conflictErrors).toHaveLength(1)
-  })
-
-  it('no conflict when same-named file is inside the folder, not alongside it', () => {
-    // File "photos.png" inside "photos" folder — different scope from the collection "photos" at root
-    const entries = [
-      entry('photos.png', 'photos'),
-    ]
-
-    const plan = buildUploadPlan(entries, null)
-    const result = validateBulkUploadPlan(plan)
-    // The image is at folderPath "photos", the collection "photos" has parentFolderPath null.
-    // Image scope: "photos", collection parent scope: "". These are different, so no conflict.
-    expect(result.valid).toBe(true)
-  })
-
   it('special characters in filenames produce valid slugs', () => {
     const entries = [
       entry('Hello World!.png', ''),

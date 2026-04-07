@@ -53,6 +53,14 @@ export function titleToSlug(title: string): string {
     .replace(/^-|-$/g, '')        // Remove leading/trailing hyphens
 }
 
+/** Regex for valid slugs: lowercase alphanumeric segments separated by single hyphens. */
+const VALID_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/** Check whether a string is a valid slug (lowercase alphanumeric with single hyphens). */
+export function isValidSlug(slug: string): boolean {
+  return slug.length > 0 && VALID_SLUG_RE.test(slug)
+}
+
 /**
  * Convert a slug back to a human-readable title.
  * Splits on hyphens and capitalises the first letter of each word.

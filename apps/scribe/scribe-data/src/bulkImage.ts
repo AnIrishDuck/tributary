@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream } from 'tributary-client'
 import { createCollections, getLibrary } from './collection.js'
 import { createImageBlocks } from './image.js'
+import { isValidSlug } from './indexing.js'
 import type { Note } from './types.js'
 
 export interface BulkCollectionEntry {
@@ -47,27 +48,20 @@ export interface BulkPlanValidationResult {
   errors: BulkPlanValidationError[]
 }
 
-const VALID_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
-/** Check whether a string is a valid slug (lowercase alphanumeric with single hyphens). */
-export function isValidSlug(slug: string): boolean {
-  return slug.length > 0 && VALID_SLUG_RE.test(slug)
-}
-
 /**
- * Validate a bulk upload plan for slug format issues and conflicts.
+ * Validate a bulk upload plan for format issues only.
  *
  * Checks:
  * - Every image and collection has a non-empty title
  * - Every image and collection slug passes format validation
- * - No two images in the same folder share a slug
- * - No two collections with the same parent share a slug
- * - No image slug conflicts with a collection slug in the same scope
+ *
+ * Slug collisions (duplicates within the plan or against existing DB
+ * content) are intentionally NOT checked here — collisions are warnings
+ * handled by the existing slug collision system after upload.
  */
 export function validateBulkUploadPlan(plan: BulkUploadPlan): BulkPlanValidationResult {
   const errors: BulkPlanValidationError[] = []
 
-  // Validate collection entries
   for (let i = 0; i < plan.collections.length; i++) {
     const col = plan.collections[i]
     if (!col.title || col.title.trim() === '') {
@@ -78,7 +72,6 @@ export function validateBulkUploadPlan(plan: BulkUploadPlan): BulkPlanValidation
     }
   }
 
-  // Validate image entries
   for (let i = 0; i < plan.images.length; i++) {
     const img = plan.images[i]
     if (!img.title || img.title.trim() === '') {
@@ -86,85 +79,6 @@ export function validateBulkUploadPlan(plan: BulkUploadPlan): BulkPlanValidation
     }
     if (!isValidSlug(img.slug)) {
       errors.push({ type: 'image', index: i, field: 'slug', message: 'Invalid slug format' })
-    }
-  }
-
-  // Check for duplicate image slugs within the same folder
-  const imageSlugsPerFolder = new Map<string, Map<string, number[]>>()
-  for (let i = 0; i < plan.images.length; i++) {
-    const img = plan.images[i]
-    if (!imageSlugsPerFolder.has(img.folderPath)) {
-      imageSlugsPerFolder.set(img.folderPath, new Map())
-    }
-    const folderMap = imageSlugsPerFolder.get(img.folderPath)!
-    if (!folderMap.has(img.slug)) {
-      folderMap.set(img.slug, [])
-    }
-    folderMap.get(img.slug)!.push(i)
-  }
-
-  for (const [, folderMap] of imageSlugsPerFolder) {
-    for (const [slug, indices] of folderMap) {
-      if (indices.length > 1) {
-        for (const idx of indices) {
-          errors.push({
-            type: 'image',
-            index: idx,
-            field: 'slug',
-            message: `Duplicate slug "${slug}" in the same folder`,
-          })
-        }
-      }
-    }
-  }
-
-  // Check for duplicate collection slugs under the same parent
-  const collSlugsPerParent = new Map<string, Map<string, number[]>>()
-  for (let i = 0; i < plan.collections.length; i++) {
-    const col = plan.collections[i]
-    const parentKey = col.parentFolderPath ?? ''
-    if (!collSlugsPerParent.has(parentKey)) {
-      collSlugsPerParent.set(parentKey, new Map())
-    }
-    const parentMap = collSlugsPerParent.get(parentKey)!
-    if (!parentMap.has(col.slug)) {
-      parentMap.set(col.slug, [])
-    }
-    parentMap.get(col.slug)!.push(i)
-  }
-
-  for (const [, parentMap] of collSlugsPerParent) {
-    for (const [slug, indices] of parentMap) {
-      if (indices.length > 1) {
-        for (const idx of indices) {
-          errors.push({
-            type: 'collection',
-            index: idx,
-            field: 'slug',
-            message: `Duplicate collection slug "${slug}" under the same parent`,
-          })
-        }
-      }
-    }
-  }
-
-  // Check for image/collection slug conflicts in same scope
-  // An image at folderPath="" with slug "x" conflicts with a collection
-  // whose parentFolderPath is null and slug is "x" (both at root level).
-  // An image at folderPath="a" conflicts with a collection whose parentFolderPath="a".
-  for (let i = 0; i < plan.images.length; i++) {
-    const img = plan.images[i]
-    for (let j = 0; j < plan.collections.length; j++) {
-      const col = plan.collections[j]
-      const colParent = col.parentFolderPath ?? ''
-      if (img.folderPath === colParent && img.slug === col.slug) {
-        errors.push({
-          type: 'image',
-          index: i,
-          field: 'slug',
-          message: `Slug "${img.slug}" conflicts with a collection in the same scope`,
-        })
-      }
     }
   }
 

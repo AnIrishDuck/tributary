@@ -4,12 +4,11 @@ import {
   ensureBulkCollections,
   createBulkImageBlocks,
   validateBulkUploadPlan,
-  isValidSlug,
   type BulkUploadPlan,
 } from '../src/bulkImage.js'
 import { parseImageBlockBody, getImageBySlug } from '../src/image.js'
 import { getCollectionByUuid } from '../src/collection.js'
-import { indexAll } from '../src/indexing.js'
+import { indexAll, isValidSlug } from '../src/indexing.js'
 import { createCollection } from '../src/collection.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
@@ -373,108 +372,6 @@ describe('validateBulkUploadPlan', () => {
     expect(result.errors).toContainEqual(
       expect.objectContaining({ type: 'collection', index: 0, field: 'slug', message: 'Invalid slug format' }),
     )
-  })
-
-  test('flags duplicate image slugs in the same folder', () => {
-    const plan: BulkUploadPlan = {
-      collections: [],
-      images: [
-        { blobHash: 'h1', contentType: 'image/png', fileName: 'a.png', slug: 'photo', title: 'A', folderPath: '' },
-        { blobHash: 'h2', contentType: 'image/png', fileName: 'b.png', slug: 'photo', title: 'B', folderPath: '' },
-      ],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(false)
-    const dupeErrors = result.errors.filter(e => e.message.includes('Duplicate slug'))
-    expect(dupeErrors).toHaveLength(2) // both entries flagged
-    expect(dupeErrors[0].index).toBe(0)
-    expect(dupeErrors[1].index).toBe(1)
-  })
-
-  test('allows same image slug in different folders', () => {
-    const plan: BulkUploadPlan = {
-      collections: [
-        { folderPath: 'a', title: 'A', slug: 'a', parentFolderPath: null },
-      ],
-      images: [
-        { blobHash: 'h1', contentType: 'image/png', fileName: 'photo.png', slug: 'photo', title: 'Photo', folderPath: '' },
-        { blobHash: 'h2', contentType: 'image/png', fileName: 'photo.png', slug: 'photo', title: 'Photo', folderPath: 'a' },
-      ],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(true)
-  })
-
-  test('flags duplicate collection slugs under the same parent', () => {
-    const plan: BulkUploadPlan = {
-      collections: [
-        { folderPath: 'a', title: 'A', slug: 'same', parentFolderPath: null },
-        { folderPath: 'b', title: 'B', slug: 'same', parentFolderPath: null },
-      ],
-      images: [],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(false)
-    const dupeErrors = result.errors.filter(e => e.message.includes('Duplicate collection slug'))
-    expect(dupeErrors).toHaveLength(2)
-  })
-
-  test('allows same collection slug under different parents', () => {
-    const plan: BulkUploadPlan = {
-      collections: [
-        { folderPath: 'a', title: 'A', slug: 'a', parentFolderPath: null },
-        { folderPath: 'b', title: 'B', slug: 'b', parentFolderPath: null },
-        { folderPath: 'a/sub', title: 'Sub', slug: 'sub', parentFolderPath: 'a' },
-        { folderPath: 'b/sub', title: 'Sub', slug: 'sub', parentFolderPath: 'b' },
-      ],
-      images: [],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(true)
-  })
-
-  test('flags image slug conflicting with collection slug in same scope', () => {
-    const plan: BulkUploadPlan = {
-      collections: [
-        { folderPath: 'photos', title: 'Photos', slug: 'photos', parentFolderPath: null },
-      ],
-      images: [
-        { blobHash: 'h1', contentType: 'image/png', fileName: 'photos.png', slug: 'photos', title: 'Photos', folderPath: '' },
-      ],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    expect(result.valid).toBe(false)
-    const conflictErrors = result.errors.filter(e => e.message.includes('conflicts with a collection'))
-    expect(conflictErrors).toHaveLength(1)
-    expect(conflictErrors[0].type).toBe('image')
-  })
-
-  test('no cross-scope conflict between image and collection', () => {
-    const plan: BulkUploadPlan = {
-      collections: [
-        { folderPath: 'a', title: 'A', slug: 'a', parentFolderPath: null },
-        { folderPath: 'a/photos', title: 'Photos', slug: 'photos', parentFolderPath: 'a' },
-      ],
-      images: [
-        // This image is at root, collection "photos" is under "a" — no conflict
-        { blobHash: 'h1', contentType: 'image/png', fileName: 'photos.png', slug: 'photos', title: 'Photos', folderPath: '' },
-      ],
-      rootCollectionId: null,
-    }
-
-    const result = validateBulkUploadPlan(plan)
-    // The image "photos" is at root scope, the collection "photos" is under "a" scope — no conflict
-    expect(result.valid).toBe(true)
   })
 
   test('reports multiple errors simultaneously', () => {

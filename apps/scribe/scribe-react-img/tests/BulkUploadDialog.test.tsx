@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkUploadDialog from '../src/components/BulkUploadDialog'
 import { createTestClientWithStream } from './test-utils'
@@ -430,13 +430,11 @@ describe('BulkUploadDialog', () => {
     expect((titleInput as HTMLInputElement).value).toBe('beach')
   })
 
-  it('disables Upload button when plan has validation errors', async () => {
-    // Create a plan with duplicate slugs in the same folder
+  it('disables Upload button when plan has invalid slug format', async () => {
     const plan: BulkUploadPlan = {
       collections: [],
       images: [
-        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
-        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'INVALID', title: 'A', folderPath: '', lastModified: 1000 },
       ],
       rootCollectionId: null,
     }
@@ -456,12 +454,11 @@ describe('BulkUploadDialog', () => {
     expect(uploadButton).toBeDisabled()
   })
 
-  it('shows validation error banner when plan has errors', async () => {
+  it('shows validation error banner when plan has format errors', async () => {
     const plan: BulkUploadPlan = {
       collections: [],
       images: [
-        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
-        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'INVALID', title: 'A', folderPath: '', lastModified: 1000 },
       ],
       rootCollectionId: null,
     }
@@ -477,15 +474,14 @@ describe('BulkUploadDialog', () => {
       />
     )
 
-    expect(screen.getByText(/validation errors/i)).toBeInTheDocument()
+    expect(screen.getByText(/validation error/i)).toBeInTheDocument()
   })
 
-  it('enables Upload button after fixing slug conflicts', async () => {
+  it('enables Upload button after fixing invalid slug format', async () => {
     const plan: BulkUploadPlan = {
       collections: [],
       images: [
-        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
-        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'INVALID', title: 'A', folderPath: '', lastModified: 1000 },
       ],
       rootCollectionId: null,
     }
@@ -504,11 +500,11 @@ describe('BulkUploadDialog', () => {
     // Upload should be disabled initially
     expect(screen.getByText('Upload')).toBeDisabled()
 
-    // Edit the second image's slug to resolve the conflict
-    await userEvent.click(screen.getByLabelText('Edit b.png'))
-    const slugInput = screen.getByTestId('image-slug-1')
+    // Edit the image's slug to fix the format
+    await userEvent.click(screen.getByLabelText('Edit a.png'))
+    const slugInput = screen.getByTestId('image-slug-0')
     await userEvent.clear(slugInput)
-    await userEvent.type(slugInput, 'different')
+    await userEvent.type(slugInput, 'valid-slug')
 
     // Upload should now be enabled
     expect(screen.getByText('Upload')).not.toBeDisabled()
@@ -518,8 +514,7 @@ describe('BulkUploadDialog', () => {
     const plan: BulkUploadPlan = {
       collections: [],
       images: [
-        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'same', title: 'A', folderPath: '', lastModified: 1000 },
-        { blobHash: '', contentType: 'image/png', fileName: 'b.png', slug: 'same', title: 'B', folderPath: '', lastModified: 2000 },
+        { blobHash: '', contentType: 'image/png', fileName: 'a.png', slug: 'BAD SLUG', title: 'A', folderPath: '', lastModified: 1000 },
       ],
       rootCollectionId: null,
     }
@@ -536,7 +531,7 @@ describe('BulkUploadDialog', () => {
     )
 
     await userEvent.click(screen.getByLabelText('Edit a.png'))
-    expect(screen.getAllByText(/Duplicate slug/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Invalid slug format')).toBeInTheDocument()
   })
 
   it('allows editing collection title and slug', async () => {
