@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PhotoIcon, ArrowLeftIcon, DocumentTextIcon, FolderIcon, FolderPlusIcon, MagnifyingGlassIcon, PencilSquareIcon, PencilIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { SortMenu, SortOptions } from 'scribe-react-common/src/components/SortMenu'
 import { ViewModeToggle, ViewMode } from 'scribe-react-common/src/components/ViewModeToggle'
@@ -11,9 +11,11 @@ import { useBottomNav } from 'scribe-react-common/src/context/bottomNavContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { useSyncStatusOptional } from 'scribe-react-common/src/context/syncStatusContext'
 import { readDroppedItems } from 'scribe-react-img/src/utils/readFolderEntries'
 import { buildUploadPlan } from 'scribe-react-img/src/utils/buildUploadPlan'
 import BulkUploadDialog from 'scribe-react-img/src/components/BulkUploadDialog'
+import { EditCollectionModal } from 'scribe-react-common/src/components/EditCollectionModal'
 import { TributaryStream } from 'tributary-client'
 
 interface NoteListViewProps {
@@ -24,6 +26,7 @@ interface NoteListViewProps {
 
   // Root view props
   libraryName?: string | null
+  libraryUuid?: string | null
   syncProgress?: { currentIndex: number; finalIndex: number; synced: boolean } | null
 
   // Collection view props
@@ -36,7 +39,7 @@ interface NoteListViewProps {
 
 const NoteListView: React.FC<NoteListViewProps> = ({
   collections, notes, prefix, slugPath,
-  libraryName, syncProgress,
+  libraryName, libraryUuid, syncProgress,
   collection, ancestors, collidingSlugs
 }) => {
   const navigate = useNavigate()
@@ -44,7 +47,12 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const { client } = useTributary()
   const { requestSync } = useSyncStatus()
   const routeCtx = useRouteContext()
+  const syncCtx = useSyncStatusOptional()
   const isRoot = !collection
+
+  // UUID and title for editing — works for both root (library) and sub-collections
+  const editableUuid = isRoot ? (libraryUuid ?? null) : (collection?.collection_uuid ?? null)
+  const editableTitle = isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')
 
   // Sort state
   const [sort, setSort] = useState<SortOptions>({ type: 'modified', order: 'desc' })
@@ -56,6 +64,9 @@ const NoteListView: React.FC<NoteListViewProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('card')
 
   // Bulk upload state
+  // Edit collection modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+
   const [bulkPlan, setBulkPlan] = useState<BulkUploadPlan | null>(null)
   const [bulkFiles, setBulkFiles] = useState<Map<number, File>>(new Map())
   const [bulkStream, setBulkStream] = useState<TributaryStream | null>(null)
@@ -184,6 +195,20 @@ const NoteListView: React.FC<NoteListViewProps> = ({
           onCancel={handleBulkCancel}
         />
       )}
+      {editableUuid && (
+        <EditCollectionModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          collectionUuid={editableUuid}
+          currentTitle={editableTitle}
+          prefix={prefix}
+          syncing={syncProgress != null && !syncProgress.synced}
+          onSaved={() => {
+            setShowEditModal(false)
+            syncCtx?.requestSync()
+          }}
+        />
+      )}
       {/* Sticky header group: sync banner + nav header */}
       <div className="sticky top-0 z-40">
       {/* Sync Progress Banner */}
@@ -211,7 +236,18 @@ const NoteListView: React.FC<NoteListViewProps> = ({
               >
                 <ArrowLeftIcon className="w-4 h-4" />
               </button>
-              <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
+              {editableUuid ? (
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  aria-label="Edit collection"
+                  className="group/title flex items-center gap-1.5 text-xl font-bold text-gray-900 hover:text-gray-700 transition-colors"
+                >
+                  {isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}
+                  <PencilIcon className="w-4 h-4 text-gray-400 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                </button>
+              ) : (
+                <h1 className="text-xl font-bold text-gray-900">{isRoot ? (libraryName || 'Notes') : (collection?.title || 'Collection')}</h1>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

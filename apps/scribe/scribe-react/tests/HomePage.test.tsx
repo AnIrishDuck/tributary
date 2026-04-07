@@ -6,7 +6,7 @@ import React from 'react'
 import HomePage from '../src/pages/HomePage'
 import { createTestTributaryClient, TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
-import { createHomeLibrary, createLibrary } from 'scribe-data'
+import { createHomeLibrary, createLibrary, renameCollection, getLibrary } from 'scribe-data'
 import { routes } from '../src/route'
 import { getLibraries } from 'scribe-data'
 import { WithProviders } from './test-utils'
@@ -443,5 +443,37 @@ describe('HomePage', () => {
     // Verify a new library was created (home + new library = 2)
     const libs = await getLibraries(client)
     expect(libs.length).toBe(2)
+  })
+
+  it('should show updated library name on home page after renaming the root collection', async () => {
+    const { client } = createTestTributaryClient()
+
+    // Create a library named "Old Name"
+    const homeKeyPair = nacl.sign.keyPair()
+    const { stream: homeStream } = await createHomeLibrary(client, 'Home', homeKeyPair)
+    const { stream } = await createLibrary(client, 'Old Name', homeStream)
+    await client.sync(1000)
+
+    // Rename the root collection
+    const library = await getLibrary(stream)
+    expect(library).toBeDefined()
+    await renameCollection(stream, library!.collection_uuid, 'New Name')
+    await stream.sync(1000)
+
+    // Render the home page with a fast sync loop so the cache gets updated
+    const router = createMemoryRouter(routes, { initialEntries: ['/'] })
+    render(
+      <SyncProviders client={client} pollInterval={50}>
+        <RouterProvider router={router} />
+      </SyncProviders>
+    )
+
+    // The home page should eventually show the updated name
+    await waitFor(() => {
+      expect(screen.getByText('New Name')).toBeInTheDocument()
+    }, { timeout: 10000 })
+
+    // The old name should not appear
+    expect(screen.queryByText('Old Name')).not.toBeInTheDocument()
   })
 })
