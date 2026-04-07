@@ -34,7 +34,7 @@ const Layout: React.FC = () => {
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     }
     const onDrop = (e: DragEvent) => {
-      enterCount = 0
+      dragOverLogged = false
       console.log('[doc] drop target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.slice(0, 60), 'files:', e.dataTransfer?.files.length, 'items:', e.dataTransfer?.items.length, 'types:', Array.from(e.dataTransfer?.types || []), 'defaultPrevented:', e.defaultPrevented)
       // Prevent browser from navigating to the dropped file
       e.preventDefault()
