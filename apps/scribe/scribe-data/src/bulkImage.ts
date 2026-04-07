@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream } from 'tributary-client'
 import { createCollections, getLibrary } from './collection.js'
 import { createImageBlocks } from './image.js'
+import { isValidSlug } from './indexing.js'
 import type { Note } from './types.js'
 
 export interface BulkCollectionEntry {
@@ -27,6 +28,61 @@ export interface BulkUploadPlan {
   collections: BulkCollectionEntry[]
   images: BulkImageEntry[]
   rootCollectionId: string | null
+}
+
+/** Validation error for a single entry in a bulk upload plan. */
+export interface BulkPlanValidationError {
+  /** 'image' or 'collection' */
+  type: 'image' | 'collection'
+  /** Index of the entry in its respective array */
+  index: number
+  /** Which field has the error */
+  field: 'slug' | 'title'
+  /** Human-readable error message */
+  message: string
+}
+
+/** Result of validating a bulk upload plan. */
+export interface BulkPlanValidationResult {
+  valid: boolean
+  errors: BulkPlanValidationError[]
+}
+
+/**
+ * Validate a bulk upload plan for format issues only.
+ *
+ * Checks:
+ * - Every image and collection has a non-empty title
+ * - Every image and collection slug passes format validation
+ *
+ * Slug collisions (duplicates within the plan or against existing DB
+ * content) are intentionally NOT checked here — collisions are warnings
+ * handled by the existing slug collision system after upload.
+ */
+export function validateBulkUploadPlan(plan: BulkUploadPlan): BulkPlanValidationResult {
+  const errors: BulkPlanValidationError[] = []
+
+  for (let i = 0; i < plan.collections.length; i++) {
+    const col = plan.collections[i]
+    if (!col.title || col.title.trim() === '') {
+      errors.push({ type: 'collection', index: i, field: 'title', message: 'Title is required' })
+    }
+    if (!isValidSlug(col.slug)) {
+      errors.push({ type: 'collection', index: i, field: 'slug', message: 'Invalid slug format' })
+    }
+  }
+
+  for (let i = 0; i < plan.images.length; i++) {
+    const img = plan.images[i]
+    if (!img.title || img.title.trim() === '') {
+      errors.push({ type: 'image', index: i, field: 'title', message: 'Title is required' })
+    }
+    if (!isValidSlug(img.slug)) {
+      errors.push({ type: 'image', index: i, field: 'slug', message: 'Invalid slug format' })
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildUploadPlan } from '../src/utils/buildUploadPlan'
+import { validateBulkUploadPlan } from 'scribe-data'
 import type { FolderFileEntry } from '../src/utils/readFolderEntries'
 
 function fakeFile(name: string, type: string = 'image/png', lastModified?: number): File {
@@ -188,5 +189,32 @@ describe('buildUploadPlan', () => {
     expect(plan.collections[0].parentFolderPath).toBeNull()
     expect(plan.collections[1].parentFolderPath).toBe('a')
     expect(plan.collections[2].parentFolderPath).toBe('a/b')
+  })
+})
+
+describe('buildUploadPlan validation integration', () => {
+  it('plan from typical folder drop is valid', () => {
+    const entries = [
+      entry('beach.jpg', 'vacation', 'image/jpeg'),
+      entry('sunset.png', 'vacation'),
+      entry('selfie.png', ''),
+    ]
+
+    const plan = buildUploadPlan(entries, 'root-id')
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(true)
+  })
+
+  it('special characters in filenames produce valid slugs', () => {
+    const entries = [
+      entry('Hello World!.png', ''),
+      entry("Bob's Photo (2).jpg", '', 'image/jpeg'),
+    ]
+
+    const plan = buildUploadPlan(entries, null)
+    const result = validateBulkUploadPlan(plan)
+    expect(result.valid).toBe(true)
+    expect(plan.images[0].slug).toBe('hello-world')
+    expect(plan.images[1].slug).toBe('bobs-photo-2')
   })
 })
