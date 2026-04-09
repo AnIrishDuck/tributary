@@ -1,4 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
+import { extractTitleFromMarkdown } from './indexing.js'
 
 /**
  * Options for search indexing
@@ -84,22 +85,6 @@ interface UnindexedSearchNote {
   block_uuid: string
   version_uuid: string
   body: string
-}
-
-/**
- * Extract the title from a markdown body.
- * Returns the text of the first # heading, or empty string if none.
- */
-export function extractTitle(body: string): string {
-  const match = body.match(/^#\s+(.+)$/m)
-  if (!match) return ''
-  // Strip inline markdown from the title text
-  let title = match[1]
-  title = title.replace(/(\*\*|__)(.*?)\1/g, '$2')
-  title = title.replace(/(\*|_)(.*?)\1/g, '$2')
-  title = title.replace(/`[^`]+`/g, '')
-  title = title.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-  return title.trim()
 }
 
 /**
@@ -241,7 +226,7 @@ export async function indexSearchVectors(
   for (const note of unindexedNotes) {
     const searchableText = extractSearchableText(note.body)
     if (searchableText.trim().length > 0) {
-      const title = extractTitle(note.body)
+      const title = extractTitleFromMarkdown(note.body) || ''
       withText.push({ block_uuid: note.block_uuid, version_uuid: note.version_uuid, title, bodyText: searchableText })
     } else {
       emptyUuids.push(note.block_uuid)

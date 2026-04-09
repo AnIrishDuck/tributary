@@ -16,8 +16,22 @@ interface LastEditedResult {
 }
 
 /**
+ * Strip inline markdown formatting (bold, italic, code spans, links) from text,
+ * returning the plain text content.
+ */
+export function stripInlineMarkdown(text: string): string {
+  let result = text
+  result = result.replace(/(\*\*|__)(.*?)\1/g, '$2')   // **bold** / __bold__
+  result = result.replace(/(\*|_)(.*?)\1/g, '$2')       // *italic* / _italic_
+  result = result.replace(/`[^`]+`/g, '')                // `code`
+  result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url)
+  return result.trim()
+}
+
+/**
  * Extract the title from a markdown document body
- * The title is the first H1 heading (# Title) in the document
+ * The title is the first H1 heading (# Title) in the document.
+ * Inline formatting (bold, italic, code, links) is stripped from the title.
  * @param body The markdown document body
  * @returns The extracted title or null if no title found
  */
@@ -30,12 +44,11 @@ export function extractTitleFromMarkdown(body: string): string | null {
   // - Capture everything until end of line
   const titleRegex = /^[\s]*#[\s]+(.+)$/m
   const match = body.match(titleRegex)
-  
+
   if (match && match[1]) {
-    // Trim whitespace and return the title
-    return match[1].trim()
+    return stripInlineMarkdown(match[1])
   }
-  
+
   return null
 }
 
