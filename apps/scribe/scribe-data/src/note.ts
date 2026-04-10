@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
+import { Note, PGliteResult, VersionSummary, VersionTreeNode, BlockType } from './types'
 import { getLibrary } from './collection.js'
 import { titleToSlug, extractTitleFromMarkdown } from './indexing.js'
 
@@ -19,7 +19,7 @@ export async function createNote(
   db: TributaryStream,
   noteData: {
     block_uuid?: string
-    block_type: string
+    block_type: BlockType
     body: string
     inserter: string
     prior_version_uuid?: string | null
@@ -106,7 +106,7 @@ export async function createNotes(
   db: TributaryStream,
   items: Array<{
     block_uuid?: string
-    block_type: string
+    block_type: BlockType
     body: string
     inserter: string
     prior_version_uuid?: string | null
@@ -194,7 +194,7 @@ export async function createNoteVersion(
   db: TributaryStream,
   block_uuid: string,
   noteData: {
-    block_type: string
+    block_type: BlockType
     body: string
     inserter: string
     collection_id?: string | null

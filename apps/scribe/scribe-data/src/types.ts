@@ -17,11 +17,8 @@ export type VersionUuid = string
  */
 export type BlockType = 'scribe/markdown' | 'scribe/image'
 
-/**
- * Type of note - currently only scribe/markdown is supported
- * @deprecated Use BlockType instead
- */
-export type NoteType = 'scribe/markdown'
+export const BLOCK_TYPE_MARKDOWN: BlockType = 'scribe/markdown'
+export const BLOCK_TYPE_IMAGE: BlockType = 'scribe/image'
 
 /**
  * Metadata stored in the body field of a scribe/image block (JSON-serialized).
@@ -52,7 +49,7 @@ export type Inserter = string
  */
 export interface Note {
   block_uuid: string
-  block_type: string
+  block_type: BlockType
   version_uuid: string
   prior_version_uuid: string | null
   insert_datetime: string // ISO string for database storage
@@ -167,7 +164,7 @@ export interface NoteSlugRow {
   title: string
   insert_datetime: string // ISO string - when the note was last edited
   collection_id: string | null
-  block_type: string
+  block_type: BlockType
 }
 
 /**
@@ -328,7 +325,7 @@ export interface PluginEntry {
  * Used by slug resolution to distinguish notes from images.
  */
 export interface BlockSlugInfo extends NoteSlug {
-  block_type: string
+  block_type: BlockType
 }
 
 // Re-export search types from search.ts

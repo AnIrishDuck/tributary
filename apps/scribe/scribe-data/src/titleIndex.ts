@@ -1,4 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
+import { BLOCK_TYPE_MARKDOWN, BLOCK_TYPE_IMAGE } from './types.js'
 import { extractTitleFromMarkdown } from './indexing.js'
 
 /**
@@ -83,9 +84,9 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   )
 
   for (const row of (blocksResult.rows || []) as any[]) {
-    const blockType = row.block_type || 'scribe/markdown'
+    const blockType = row.block_type || BLOCK_TYPE_MARKDOWN
     let title: string | null
-    if (blockType === 'scribe/image') {
+    if (blockType === BLOCK_TYPE_IMAGE) {
       title = tryParseImageTitle(row.body)
     } else {
       title = extractTitleFromMarkdown(row.body)
@@ -99,7 +100,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
 
     entries.push({
       title,
-      entity_type: blockType === 'scribe/image' ? 'image' : 'note',
+      entity_type: blockType === BLOCK_TYPE_IMAGE ? 'image' : 'note',
       entity_uuid: row.block_uuid,
       slug_path: slugPath
     })

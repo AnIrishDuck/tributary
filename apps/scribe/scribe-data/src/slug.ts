@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { CollectionSlug, NoteSlug, BlockSlugInfo } from './types'
+import { CollectionSlug, NoteSlug, BlockSlugInfo, BLOCK_TYPE_IMAGE } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
 import { getNotesBySlugInCollection, extractBlockTitle } from './indexing.js'
 
@@ -115,7 +115,7 @@ export async function resolveSlugPath(
   // Exactly one match
   if (matchingBlocks.length === 1) {
     const block = matchingBlocks[0]
-    const isImage = block.block_type === 'scribe/image'
+    const isImage = block.block_type === BLOCK_TYPE_IMAGE
     return {
       type: isImage ? 'image' : 'note',
       entity: block,
@@ -295,7 +295,7 @@ export async function suggestSlugs(
         suggestions.push({
           slug_path: pathPrefix + row.slug,
           title: extractBlockTitle(row.body, row.block_type),
-          type: row.block_type === 'scribe/image' ? 'image' : 'note'
+          type: row.block_type === BLOCK_TYPE_IMAGE ? 'image' : 'note'
         })
       }
     }

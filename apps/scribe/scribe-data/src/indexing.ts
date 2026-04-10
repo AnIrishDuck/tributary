@@ -1,5 +1,5 @@
 import { TributaryLocal } from 'tributary-client'
-import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
+import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow, BLOCK_TYPE_MARKDOWN, BLOCK_TYPE_IMAGE } from './types'
 import { getLibrary } from './collection.js'
 
 
@@ -89,8 +89,8 @@ export function tryParseImageTitle(body: string): string | null {
  * @returns The extracted title, or empty string if none found
  */
 export function extractBlockTitle(body: string, blockType?: string | null): string {
-  const resolved = blockType || 'scribe/markdown'
-  if (resolved === 'scribe/image') {
+  const resolved = blockType || BLOCK_TYPE_MARKDOWN
+  if (resolved === BLOCK_TYPE_IMAGE) {
     return tryParseImageTitle(body) || ''
   }
   return extractTitleFromMarkdown(body) || ''

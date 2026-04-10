@@ -1,5 +1,5 @@
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, ImageBlockBody, NoteSlug } from './types'
+import { Note, ImageBlockBody, NoteSlug, BLOCK_TYPE_IMAGE } from './types'
 import { createNote, createNotes, createNoteVersion, getLatestNoteVersion } from './note.js'
 import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
 
@@ -53,7 +53,7 @@ export async function createImageBlock(
   }
 
   return createNote(db, {
-    block_type: 'scribe/image',
+    block_type: BLOCK_TYPE_IMAGE,
     body: JSON.stringify(body),
     inserter: data.inserter,
     collection_id: data.collectionId,
@@ -100,7 +100,7 @@ export async function createImageBlocks(
       thumbBlobHash: data.thumbBlobHash,
     }
     return {
-      block_type: 'scribe/image' as const,
+      block_type: BLOCK_TYPE_IMAGE,
       body: JSON.stringify(body),
       inserter: data.inserter,
       collection_id: data.collectionId,
@@ -155,7 +155,7 @@ export async function updateImageBlock(
   }
 
   return createNoteVersion(db, blockUuid, {
-    block_type: 'scribe/image',
+    block_type: BLOCK_TYPE_IMAGE,
     body: JSON.stringify(newBody),
     inserter: updates.inserter,
     collection_id: updates.collectionId,

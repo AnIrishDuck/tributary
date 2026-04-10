@@ -2,6 +2,8 @@
  * Database schema types for the scribe app
  */
 
+import { BlockType } from './types.js'
+
 /**
  * Database representation of a note
  */
@@ -14,7 +16,7 @@ export interface NoteTable {
   /**
    * Type of the note
    */
-  block_type: string
+  block_type: BlockType
 
   /**
    * Unique identifier for this version
