@@ -9,7 +9,7 @@
 
 /** Common query interface satisfied by both TributaryStream and TributaryLocal. */
 export interface MigratableDb {
-  query(sql: string, params?: any[]): Promise<any>;
+  query(sql: string, params?: any[]): Promise<{ rows: Record<string, any>[] }>;
   exec(sql: string, params?: any[]): Promise<void>;
   /** Default tracking table name for this db type. */
   defaultMigrationsTable: string;
@@ -102,7 +102,7 @@ export async function migrate(
       `SELECT name FROM "${tableName}" WHERE name IN ${clause}`,
       params,
     );
-    const applied = new Set<string>(result.rows.map((r: any) => r.name));
+    const applied = new Set<string>(result.rows.map((r) => r.name));
 
     // Run missing migrations in list order.
     for (const migration of batch) {

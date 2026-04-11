@@ -105,7 +105,7 @@ export class TributaryClient {
 
     // First check if we already have a stream with this exact public key
     try {
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ schema_id: string }>(
         `SELECT schema_id FROM tributary.streams WHERE read_key = $1`,
         [publicKey]
       );
@@ -132,7 +132,7 @@ export class TributaryClient {
     // Limit iterations to prevent infinite loops
     while (counter < MAX_ATTEMPTS) {
       try {
-        const result: any = await this.pglite.query(
+        const result = await this.pglite.query<{ count: string }>(
           `SELECT COUNT(*) as count FROM tributary.streams WHERE schema_id = $1`,
           [currentSchemaId]
         );
@@ -235,7 +235,7 @@ export class TributaryClient {
     
     // Verify the stream was added to the database
     try {
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ id: string }>(
         `SELECT id FROM tributary.streams WHERE id = $1`,
         [streamIdStr]
       );
@@ -256,7 +256,7 @@ export class TributaryClient {
     await this.initialized;
 
     try {
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ write_key: Uint8Array | null }>(
         `SELECT write_key FROM tributary.streams WHERE id = $1`,
         [id]
       );
@@ -281,11 +281,11 @@ export class TributaryClient {
     
     try {
       // Query the tributary.streams table to get all stream IDs
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ id: string }>(
         `SELECT id FROM tributary.streams`
       );
-      
-      return result.rows.map((row: any) => row.id);
+
+      return result.rows.map((row) => row.id);
     } catch (err: unknown) {
       warn('Could not list streams:', err as Error);
       return [];
@@ -314,7 +314,7 @@ export class TributaryClient {
     // If not, check if it exists in the database
     try {
       debug('Querying database for stream');
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ read_key: Uint8Array; write_key: Uint8Array | null; schema_id: string }>(
         `SELECT read_key, write_key, schema_id FROM tributary.streams WHERE id = $1`,
         [id]
       );
@@ -389,7 +389,7 @@ export class TributaryClient {
     // If not, check if it exists in the database
     try {
       debug('Querying database for local stream');
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ schema_id: string; id: string }>(
         `SELECT schema_id, id FROM tributary.streams WHERE id = $1`,
         [id]
       );
@@ -428,7 +428,7 @@ export class TributaryClient {
 
   private async getConfig(key: string): Promise<string | null> {
     await this.initialized;
-    const result: any = await this.pglite.query(
+    const result = await this.pglite.query<{ value: string }>(
       `SELECT value FROM tributary.config WHERE key = $1`,
       [key]
     );
@@ -483,7 +483,7 @@ export class TributaryClient {
    */
   async getErrors(): Promise<SyncError[]> {
     await this.initialized;
-    const result: any = await this.pglite.query(
+    const result = await this.pglite.query<SyncError>(
       `SELECT id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params
        FROM tributary.sync_errors
        ORDER BY occurred_at DESC`

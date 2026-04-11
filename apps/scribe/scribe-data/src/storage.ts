@@ -32,7 +32,7 @@ export async function estimateLibraryStorage(
  */
 async function countNotes(stream: TributaryStream): Promise<number> {
   try {
-    const result: any = await stream.query(
+    const result = await stream.query(
       `SELECT COUNT(DISTINCT block_uuid)::int AS cnt FROM block`
     )
     return result.rows[0]?.cnt ?? 0
