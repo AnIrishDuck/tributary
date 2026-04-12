@@ -7,6 +7,7 @@ import { TributaryLocal } from './tributaryLocal.js';
 import { TributaryBlob } from './tributaryBlob.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import { computeHash } from './hashUtils.js';
+import { deriveEncryptionKey as _deriveEncryptionKey } from './blobHelpers.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
 
 // Type definitions for our transaction log
@@ -72,7 +73,11 @@ export class TributaryStream {
   private appId: string;
   private schemaId: string;
   private schemaName: string;
+  /** Schema name without surrounding double-quotes. */
+  private readonly unquotedSchemaName: string;
   private searchPathSQL: string;
+  /** Cached base64url-encoded public key (stream ID). */
+  private readonly id: string;
 
   /** Default tracking table used by migrate() / hasMigration(). */
   readonly defaultMigrationsTable = 'migrations';
@@ -109,15 +114,18 @@ export class TributaryStream {
     this.schemaId = options.schemaId;
     // Quote the schema name to handle special characters
     this.schemaName = `"${this.appId}_${this.schemaId}"`;
+    this.unquotedSchemaName = `${this.appId}_${this.schemaId}`;
     // Pre-compute the SET LOCAL statement. SET LOCAL scopes the search_path
     // to the current transaction, preventing concurrent operations on other
     // streams from stomping on it.
     this.searchPathSQL = `SET LOCAL search_path TO ${this.schemaName}, tributary, public`;
+    // Cache the encoded public key so getId() doesn't re-encode every call
+    this.id = base64url.encode(Buffer.from(this.publicKey));
     debug("schemaName", this.schemaName);
   }
 
   getId(): string {
-    return base64url.encode(Buffer.from(this.publicKey));
+    return this.id;
   }
 
   /**
@@ -133,17 +141,14 @@ export class TributaryStream {
    * @returns The fully qualified table name with schema
    */
   getFullTable(table: string): string {
-    // Remove quotes from schema name if already quoted, then re-quote properly
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    return `"${cleanSchemaName}"."${table}"`;
+    return `"${this.unquotedSchemaName}"."${table}"`;
   }
 
   /**
    * Estimate the storage used by this stream's schema.
    */
   async estimateStorage(): Promise<StreamStorageEstimate> {
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    return estimateStreamStorageBytes(this.pglite, cleanSchemaName);
+    return estimateStreamStorageBytes(this.pglite, this.unquotedSchemaName);
   }
 
   /**
@@ -151,10 +156,7 @@ export class TributaryStream {
    * by this stream.
    */
   local(): TributaryLocal {
-    // Remove quotes from schema name if already quoted
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    // Return a TributaryLocal instance with the correct schema
-    return new TributaryLocal(this.pglite, cleanSchemaName);
+    return new TributaryLocal(this.pglite, this.unquotedSchemaName);
   }
 
   /**
@@ -331,7 +333,7 @@ export class TributaryStream {
    * Throws SyncRequiredError if ANY remote transactions exist beyond guardIndex.
    */
   private async checkSyncGuard(guardIndex: number): Promise<void> {
-    const probe = await this.server.getBlobsArrow(this.getPublicKeyBase64(), guardIndex, 1);
+    const probe = await this.server.getBlobsArrow(this.getId(), guardIndex, 1);
     if (probe.totalCount > guardIndex) {
       throw new SyncRequiredError(guardIndex, probe.totalCount);
     }
@@ -571,7 +573,7 @@ export class TributaryStream {
       // Use the new Arrow endpoint to fetch blobs with data in a single request
       // This is more efficient than the old approach of fetching metadata then individual blobs
       result = await this.server.getBlobsArrow(
-        this.getPublicKeyBase64(),
+        this.getId(),
         this.lastSyncIndex,
         max
       );
@@ -588,7 +590,7 @@ export class TributaryStream {
       const prevSequence = result.blobs[0].sequenceNumber - 1;
       if (prevSequence === this.lastSyncIndex) {
         // We just synced this blob, try to get it from server
-        const prevBlobMeta = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+        const prevBlobMeta = await this.server.getLatestBlobMetadata(this.getId());
         if (prevBlobMeta && prevBlobMeta.sequenceNumber >= prevSequence) {
           // The expected hash for the first blob should chain from this previous blob
           expectedHash = prevBlobMeta.hash;
@@ -662,7 +664,7 @@ export class TributaryStream {
     if (moreToFetch) {
       this.prefetchCache = {
         promise: this.server.getBlobsArrow(
-          this.getPublicKeyBase64(),
+          this.getId(),
           finalSyncIndex,
           max
         ),
@@ -777,7 +779,7 @@ export class TributaryStream {
     // Get the latest blob metadata from the server for proper chaining.
     // When guardIndex is provided, we already know the expected server state from
     // the sync guard check — but we still need the latest hash for chain verification.
-    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getId());
     debug('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
 
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
@@ -843,7 +845,7 @@ export class TributaryStream {
       
       // Store the encrypted blob on the server
       const success = await this.server.storeBlob(
-        this.getPublicKeyBase64(),
+        this.getId(),
         encryptedData,
         hash,
         priorHash,
@@ -889,8 +891,7 @@ export class TributaryStream {
    * @returns Symmetric encryption key
    */
   private async deriveEncryptionKey(): Promise<Uint8Array> {
-    const { deriveEncryptionKey } = await import('./blobHelpers.js');
-    return deriveEncryptionKey(this.privateKey);
+    return _deriveEncryptionKey(this.privateKey);
   }
 
   /**
@@ -969,10 +970,6 @@ export class TributaryStream {
     return trimmedQuery.startsWith('select') || 
            trimmedQuery.startsWith('explain') || 
            trimmedQuery.startsWith('show');
-  }
-
-  private getPublicKeyBase64(): string {
-    return base64url.encode(Buffer.from(this.publicKey));
   }
 
   private generateTransactionId(): string {

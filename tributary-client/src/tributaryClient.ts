@@ -4,6 +4,7 @@ import { Server } from './server.js';
 import { TributaryStream, SyncStatus, SyncError } from './tributaryStream.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { logger, warn, error, info, debug } from './logger.js';
+import { computeHash } from './hashUtils.js';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 
@@ -99,9 +100,6 @@ export class TributaryClient {
   private async generateSchemaId(publicKey: Uint8Array): Promise<string> {
     const t0 = performance.now();
     info('[generateSchemaId] start');
-
-    // Import computeHash function
-    const { computeHash } = await import('./hashUtils.js');
 
     // First check if we already have a stream with this exact public key
     try {
