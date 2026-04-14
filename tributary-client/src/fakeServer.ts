@@ -72,7 +72,7 @@ export class FakeServer implements Server {
     }
     
     // Verify the signature (same validation as tributary-server)
-    if (!await this.verifySignature(pubkey, signature, hash, data)) {
+    if (!await this.verifySignature(pubkey, signature, hash)) {
       throw new Error('Invalid signature');
     }
     
@@ -128,24 +128,14 @@ export class FakeServer implements Server {
   }
 
   private getLatestBlobHash(pubkey: string): string {
-    let latestSequence = -1;
-    let latestHash = '';
-    
-    for (const blob of this.blobs.values()) {
-      if (blob.pubkey === pubkey && blob.sequenceNumber > latestSequence) {
-        latestSequence = blob.sequenceNumber;
-        latestHash = blob.hash;
-      }
-    }
-    
-    return latestHash;
+    const latest = this.findLatestBlob(pubkey);
+    return latest ? latest.hash : '';
   }
 
   private async verifySignature(
     pubkey: string,
     signature: string,
     hash: string,
-    data: Uint8Array
   ): Promise<boolean> {
     try {
       const pubkeyBytes = base64url.decode(pubkey);
@@ -166,22 +156,63 @@ export class FakeServer implements Server {
     }
   }
   
-  async getLatestBlobMetadata(
-    pubkey: string
-  ): Promise<BlobMetadata | null> {
+  /**
+   * Find the blob with the highest sequence number for a given pubkey.
+   * Shared helper used by getLatestBlobHash and getLatestBlobMetadata.
+   */
+  private findLatestBlob(pubkey: string): BlobData | null {
     let latestSequence = -1;
-    let latestBlob: BlobMetadata | null = null;
-    
+    let latestBlob: BlobData | null = null;
+
     for (const blob of this.blobs.values()) {
       if (blob.pubkey === pubkey && blob.sequenceNumber > latestSequence) {
         latestSequence = blob.sequenceNumber;
-        latestBlob = { ...blob };
+        latestBlob = blob;
       }
     }
-    
+
     return latestBlob;
   }
-  
+
+  /**
+   * Filter blobs by pubkey, optionally filter by startSequence, sort by
+   * sequence number ascending, and apply a count limit.
+   *
+   * startSequence uses > (not >=) because it represents the last blob that
+   * was already processed — we want blobs AFTER that one.
+   *
+   * Returns { filtered, totalCount } where totalCount is the total number
+   * of blobs for this pubkey (before the startSequence / max filters).
+   */
+  private filterBlobs(
+    pubkey: string,
+    startSequence?: number,
+    max?: number,
+  ): { filtered: BlobData[]; totalCount: number } {
+    const all = Array.from(this.blobs.values())
+      .filter(blob => blob.pubkey === pubkey);
+
+    let filtered = all;
+    if (startSequence !== undefined) {
+      filtered = filtered.filter(blob => blob.sequenceNumber > startSequence);
+    }
+
+    filtered.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+
+    if (max !== undefined) {
+      filtered = filtered.slice(0, max);
+    }
+
+    return { filtered, totalCount: all.length };
+  }
+
+  async getLatestBlobMetadata(
+    pubkey: string
+  ): Promise<BlobMetadata | null> {
+    const latest = this.findLatestBlob(pubkey);
+    return latest ? { ...latest } : null;
+  }
+
   async getAllBlobMetadata(
     pubkey: string,
     startSequence?: number,
@@ -190,33 +221,10 @@ export class FakeServer implements Server {
     blobs: BlobMetadata[];
     totalCount: number;
   }> {
-    // Filter blobs by pubkey
-    const blobs = Array.from(this.blobs.values())
-      .filter(blob => blob.pubkey === pubkey);
-    
-    // Filter by sequence number if startSequence is provided
-    // Note: We use > (not >=) because startSequence represents the last blob
-    // that was already processed, and we want to fetch blobs AFTER that one
-    let filteredBlobs = blobs;
-    if (startSequence !== undefined) {
-      filteredBlobs = filteredBlobs.filter(blob => blob.sequenceNumber > startSequence);
-    }
-    
-    // Sort by sequence number
-    filteredBlobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
-    // Apply limit if max is provided
-    let paginatedBlobs = filteredBlobs;
-    if (max !== undefined) {
-      paginatedBlobs = filteredBlobs.slice(0, max);
-    }
-    
-    // Return a copy of each blob to prevent external modification
-    const resultBlobs = paginatedBlobs.map(blob => ({ ...blob }));
-    
+    const { filtered, totalCount } = this.filterBlobs(pubkey, startSequence, max);
     return {
-      blobs: resultBlobs,
-      totalCount: blobs.length
+      blobs: filtered.map(blob => ({ ...blob })),
+      totalCount,
     };
   }
 
@@ -228,46 +236,29 @@ export class FakeServer implements Server {
     blobs: ArrowBlob[];
     totalCount: number;
   }> {
-    // Filter blobs by pubkey
-    const blobs = Array.from(this.blobs.values())
-      .filter(blob => blob.pubkey === pubkey);
-    
-    // Filter by sequence number if startSequence is provided
-    let filteredBlobs = blobs;
-    if (startSequence !== undefined) {
-      filteredBlobs = filteredBlobs.filter(blob => blob.sequenceNumber > startSequence);
-    }
-    
-    // Sort by sequence number
-    filteredBlobs.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
-    // Apply limit if max is provided (default to 10)
-    const maxCount = max !== undefined ? max : 10;
-    let paginatedBlobs = filteredBlobs.slice(0, maxCount);
-    
+    const defaultMax = max !== undefined ? max : 10;
+    const { filtered, totalCount } = this.filterBlobs(pubkey, startSequence, defaultMax);
+
     // Apply byte size limit (10MB) - same as server
     const BYTE_LIMIT = 10 * 1024 * 1024;
     let totalBytes = 0;
-    const selectedBlobs = [];
-    
-    for (const blob of paginatedBlobs) {
+    const selectedBlobs: BlobData[] = [];
+
+    for (const blob of filtered) {
       if (totalBytes + blob.data.length > BYTE_LIMIT) {
         break;
       }
       totalBytes += blob.data.length;
       selectedBlobs.push(blob);
     }
-    
-    // Return blobs in Arrow-compatible format (seq, hash, data)
-    const resultBlobs = selectedBlobs.map(blob => ({
-      sequenceNumber: blob.sequenceNumber,
-      hash: blob.hash,
-      data: new Uint8Array(blob.data) // Create a copy
-    }));
-    
+
     return {
-      blobs: resultBlobs,
-      totalCount: blobs.length
+      blobs: selectedBlobs.map(blob => ({
+        sequenceNumber: blob.sequenceNumber,
+        hash: blob.hash,
+        data: new Uint8Array(blob.data),
+      })),
+      totalCount,
     };
   }
 
