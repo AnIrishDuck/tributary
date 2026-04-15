@@ -1,5 +1,5 @@
 export { SyncLoop } from './syncLoop.js'
-export type { SyncLoopConfig } from './syncLoop.js'
+export type { SyncLoopConfig, SyncLogger } from './syncLoop.js'
 export { SyncStatusProvider, useSyncStatus, useSyncStatusOptional, useIsLibrarySynced } from './syncStatusContext.js'
 export type { SyncStatusContextType } from './syncStatusContext.js'
 export type { SyncStatus, SyncFocus, SyncStatusState } from './types.js'
