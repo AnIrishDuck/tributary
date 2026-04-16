@@ -20,7 +20,7 @@ export async function estimateStreamStorageBytes(
   pglite: PGliteInterface,
   schemaName: string
 ): Promise<StreamStorageEstimate> {
-  const result: any = await pglite.query(
+  const result = await pglite.query<{ total_bytes: string }>(
     `SELECT
        COALESCE(SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint AS total_bytes
      FROM pg_tables
@@ -44,7 +44,7 @@ async function countAllRows(
   for (const table of tables) {
     try {
       const fqn = `${quoteIdent(schemaName)}.${quoteIdent(table)}`
-      const r: any = await pglite.query(`SELECT COUNT(*)::int AS cnt FROM ${fqn}`)
+      const r = await pglite.query<{ cnt: number }>(`SELECT COUNT(*)::int AS cnt FROM ${fqn}`)
       total += r.rows[0]?.cnt ?? 0
     } catch {
       // skip
@@ -60,11 +60,11 @@ async function listTables(
   pglite: PGliteInterface,
   schemaName: string
 ): Promise<string[]> {
-  const result: any = await pglite.query(
+  const result = await pglite.query<{ tablename: string }>(
     `SELECT tablename FROM pg_tables WHERE schemaname = $1`,
     [schemaName]
   )
-  return (result.rows ?? []).map((r: any) => r.tablename)
+  return (result.rows ?? []).map((r) => r.tablename)
 }
 
 /**
