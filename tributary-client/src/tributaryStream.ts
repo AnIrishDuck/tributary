@@ -480,7 +480,7 @@ export class TributaryStream {
    * Get all sync errors for this stream, ordered by most recent first
    */
   async getErrors(): Promise<SyncError[]> {
-    const result: any = await this.pglite.query(
+    const result = await this.pglite.query<SyncError>(
       `SELECT id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params
        FROM tributary.sync_errors
        WHERE stream_id = $1
@@ -505,7 +505,7 @@ export class TributaryStream {
    */
   private async loadLastSyncIndex(): Promise<void> {
     try {
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ last_sync_index: number | null }>(
         `SELECT last_sync_index FROM tributary.streams WHERE id = $1`,
         [this.getId()]
       );
@@ -637,15 +637,13 @@ export class TributaryStream {
         if (!this.isReadQuery(transactionEntry.query)) {
           writeBlobs.push({ entry: transactionEntry, sequenceNumber: blob.sequenceNumber });
         }
-      } catch (parseError: any) {
+      } catch (parseError: unknown) {
         error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError as Error);
         warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
-        // Advance past unparseable blobs so we don't re-fetch them
         finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
-        // Record the error for app visibility
         await this.recordSyncError(
           'parse_error',
-          (parseError as Error).message || String(parseError),
+          parseError instanceof Error ? parseError.message : String(parseError),
           blob.sequenceNumber
         );
       }
@@ -704,15 +702,13 @@ export class TributaryStream {
             }
             // @ts-ignore
             await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
-          } catch (blobError: any) {
-            // Roll back just this blob — likely already applied locally
+          } catch (blobError: unknown) {
             // @ts-ignore
             await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
             error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError as Error);
-            // Defer recording so we don't deadlock inside the transaction
             pendingErrors.push({
               errorType: 'apply_error',
-              errorMessage: (blobError as Error).message || String(blobError),
+              errorMessage: blobError instanceof Error ? blobError.message : String(blobError),
               blobSequence: sequenceNumber,
               query: entry.query,
               params: entry.params,
