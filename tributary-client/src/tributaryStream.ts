@@ -236,7 +236,6 @@ export class TributaryStream {
     if (this.isReadQuery(query)) {
       return await this.pglite.transaction(async (tx) => {
         await tx.exec(this.searchPathSQL);
-        // @ts-ignore
         return await tx.query(query, params);
       });
     }
@@ -252,7 +251,6 @@ export class TributaryStream {
       await tx.exec(this.searchPathSQL);
 
       // 1. Execute locally FIRST to catch postgres errors before touching the server
-      // @ts-ignore
       const queryResult = await tx.query(query, params);
 
       // 2. Sync guard: verify no unsynced remote blobs exist (server-only check)
@@ -299,8 +297,6 @@ export class TributaryStream {
       await tx.exec(this.searchPathSQL);
 
       // 1. Execute locally FIRST to catch postgres errors
-      // Use query instead of exec for parameterized operations to work around PGLite issue
-      // @ts-ignore
       if (params && params.length > 0) {
         await tx.query(query, params);
       } else {
@@ -375,8 +371,6 @@ export class TributaryStream {
       const recordingTx = {
         query: async (query: string, params?: any[]) => {
           info('TRANSACTION: recordingTx.query called with:', query);
-          // Execute immediately using the PGlite transaction object (user sees real results)
-          // @ts-ignore
           const queryResult = await tx.query(query, params);
           // Record the command for server persistence
           recordedCommands.push({ query, params });
@@ -385,9 +379,11 @@ export class TributaryStream {
         },
         exec: async (query: string, params?: any[]) => {
           info('TRANSACTION: recordingTx.exec called with:', query);
-          // Execute immediately using the PGlite transaction object (user sees real results)
-          // @ts-ignore
-          await tx.exec(query, params);
+          if (params && params.length > 0) {
+            await tx.query(query, params);
+          } else {
+            await tx.exec(query);
+          }
           // Record the command for server persistence
           recordedCommands.push({ query, params });
           info('TRANSACTION: recordingTx.exec completed');
@@ -688,25 +684,24 @@ export class TributaryStream {
           // can be gracefully skipped without rolling back the entire batch.
           // This handles the case where ensureServerPersistence couldn't advance
           // lastSyncIndex due to a gap, and sync later encounters the local blob.
-          // @ts-ignore
           await tx.exec(`SAVEPOINT blob_${sequenceNumber}`);
           try {
             if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
               for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
                 if (command.query) {
-                  // @ts-ignore - PGLite transaction exec has different typing
-                  await tx.exec(command.query, command.params);
+                  if (command.params && command.params.length > 0) {
+                    await tx.query(command.query, command.params);
+                  } else {
+                    await tx.exec(command.query);
+                  }
                 }
               }
             } else {
-              // @ts-ignore
               await tx.query(entry.query, entry.params || []);
             }
-            // @ts-ignore
             await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
           } catch (blobError: any) {
             // Roll back just this blob — likely already applied locally
-            // @ts-ignore
             await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
             error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError as Error);
             // Defer recording so we don't deadlock inside the transaction
@@ -723,7 +718,6 @@ export class TributaryStream {
         // Update sync index once for the entire batch.
         // Use GREATEST to avoid overwriting a higher value set by a concurrent
         // ensureServerPersistence call (e.g. contiguous local writes).
-        // @ts-ignore
         await tx.query(
           `UPDATE tributary.streams SET last_sync_index = GREATEST(COALESCE(last_sync_index, 0), $1) WHERE id = $2`,
           [finalSyncIndex, this.getId()]
