@@ -5,7 +5,7 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
-import { Collection, CollectionSlug, NoteSlugRow, ImageBlockBody, BlockSlugInfo as BlockSlugInfoType, schemaReady } from 'scribe-data'
+import { Collection, CollectionSlug, NoteSlugRow, ImageBlockBody, BlockSlugInfo as BlockSlugInfoType, AuthoritativeVersion, Note, schemaReady } from 'scribe-data'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
@@ -25,12 +25,6 @@ interface BlockSlugInfo {
   block_uuid: string;
   slug: string;
   title: string;
-}
-
-interface AuthoritativeVersion {
-  block_uuid: string;
-  version_uuid: string;
-  indexed_at: string;
 }
 
 type PageMode =
@@ -932,10 +926,10 @@ const SlugViewPage: React.FC = () => {
 async function loadNoteContent(
   localDb: any,
   blockSlugInfo: BlockSlugInfo,
-  getAuthoritativeVersionByNoteUuid: (db: any, uuid: string) => Promise<any>,
-  getNoteByVersion: (db: any, blockUuid: string, versionUuid: string) => Promise<any>
+  getAuthoritativeVersionByNoteUuid: (db: any, uuid: string) => Promise<AuthoritativeVersion | null>,
+  getNoteByVersion: (db: any, blockUuid: string, versionUuid: string) => Promise<Note | null>
 ): Promise<{ body: string; version_uuid: string; block_uuid: string }> {
-  const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid) as AuthoritativeVersion | null
+  const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockSlugInfo.block_uuid)
 
   if (!authoritativeVersion) {
     throw new Error('Note version not found')

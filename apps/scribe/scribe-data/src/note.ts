@@ -4,10 +4,6 @@ import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
 import { getLibrary } from './collection.js'
 import { titleToSlug, extractTitleFromMarkdown } from './indexing.js'
 
-interface NoteQueryResult {
-  version_uuid: string;
-}
-
 /**
  * Create a new note in the database
  * 

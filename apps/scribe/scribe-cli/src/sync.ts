@@ -365,8 +365,7 @@ async function compareFileToDatabase(
     const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockUuid);
     if (!authoritativeVersion) return;
 
-    const av = authoritativeVersion as any;
-    const currentNote = await getNoteByVersion(stream, blockUuid, av.version_uuid);
+    const currentNote = await getNoteByVersion(stream, blockUuid, authoritativeVersion.version_uuid);
     if (!currentNote) return;
 
     if (currentNote.body !== content) {
@@ -561,10 +560,10 @@ async function syncSlugsDirectory(
         }
 
         // Get the note content
-        const note = await getNoteByVersion(stream, noteUuid, (authoritativeVersion as any).version_uuid);
+        const note = await getNoteByVersion(stream, noteUuid, authoritativeVersion.version_uuid);
 
         if (!note) {
-          console.warn(`Note not found for version ${(authoritativeVersion as any).version_uuid}`);
+          console.warn(`Note not found for version ${authoritativeVersion.version_uuid}`);
           continue;
         }
 
@@ -698,8 +697,7 @@ async function syncFileToDatabase(
     const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, blockUuid);
 
     if (authoritativeVersion) {
-      const av = authoritativeVersion as any;
-      const currentNote = await getNoteByVersion(stream, blockUuid, av.version_uuid);
+      const currentNote = await getNoteByVersion(stream, blockUuid, authoritativeVersion.version_uuid);
 
       if (currentNote) {
         if (currentNote.body !== content) {
@@ -709,7 +707,7 @@ async function syncFileToDatabase(
               block_type: 'scribe/markdown',
               body: content,
               inserter: 'scribe-cli-sync',
-              prior_version_uuid: av.version_uuid,
+              prior_version_uuid: authoritativeVersion.version_uuid,
               collection_id: collectionId,
               insert_datetime: fileMtime,
             });
