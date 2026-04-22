@@ -7,6 +7,7 @@ import { TributaryLocal } from './tributaryLocal.js';
 import { TributaryBlob } from './tributaryBlob.js';
 import { logger, warn, error, info, debug } from './logger.js';
 import { computeHash } from './hashUtils.js';
+import { deriveEncryptionKey } from './blobHelpers.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
 
 // Type definitions for our transaction log
@@ -71,6 +72,7 @@ export class TributaryStream {
   private syncStateInitialized: boolean = false;
   private appId: string;
   private schemaId: string;
+  private rawSchemaName: string;
   private schemaName: string;
   private searchPathSQL: string;
 
@@ -107,8 +109,8 @@ export class TributaryStream {
     this.pglite = options.pglite;
     this.appId = options.appId;
     this.schemaId = options.schemaId;
-    // Quote the schema name to handle special characters
-    this.schemaName = `"${this.appId}_${this.schemaId}"`;
+    this.rawSchemaName = `${this.appId}_${this.schemaId}`;
+    this.schemaName = `"${this.rawSchemaName}"`;
     // Pre-compute the SET LOCAL statement. SET LOCAL scopes the search_path
     // to the current transaction, preventing concurrent operations on other
     // streams from stomping on it.
@@ -133,17 +135,14 @@ export class TributaryStream {
    * @returns The fully qualified table name with schema
    */
   getFullTable(table: string): string {
-    // Remove quotes from schema name if already quoted, then re-quote properly
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    return `"${cleanSchemaName}"."${table}"`;
+    return `"${this.rawSchemaName}"."${table}"`;
   }
 
   /**
    * Estimate the storage used by this stream's schema.
    */
   async estimateStorage(): Promise<StreamStorageEstimate> {
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    return estimateStreamStorageBytes(this.pglite, cleanSchemaName);
+    return estimateStreamStorageBytes(this.pglite, this.rawSchemaName);
   }
 
   /**
@@ -151,10 +150,7 @@ export class TributaryStream {
    * by this stream.
    */
   local(): TributaryLocal {
-    // Remove quotes from schema name if already quoted
-    const cleanSchemaName = this.schemaName.replace(/^"(.*)"$/, '$1');
-    // Return a TributaryLocal instance with the correct schema
-    return new TributaryLocal(this.pglite, cleanSchemaName);
+    return new TributaryLocal(this.pglite, this.rawSchemaName);
   }
 
   /**
@@ -880,12 +876,7 @@ export class TributaryStream {
     }
   }
 
-  /**
-   * Derive a symmetric encryption key from the private key
-   * @returns Symmetric encryption key
-   */
   private async deriveEncryptionKey(): Promise<Uint8Array> {
-    const { deriveEncryptionKey } = await import('./blobHelpers.js');
     return deriveEncryptionKey(this.privateKey);
   }
 
