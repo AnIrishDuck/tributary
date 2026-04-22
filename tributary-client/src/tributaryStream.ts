@@ -185,12 +185,12 @@ export class TributaryStream {
     try {
       info('Initializing sync state for stream:', this.getId());
       // Check if we're already tracking this stream
-      const checkResult: any = await this.pglite.query(
+      const checkResult = await this.pglite.query<{ count: number | string }>(
         `SELECT COUNT(*) as count FROM tributary.streams WHERE id = $1`,
         [this.getId()]
       );
       debug('Check result:', checkResult.rows[0].count);
-      
+
       if (Number(checkResult.rows[0].count) === 0) {
         info('Inserting new stream into database');
         // Insert stream info if it doesn't exist
@@ -480,7 +480,7 @@ export class TributaryStream {
    * Get all sync errors for this stream, ordered by most recent first
    */
   async getErrors(): Promise<SyncError[]> {
-    const result: any = await this.pglite.query(
+    const result = await this.pglite.query<SyncError>(
       `SELECT id, stream_id, blob_sequence, error_type, error_message, occurred_at, query, params
        FROM tributary.sync_errors
        WHERE stream_id = $1
@@ -505,11 +505,11 @@ export class TributaryStream {
    */
   private async loadLastSyncIndex(): Promise<void> {
     try {
-      const result: any = await this.pglite.query(
+      const result = await this.pglite.query<{ last_sync_index: number | null }>(
         `SELECT last_sync_index FROM tributary.streams WHERE id = $1`,
         [this.getId()]
       );
-      
+
       if (result.rows && result.rows.length > 0 && result.rows[0].last_sync_index !== null) {
         this.lastSyncIndex = result.rows[0].last_sync_index;
       }
