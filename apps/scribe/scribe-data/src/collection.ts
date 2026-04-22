@@ -3,6 +3,20 @@ import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow, CollectionOptions, MergedCollectionOptions } from './types'
 import { titleToSlug, getNotesBySlugInCollection } from './indexing.js'
 
+interface NoteSlugPathRow {
+  slug: string;
+  collection_id: string | null;
+}
+
+interface CollectionOptionsRow {
+  collection_uuid: string;
+  options: string;
+}
+
+interface OptionsRow {
+  options: string;
+}
+
 /**
  * Create a new collection in the database
  *
@@ -511,8 +525,8 @@ export async function getNoteSlugPath(
     return []
   }
 
-  const row = result.rows[0] as any
-  const noteSlug = row.slug as string
+  const row = result.rows[0] as NoteSlugPathRow
+  const noteSlug = row.slug
   const collectionId = row.collection_id
 
   if (!collectionId) {
@@ -583,9 +597,9 @@ export async function getParentChain(
   if (!result.rows) return []
 
   // Strip the depth column from results
-  return result.rows.map((row: any) => {
+  return result.rows.map((row: Collection & { depth: number }) => {
     const { depth, ...collection } = row
-    return collection as Collection
+    return collection
   })
 }
 
@@ -623,9 +637,9 @@ export async function mergeParentChainOptions(
 
     let merged: CollectionOptions = {}
     const sources: Record<string, string> = {}
-    for (const row of result.rows) {
-      const uuid = (row as any).collection_uuid as string
-      const opts = JSON.parse((row as any).options)
+    for (const row of result.rows as CollectionOptionsRow[]) {
+      const uuid = row.collection_uuid
+      const opts = JSON.parse(row.options)
       for (const key of Object.keys(opts)) {
         sources[key] = uuid
       }
@@ -665,7 +679,7 @@ export async function getCollectionOptions(
     if (!result.rows || result.rows.length === 0) {
       return {}
     }
-    return JSON.parse((result.rows[0] as any).options)
+    return JSON.parse((result.rows[0] as OptionsRow).options)
   } catch (err: any) {
     if (err?.code === UNDEFINED_COLUMN) {
       // Column doesn't exist — library predates the options migration

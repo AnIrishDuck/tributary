@@ -1,6 +1,14 @@
 import { TributaryLocal } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
 
+interface BlockTitleRow {
+  block_uuid: string;
+  slug: string;
+  body: string;
+  collection_id: string | null;
+  block_type: string;
+}
+
 /**
  * Try to extract the title from an image block's JSON body.
  * Only uses the explicit title field — altText and fileName are display
@@ -82,7 +90,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     []
   )
 
-  for (const row of (blocksResult.rows || []) as any[]) {
+  for (const row of (blocksResult.rows || []) as BlockTitleRow[]) {
     const blockType = row.block_type || 'scribe/markdown'
     let title: string | null
     if (blockType === 'scribe/image') {

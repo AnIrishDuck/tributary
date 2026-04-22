@@ -130,6 +130,14 @@ export interface PGliteResult {
 }
 
 /**
+ * Row returned by COUNT(*) aggregate queries.
+ * PGLite returns the count as a string.
+ */
+export interface CountRow {
+  count: string;
+}
+
+/**
  * Type for a note slug database row.
  * Now backed by the synced `block` table directly (title extracted from body).
  */

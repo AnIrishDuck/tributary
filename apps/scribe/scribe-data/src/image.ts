@@ -3,6 +3,13 @@ import { Note, ImageBlockBody, NoteSlug } from './types'
 import { createNote, createNotes, createNoteVersion, getLatestNoteVersion } from './note.js'
 import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
 
+interface ImageBlockRow {
+  block_uuid: string;
+  slug: string;
+  body: string;
+  block_type: string;
+}
+
 /**
  * Parse the JSON body of an image block into an ImageBlockBody.
  *
@@ -201,7 +208,7 @@ export async function getImageBySlug(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0] as ImageBlockRow
   const body = JSON.parse(row.body) as ImageBlockBody
   return {
     note: {

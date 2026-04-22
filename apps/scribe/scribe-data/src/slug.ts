@@ -3,6 +3,13 @@ import { CollectionSlug, NoteSlug, BlockSlugInfo } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
 import { getNotesBySlugInCollection, extractBlockTitle } from './indexing.js'
 
+interface BlockSlugQueryRow {
+  block_uuid: string;
+  slug: string;
+  body: string;
+  block_type: string;
+}
+
 export interface ResolveResult {
   type: 'note' | 'collection' | 'collision' | 'image'
   entity: any
@@ -291,7 +298,7 @@ export async function suggestSlugs(
         [parentUuid, likePattern, remaining]
       )
 
-      for (const row of (noteResult.rows || []) as any[]) {
+      for (const row of (noteResult.rows || []) as BlockSlugQueryRow[]) {
         suggestions.push({
           slug_path: pathPrefix + row.slug,
           title: extractBlockTitle(row.body, row.block_type),
