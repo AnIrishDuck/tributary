@@ -111,7 +111,6 @@ export class TributaryClient {
       );
 
       if (result.rows.length > 0) {
-        // Found existing stream with same public key, return its schema ID
         info(`[generateSchemaId] found existing schema_id in ${(performance.now() - t0).toFixed(0)}ms`);
         return result.rows[0].schema_id;
       }

@@ -637,15 +637,13 @@ export class TributaryStream {
         if (!this.isReadQuery(transactionEntry.query)) {
           writeBlobs.push({ entry: transactionEntry, sequenceNumber: blob.sequenceNumber });
         }
-      } catch (parseError: any) {
+      } catch (parseError: unknown) {
         error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError as Error);
         warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
-        // Advance past unparseable blobs so we don't re-fetch them
         finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
-        // Record the error for app visibility
         await this.recordSyncError(
           'parse_error',
-          (parseError as Error).message || String(parseError),
+          parseError instanceof Error ? parseError.message : String(parseError),
           blob.sequenceNumber
         );
       }
@@ -704,15 +702,13 @@ export class TributaryStream {
             }
             // @ts-ignore
             await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
-          } catch (blobError: any) {
-            // Roll back just this blob — likely already applied locally
+          } catch (blobError: unknown) {
             // @ts-ignore
             await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
             error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError as Error);
-            // Defer recording so we don't deadlock inside the transaction
             pendingErrors.push({
               errorType: 'apply_error',
-              errorMessage: (blobError as Error).message || String(blobError),
+              errorMessage: blobError instanceof Error ? blobError.message : String(blobError),
               blobSequence: sequenceNumber,
               query: entry.query,
               params: entry.params,
