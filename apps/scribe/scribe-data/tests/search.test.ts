@@ -5,9 +5,9 @@ import {
   searchNotes,
   indexSearchVectors,
   extractSearchableText,
-  extractTitle,
   type SearchResult
 } from '../src/search.js'
+import { extractTitleFromMarkdown } from '../src/indexing.js'
 import { indexSlugs, indexAll } from '../src/indexing.js'
 import { createTestDB } from './test-utils.js'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
@@ -103,19 +103,19 @@ describe('Full-text search', () => {
 
   describe('Title extraction', () => {
     test('should extract title from markdown heading', () => {
-      expect(extractTitle('# My Title\n\nBody text.')).toBe('My Title')
+      expect(extractTitleFromMarkdown('# My Title\n\nBody text.')).toBe('My Title')
     })
 
-    test('should return empty string when no heading exists', () => {
-      expect(extractTitle('No heading here.')).toBe('')
+    test('should return null when no heading exists', () => {
+      expect(extractTitleFromMarkdown('No heading here.')).toBeNull()
     })
 
     test('should extract only the first h1 heading', () => {
-      expect(extractTitle('# First\n## Second\n# Third')).toBe('First')
+      expect(extractTitleFromMarkdown('# First\n## Second\n# Third')).toBe('First')
     })
 
     test('should strip inline markdown from title', () => {
-      expect(extractTitle('# **Bold** Title')).toBe('Bold Title')
+      expect(extractTitleFromMarkdown('# **Bold** Title')).toBe('Bold Title')
     })
   })
 

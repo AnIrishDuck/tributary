@@ -7,6 +7,7 @@ import {
   rebuildSlugCollisions,
   getCollidingSlugs,
   extractTitleFromMarkdown,
+  stripInlineMarkdown,
   titleToSlug,
   slugToTitle,
   extractTagsFromMarkdown,
@@ -57,11 +58,27 @@ describe('scribe-data indexing', () => {
       { input: '', expected: null },
       { input: '# First Title\n\nContent\n\n# Second Title\n\nMore content.', expected: 'First Title' }
     ]
-    
+
     for (const testCase of testCases) {
       const result = extractTitleFromMarkdown(testCase.input)
       expect(result).toBe(testCase.expected)
     }
+  })
+
+  test('should strip inline markdown from title', () => {
+    expect(extractTitleFromMarkdown('# **Bold** Title')).toBe('Bold Title')
+    expect(extractTitleFromMarkdown('# *Italic* Title')).toBe('Italic Title')
+    expect(extractTitleFromMarkdown('# Title with `code`')).toBe('Title with')
+    expect(extractTitleFromMarkdown('# Title with [link](url)')).toBe('Title with link')
+    expect(extractTitleFromMarkdown('# __Bold__ and _italic_')).toBe('Bold and italic')
+  })
+
+  test('stripInlineMarkdown should strip formatting from text', () => {
+    expect(stripInlineMarkdown('**bold** text')).toBe('bold text')
+    expect(stripInlineMarkdown('*italic* text')).toBe('italic text')
+    expect(stripInlineMarkdown('`code` here')).toBe('here')
+    expect(stripInlineMarkdown('[link](url) text')).toBe('link text')
+    expect(stripInlineMarkdown('plain text')).toBe('plain text')
   })
 
   test('should convert title to slug correctly', () => {
