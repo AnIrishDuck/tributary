@@ -402,17 +402,17 @@ export async function getNoteBySlug(
 export async function getAuthoritativeVersionByNoteUuid(
   db: TributaryLocal,
   noteUuid: string
-) {
+): Promise<AuthoritativeVersion | null> {
   const result = await db.query(
     `SELECT * FROM authoritative_version WHERE block_uuid = $1`,
     [noteUuid]
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     return null
   }
-  
-  return result.rows[0]
+
+  return result.rows[0] as AuthoritativeVersion
 }
 
 /**
@@ -420,9 +420,9 @@ export async function getAuthoritativeVersionByNoteUuid(
  * @param db The TributaryLocal database instance
  * @returns Array of authoritative version mappings
  */
-export async function getAllAuthoritativeVersions(db: TributaryLocal) {
+export async function getAllAuthoritativeVersions(db: TributaryLocal): Promise<AuthoritativeVersion[]> {
   const result = await db.query(`SELECT * FROM authoritative_version`, [])
-  return result.rows || []
+  return (result.rows || []) as AuthoritativeVersion[]
 }
 
 /**

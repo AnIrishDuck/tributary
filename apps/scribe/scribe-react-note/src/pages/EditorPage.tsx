@@ -8,7 +8,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
 import { wikilinkExtension } from 'scribe-react-common/src/wikilink/codemirror'
-import { NoteSlug, AuthoritativeVersion, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
+import { NoteSlug, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion, getLibrary } from 'scribe-data'
 import { noteLinkCompletion } from '../extensions/noteLinkCompletion'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
@@ -163,7 +163,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           setBlockUuid(noteSlugInfo.block_uuid)
 
           // Get the authoritative version
-          const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid) as AuthoritativeVersion | null
+          const authoritativeVersion = await getAuthoritativeVersionByNoteUuid(localDb, noteSlugInfo.block_uuid)
 
           if (!authoritativeVersion) {
             throw new Error('Note version not found')
@@ -222,7 +222,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
         const stream = await client.get('scribe', prefix)
         if (!stream) return
         const localDb = stream.local()
-        const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid) as AuthoritativeVersion | null
+        const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
         if (!authVersion) return
         if (authVersion.version_uuid !== loadedVersionUuidRef.current) {
           setShowConflictWarning(true)
@@ -282,7 +282,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       if (!stream) return
       const localDb = stream.local()
 
-      const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid) as AuthoritativeVersion | null
+      const authVersion = await getAuthoritativeVersionByNoteUuid(localDb, editBlockUuid)
       if (!authVersion) return
 
       const note = await getNoteByVersion(localDb, editBlockUuid, authVersion.version_uuid)
