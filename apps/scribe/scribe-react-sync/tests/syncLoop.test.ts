@@ -391,11 +391,13 @@ describe('SyncLoop', () => {
       await readerClient.addWriteKey('scribe', keyPair.secretKey)
 
       const statuses: SyncStatusState[] = []
+      // Use injectable logger to suppress expected error output
       const { loop } = createTestLoop({
         client: readerClient,
         pollInterval: 1000,
         isHidden: () => false,
         onStatusChange: (state) => statuses.push(JSON.parse(JSON.stringify(state))),
+        logger: { error: () => {} },
       })
 
       await loop.start()

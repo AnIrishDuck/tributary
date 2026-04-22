@@ -2,6 +2,14 @@ import { TributaryClient, TributaryStream, SyncStatus as TributarySyncStatus } f
 import { indexAll, localMigrations, getLastEditedTime, getLibraryDisplayName, upsertLinkedLibrary, seedLinkedLibrariesCache, getLinkedLibraries, getCachedLinkedLibraries, ensurePluginTable } from 'scribe-data'
 import { SyncStatus, SyncFocus, SyncStatusState, defaultSyncStatus } from './types.js'
 
+/**
+ * Minimal logger interface for the SyncLoop.
+ * Defaults to `console` when not provided.
+ */
+export interface SyncLogger {
+  error(...args: unknown[]): void
+}
+
 export interface SyncLoopConfig {
   client: TributaryClient
   pollInterval: number
@@ -27,6 +35,11 @@ export interface SyncLoopConfig {
    * before the sync loop starts.
    */
   getFocusedLibrary?: () => string | null
+  /**
+   * Injectable logger. Defaults to `console`.
+   * Override in tests to suppress expected error output.
+   */
+  logger?: SyncLogger
 }
 
 /**
@@ -60,6 +73,7 @@ export class SyncLoop {
 
   private _setTimeout: (fn: () => void, delay: number) => ReturnType<typeof globalThis.setTimeout>
   private _clearTimeout: (id: ReturnType<typeof globalThis.setTimeout>) => void
+  private logger: SyncLogger
 
   constructor(config: SyncLoopConfig) {
     this.config = {
@@ -69,6 +83,7 @@ export class SyncLoop {
     this.client = config.client
     this._setTimeout = config.setTimeout ?? globalThis.setTimeout.bind(globalThis)
     this._clearTimeout = config.clearTimeout ?? globalThis.clearTimeout.bind(globalThis)
+    this.logger = config.logger ?? console
   }
 
   // ── Public API ──────────────────────────────────────────────
@@ -246,7 +261,7 @@ export class SyncLoop {
             hasError: !!tributaryStatus.error,
           }
         } catch (err) {
-          console.error(`Error syncing library ${id}:`, err)
+          this.logger.error(`Error syncing library ${id}:`, err)
           this.latestPerStream[id] = {
             ...this.latestPerStream[id],
             isSyncing: false,
@@ -315,13 +330,13 @@ export class SyncLoop {
                         }
                       }
                     } catch (err) {
-                      console.error(`[sync] Error registering linked library ${col.linked_stream_id}:`, err)
+                      this.logger.error(`[sync] Error registering linked library ${col.linked_stream_id}:`, err)
                     }
                   }
                 }
                 this.pushStatus()
               } catch (err) {
-                console.error('[sync] Error seeding linked libraries cache:', err)
+                this.logger.error('[sync] Error seeding linked libraries cache:', err)
               }
             }
 
@@ -337,11 +352,11 @@ export class SyncLoop {
                   last_synced_at: status?.lastSyncedAt?.toISOString() ?? null,
                 })
               } catch (err) {
-                console.error('[sync] Error caching linked library metadata:', err)
+                this.logger.error('[sync] Error caching linked library metadata:', err)
               }
             }
           } catch (error) {
-            console.error('Error reindexing library:', error)
+            this.logger.error('Error reindexing library:', error)
           }
         }
       }
@@ -365,7 +380,7 @@ export class SyncLoop {
         this.scheduleNext(adjustedDelay)
       }
     } catch (error) {
-      console.error('Background sync error:', error)
+      this.logger.error('Background sync error:', error)
       this.running = false
       // Push error state
       this.config.onStatusChange({
@@ -409,7 +424,7 @@ export class SyncLoop {
         this.pushStatus()
       }
     } catch (err) {
-      console.error('[sync] Error loading cached sync state:', err)
+      this.logger.error('[sync] Error loading cached sync state:', err)
     }
   }
 }
