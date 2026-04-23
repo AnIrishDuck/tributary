@@ -1,6 +1,14 @@
 import { TributaryLocal } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
 
+interface SearchResultRow {
+  block_uuid: string;
+  slug: string | null;
+  title: string | null;
+  snippet: string;
+  rank: string;
+}
+
 /**
  * Options for search indexing
  */
@@ -352,7 +360,7 @@ export async function searchNotes(
       [queryTerms, limit, offset]
     )
     
-    return (result.rows || []).map((row: any) => ({
+    return (result.rows || []).map((row: SearchResultRow) => ({
       block_uuid: row.block_uuid,
       slug: row.slug || null,
       title: row.title || null,

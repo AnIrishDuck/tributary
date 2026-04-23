@@ -4,6 +4,21 @@ import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
 import { getLibrary } from './collection.js'
 import { titleToSlug, extractTitleFromMarkdown } from './indexing.js'
 
+interface VersionInfoRow {
+  version_uuid: string;
+  collection_id: string | null;
+  slug: string;
+}
+
+interface CountRow {
+  count: string;
+}
+
+interface PositionCountRow {
+  position: string;
+  total: string;
+}
+
 /**
  * Create a new note in the database
  * 
@@ -203,7 +218,7 @@ export async function createNoteVersion(
     [block_uuid]
   )
 
-  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as any : null
+  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as VersionInfoRow : null
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   // Use explicitly provided collection_id, otherwise carry forward from latest version
   const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
@@ -304,7 +319,7 @@ export async function getNoteCount(
     return 0
   }
   
-  return parseInt((result.rows[0] as any).count)
+  return parseInt((result.rows[0] as CountRow).count)
 }
 
 /**
@@ -367,7 +382,7 @@ export async function getNoteVersionCount(
     return 0
   }
   
-  return parseInt((result.rows[0] as any).count)
+  return parseInt((result.rows[0] as CountRow).count)
 }
 
 /**
@@ -444,7 +459,7 @@ export async function getVersionHistory(
     `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
     [block_uuid]
   )
-  const total = parseInt((countResult.rows?.[0] as any)?.count ?? '0')
+  const total = parseInt((countResult.rows?.[0] as CountRow | undefined)?.count ?? '0')
   if (total === 0) return []
 
   const result = await db.query(
@@ -512,7 +527,7 @@ export async function getVersionPosition(
     [block_uuid, target.insert_datetime]
   )
 
-  const counts = countsResult.rows?.[0] as any
+  const counts = countsResult.rows?.[0] as PositionCountRow
   const position = parseInt(counts.position)
   const total = parseInt(counts.total)
 
