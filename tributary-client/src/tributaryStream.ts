@@ -164,7 +164,7 @@ export class TributaryStream {
   /**
    * Initialize the stream schema and tables
    */
-  async initializeSchema(): Promise<void> {
+  private async initializeSchema(): Promise<void> {
     try {
       // Create the schema for this stream if it doesn't exist
       // Properly quote the schema name to handle special characters
@@ -172,6 +172,17 @@ export class TributaryStream {
     } catch (error: unknown) {
       warn('Could not initialize schema:', error as Error);
     }
+  }
+
+  /**
+   * Ensure the stream's schema and sync state are initialized.
+   * Safe to call multiple times — subsequent calls are no-ops.
+   */
+  async ensureInitialized(): Promise<void> {
+    if (this.syncStateInitialized) return;
+    await this.initializeSchema();
+    await this.initializeSyncState();
+    this.syncStateInitialized = true;
   }
 
   /**
@@ -220,12 +231,7 @@ export class TributaryStream {
    * @returns Query result
    */
   async query(query: string, params?: any[]) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     // For read operations, wrap in a transaction with SET LOCAL search_path
     // so the search_path is scoped and cannot be changed by concurrent streams.
@@ -278,12 +284,7 @@ export class TributaryStream {
    * @param params Command parameters
    */
   async exec(query: string, params?: any[]) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     // Record the local sync index BEFORE anything (including sync guard).
     const guardIndex = this.lastSyncIndex;
@@ -339,12 +340,7 @@ export class TributaryStream {
    * @returns Transaction result
    */
   async transaction<T>(callback: (tx: any) => Promise<T>) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     info('TRANSACTION: Starting transaction method');
 
@@ -537,13 +533,8 @@ export class TributaryStream {
    * @returns SyncStatus containing current and final index
    */
   async sync(max: number): Promise<SyncStatus> {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
-    
+    await this.ensureInitialized();
+
     // Always reload the last sync index from database to ensure consistency
     await this.loadLastSyncIndex();
     
