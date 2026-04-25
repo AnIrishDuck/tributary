@@ -1,5 +1,7 @@
-import { TributaryLocal } from 'tributary-client'
+import { TributaryLocal, createLogger } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
+
+const { info, error: logError } = createLogger('scribe-data')
 
 /**
  * Options for search indexing
@@ -214,7 +216,7 @@ export async function indexSearchVectors(
     }
   }
 
-  console.log(`indexSearchVectors: ${unindexedNotes.length} notes to update`)
+  info(`indexSearchVectors: ${unindexedNotes.length} notes to update`)
 
   // Phase 1: CPU-only work — extract searchable text from markdown.
   const cpuStart = performance.now()
@@ -268,7 +270,7 @@ export async function indexSearchVectors(
   })
 
   const dbMs = Math.round(performance.now() - dbStart)
-  console.log(`indexSearchVectors: updated ${indexedCount} search vectors (cpu ${cpuMs}ms, db ${dbMs}ms)`)
+  info(`indexSearchVectors: updated ${indexedCount} search vectors (cpu ${cpuMs}ms, db ${dbMs}ms)`)
 
   return {
     indexedCount,
@@ -360,7 +362,7 @@ export async function searchNotes(
       rank: parseFloat(row.rank) || 0
     }))
   } catch (error) {
-    console.error('Error searching notes:', error)
+    logError('Error searching notes:', error)
     // Return empty results on error (e.g., invalid query syntax)
     return []
   }
