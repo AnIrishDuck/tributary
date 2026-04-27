@@ -74,7 +74,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   const entries: Array<{ title: string; entity_type: string; entity_uuid: string; slug_path: string }> = []
 
   // 2a: Authoritative blocks (notes and images) with titles
-  const blocksResult = await db.query(
+  const blocksResult = await db.query<{ block_uuid: string; slug: string; body: string; collection_id: string | null; block_type: string }>(
     `SELECT b.block_uuid, b.slug, b.body, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av
@@ -82,7 +82,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     []
   )
 
-  for (const row of (blocksResult.rows || []) as any[]) {
+  for (const row of blocksResult.rows || []) {
     const blockType = row.block_type || 'scribe/markdown'
     let title: string | null
     if (blockType === 'scribe/image') {

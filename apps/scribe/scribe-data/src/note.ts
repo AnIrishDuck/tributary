@@ -198,12 +198,12 @@ export async function createNoteVersion(
   }
 ): Promise<Note> {
   // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id and slug
-  const result = await db.query(
+  const result = await db.query<{ version_uuid: string; collection_id: string | null; slug: string | null }>(
     `SELECT version_uuid, collection_id, slug FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
   )
 
-  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as any : null
+  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] : null
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   // Use explicitly provided collection_id, otherwise carry forward from latest version
   const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
@@ -295,16 +295,16 @@ export async function getLatestNoteVersion(
 export async function getNoteCount(
   db: TributaryStream
 ): Promise<number> {
-  const result = await db.query(
+  const result = await db.query<{ count: string }>(
     `SELECT COUNT(*) as count FROM block`,
     []
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     return 0
   }
-  
-  return parseInt((result.rows[0] as any).count)
+
+  return parseInt(result.rows[0].count)
 }
 
 /**
@@ -358,16 +358,16 @@ export async function getNoteVersionCount(
   db: TributaryStream | TributaryLocal,
   block_uuid: string
 ): Promise<number> {
-  const result = await db.query(
+  const result = await db.query<{ count: string }>(
     `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
     [block_uuid]
   )
-  
+
   if (!result.rows || result.rows.length === 0) {
     return 0
   }
-  
-  return parseInt((result.rows[0] as any).count)
+
+  return parseInt(result.rows[0].count)
 }
 
 /**
@@ -440,26 +440,24 @@ export async function getVersionHistory(
   block_uuid: string,
   limit: number = 100
 ): Promise<VersionSummary[]> {
-  const countResult = await db.query(
+  const countResult = await db.query<{ count: string }>(
     `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
     [block_uuid]
   )
-  const total = parseInt((countResult.rows?.[0] as any)?.count ?? '0')
+  const total = parseInt(countResult.rows?.[0]?.count ?? '0')
   if (total === 0) return []
 
-  const result = await db.query(
-    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2`,
-    [block_uuid, limit]
-  )
-
-  const rows = (result.rows || []) as Array<{
+  const result = await db.query<{
     version_uuid: string
     prior_version_uuid: string | null
     insert_datetime: string
     inserter: string
-  }>
+  }>(
+    `SELECT version_uuid, prior_version_uuid, insert_datetime, inserter FROM block WHERE block_uuid = $1 ORDER BY insert_datetime ASC LIMIT $2`,
+    [block_uuid, limit]
+  )
 
-  return rows.map((row, index) => ({
+  return (result.rows || []).map((row, index) => ({
     version_uuid: row.version_uuid,
     prior_version_uuid: row.prior_version_uuid,
     insert_datetime: row.insert_datetime,
@@ -505,16 +503,16 @@ export async function getVersionPosition(
 
   // Count versions with insert_datetime <= this version's (gives 1-based position)
   // and total count, in a single query
-  const countsResult = await db.query(
+  const countsResult = await db.query<{ position: string; total: string }>(
     `SELECT
        (SELECT COUNT(*) FROM block WHERE block_uuid = $1 AND insert_datetime <= $2) as position,
        (SELECT COUNT(*) FROM block WHERE block_uuid = $1) as total`,
     [block_uuid, target.insert_datetime]
   )
 
-  const counts = countsResult.rows?.[0] as any
-  const position = parseInt(counts.position)
-  const total = parseInt(counts.total)
+  const counts = countsResult.rows?.[0]
+  const position = parseInt(counts!.position)
+  const total = parseInt(counts!.total)
 
   return {
     version_uuid: target.version_uuid,

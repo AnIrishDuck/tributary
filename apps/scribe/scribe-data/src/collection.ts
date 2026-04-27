@@ -500,7 +500,7 @@ export async function getNoteSlugPath(
   noteBlockUuid: string
 ): Promise<string[]> {
   // Get the note's slug and collection_id from the authoritative version
-  const result = await db.query(
+  const result = await db.query<{ slug: string; collection_id: string | null }>(
     `SELECT b.slug, b.collection_id FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      WHERE b.block_uuid = $1`,
@@ -511,8 +511,8 @@ export async function getNoteSlugPath(
     return []
   }
 
-  const row = result.rows[0] as any
-  const noteSlug = row.slug as string
+  const row = result.rows[0]
+  const noteSlug = row.slug
   const collectionId = row.collection_id
 
   if (!collectionId) {
@@ -569,7 +569,7 @@ export async function getParentChain(
   db: TributaryStream | TributaryLocal,
   collectionUuid: string
 ): Promise<Collection[]> {
-  const result = await db.query(
+  const result = await db.query<Collection & { depth: number }>(
     `WITH RECURSIVE chain AS (
        SELECT *, 0 AS depth FROM collection WHERE collection_uuid = $1
        UNION ALL
@@ -582,11 +582,7 @@ export async function getParentChain(
 
   if (!result.rows) return []
 
-  // Strip the depth column from results
-  return result.rows.map((row: any) => {
-    const { depth, ...collection } = row
-    return collection as Collection
-  })
+  return result.rows.map(({ depth, ...collection }) => collection)
 }
 
 /**
@@ -606,7 +602,7 @@ export async function mergeParentChainOptions(
   collectionUuid: string
 ): Promise<MergedCollectionOptions> {
   try {
-    const result = await db.query(
+    const result = await db.query<{ collection_uuid: string; options: string }>(
       `WITH RECURSIVE chain AS (
          SELECT collection_uuid, parent_collection_uuid, options, 0 AS depth
          FROM collection WHERE collection_uuid = $1
@@ -624,16 +620,15 @@ export async function mergeParentChainOptions(
     let merged: CollectionOptions = {}
     const sources: Record<string, string> = {}
     for (const row of result.rows) {
-      const uuid = (row as any).collection_uuid as string
-      const opts = JSON.parse((row as any).options)
+      const opts = JSON.parse(row.options)
       for (const key of Object.keys(opts)) {
-        sources[key] = uuid
+        sources[key] = row.collection_uuid
       }
       merged = { ...merged, ...opts }
     }
     return { merged, sources }
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if (err instanceof Object && 'code' in err && err.code === UNDEFINED_COLUMN) {
       return { merged: {}, sources: {} }
     }
     throw err
@@ -658,16 +653,16 @@ export async function getCollectionOptions(
   collectionUuid: string
 ): Promise<CollectionOptions> {
   try {
-    const result = await db.query(
+    const result = await db.query<{ options: string }>(
       `SELECT options FROM collection WHERE collection_uuid = $1`,
       [collectionUuid]
     )
     if (!result.rows || result.rows.length === 0) {
       return {}
     }
-    return JSON.parse((result.rows[0] as any).options)
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+    return JSON.parse(result.rows[0].options)
+  } catch (err: unknown) {
+    if (err instanceof Object && 'code' in err && err.code === UNDEFINED_COLUMN) {
       // Column doesn't exist — library predates the options migration
       return {}
     }

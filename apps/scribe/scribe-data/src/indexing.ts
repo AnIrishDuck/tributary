@@ -330,7 +330,7 @@ export async function getNoteSlugByUuid(
   db: TributaryLocal,
   noteUuid: string
 ): Promise<BlockSlugInfo | null> {
-  const result = await db.query(
+  const result = await db.query<{ block_uuid: string; slug: string; body: string; block_type: string }>(
     `SELECT b.block_uuid, b.slug, b.body, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -342,7 +342,7 @@ export async function getNoteSlugByUuid(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0]
   const blockType = row.block_type || 'scribe/markdown'
   return {
     block_uuid: row.block_uuid,
@@ -733,7 +733,7 @@ export interface LibraryStats {
  * @returns Counts of edits, notes, and collections
  */
 export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats> {
-  const result = await db.query(
+  const result = await db.query<{ edit_count: number; note_count: number; collection_count: number }>(
     `SELECT
        (SELECT COUNT(*)::int FROM block) AS edit_count,
        (SELECT COUNT(DISTINCT block_uuid)::int FROM block) AS note_count,
@@ -741,7 +741,7 @@ export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats>
     []
   )
 
-  const row = result.rows?.[0] as any
+  const row = result.rows?.[0]
   return {
     editCount: row?.edit_count ?? 0,
     noteCount: row?.note_count ?? 0,

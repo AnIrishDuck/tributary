@@ -280,7 +280,7 @@ export async function suggestSlugs(
     const remaining = limit - suggestions.length
     if (remaining > 0) {
       const likePattern = searchPrefix + '%'
-      const noteResult = await db.query(
+      const noteResult = await db.query<{ block_uuid: string; slug: string; body: string; block_type: string }>(
         `SELECT b.block_uuid, b.slug, b.body, b.block_type
          FROM block b
          INNER JOIN authoritative_version av
@@ -291,7 +291,7 @@ export async function suggestSlugs(
         [parentUuid, likePattern, remaining]
       )
 
-      for (const row of (noteResult.rows || []) as any[]) {
+      for (const row of noteResult.rows || []) {
         suggestions.push({
           slug_path: pathPrefix + row.slug,
           title: extractBlockTitle(row.body, row.block_type),

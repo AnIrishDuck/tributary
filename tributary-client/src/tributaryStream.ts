@@ -1,5 +1,5 @@
 // TributaryStream class for managing individual streams
-import { PGliteInterface } from '@electric-sql/pglite';
+import { PGliteInterface, Results } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 import { Server } from './server.js';
@@ -219,7 +219,7 @@ export class TributaryStream {
    * @param params Query parameters
    * @returns Query result
    */
-  async query(query: string, params?: any[]) {
+  async query<T = Record<string, unknown>>(query: string, params?: any[]): Promise<Results<T>> {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -232,8 +232,8 @@ export class TributaryStream {
     if (this.isReadQuery(query)) {
       return await this.pglite.transaction(async (tx) => {
         await tx.exec(this.searchPathSQL);
-        // @ts-ignore
-        return await tx.query(query, params);
+        // @ts-ignore — PGlite transaction type doesn't expose full query signature
+        return await tx.query(query, params) as Results<T>;
       });
     }
 
@@ -248,8 +248,8 @@ export class TributaryStream {
       await tx.exec(this.searchPathSQL);
 
       // 1. Execute locally FIRST to catch postgres errors before touching the server
-      // @ts-ignore
-      const queryResult = await tx.query(query, params);
+      // @ts-ignore — PGlite transaction type doesn't expose full query signature
+      const queryResult = await tx.query(query, params) as Results<T>;
 
       // 2. Sync guard: verify no unsynced remote blobs exist (server-only check)
       await this.checkSyncGuard(guardIndex);

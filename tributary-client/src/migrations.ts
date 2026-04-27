@@ -9,7 +9,7 @@
 
 /** Common query interface satisfied by both TributaryStream and TributaryLocal. */
 export interface MigratableDb {
-  query(sql: string, params?: any[]): Promise<any>;
+  query<T = Record<string, unknown>>(sql: string, params?: any[]): Promise<{ rows: T[] }>;
   exec(sql: string, params?: any[]): Promise<void>;
   /** Default tracking table name for this db type. */
   defaultMigrationsTable: string;
@@ -100,11 +100,11 @@ export async function migrate(
 
     // Find which migrations in this batch have already been applied.
     const { clause, params } = buildInClause(batchNames);
-    const result = await db.query(
+    const result = await db.query<{ name: string }>(
       `SELECT name FROM "${tableName}" WHERE name IN ${clause}`,
       params,
     );
-    const applied = new Set<string>(result.rows.map((r: any) => r.name));
+    const applied = new Set<string>(result.rows.map((r) => r.name));
 
     // Run missing migrations in list order.
     for (const migration of batch) {
@@ -138,8 +138,8 @@ export async function hasMigration(
       [name],
     );
     return result.rows.length > 0;
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_TABLE) {
+  } catch (err: unknown) {
+    if (err instanceof Object && 'code' in err && err.code === UNDEFINED_TABLE) {
       return false;
     }
     throw err;

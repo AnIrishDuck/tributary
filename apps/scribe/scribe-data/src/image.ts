@@ -180,7 +180,7 @@ export async function getImageBySlug(
   // We need to filter to only image blocks by querying block_type
   let result
   if (collectionId === null) {
-    result = await db.query(
+    result = await db.query<{ block_uuid: string; slug: string; body: string }>(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -188,7 +188,7 @@ export async function getImageBySlug(
       [slug]
     )
   } else {
-    result = await db.query(
+    result = await db.query<{ block_uuid: string; slug: string; body: string }>(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -201,7 +201,7 @@ export async function getImageBySlug(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0]
   const body = JSON.parse(row.body) as ImageBlockBody
   return {
     note: {
