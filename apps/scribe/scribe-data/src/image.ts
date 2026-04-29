@@ -201,7 +201,7 @@ export async function getImageBySlug(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0] as { block_uuid: string; slug: string; body: string }
   const body = JSON.parse(row.body) as ImageBlockBody
   return {
     note: {

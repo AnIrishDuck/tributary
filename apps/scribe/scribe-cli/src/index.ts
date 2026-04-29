@@ -228,7 +228,7 @@ program
         // Check if library already has notes
         try {
           const result = await stream.query('SELECT COUNT(*) as count FROM block', []);
-          const count = parseInt((result.rows[0] as any).count);
+          const count = parseInt((result.rows[0] as { count: string }).count);
           if (count === 0) {
             const now = new Date();
             await stream.exec(

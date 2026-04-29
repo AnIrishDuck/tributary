@@ -342,7 +342,7 @@ export async function getNoteSlugByUuid(
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0] as { block_uuid: string; slug: string; body: string; block_type: string }
   const blockType = row.block_type || 'scribe/markdown'
   return {
     block_uuid: row.block_uuid,
@@ -741,7 +741,7 @@ export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats>
     []
   )
 
-  const row = result.rows?.[0] as any
+  const row = result.rows?.[0] as { edit_count: number; note_count: number; collection_count: number } | undefined
   return {
     editCount: row?.edit_count ?? 0,
     noteCount: row?.note_count ?? 0,
