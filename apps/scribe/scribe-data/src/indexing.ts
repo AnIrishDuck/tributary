@@ -1,5 +1,6 @@
 import { TributaryLocal, createLogger } from 'tributary-client'
-import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
+import type { Transaction } from '@electric-sql/pglite'
+import { NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteSlugRow } from './types'
 import { getLibrary } from './collection.js'
 
 const { info } = createLogger('scribe-data')
@@ -188,7 +189,7 @@ export async function indexSlugs(
   const limit = options.limit ?? 100
 
   // First, find the latest version of each note using a window function
-  const unindexedBlocksResult = await localDb.query(`
+  const unindexedBlocksResult = await localDb.query<UnindexedNote>(`
     SELECT
       latest_blocks.block_uuid,
       latest_blocks.version_uuid,
@@ -210,7 +211,7 @@ export async function indexSlugs(
     LIMIT $1
   `, [limit])
 
-  const unindexedNotes: UnindexedNote[] = (unindexedBlocksResult.rows || []) as UnindexedNote[]
+  const unindexedNotes = unindexedBlocksResult.rows
 
   // If no unindexed notes, return early
   if (unindexedNotes.length === 0) {
@@ -254,7 +255,7 @@ export async function indexSlugs(
   // instead of ~5N + M individual round-trips through PGliteWorker.
   const dbStart = performance.now()
 
-  await localDb.transaction(async (tx: any) => {
+  await localDb.transaction(async (tx: Transaction) => {
     // Batch upsert indexed_block (N rows, 1 query)
     {
       const vals = processed.map((_, i) => {
@@ -332,7 +333,12 @@ export async function getNoteSlugByUuid(
   db: TributaryLocal,
   noteUuid: string
 ): Promise<BlockSlugInfo | null> {
-  const result = await db.query(
+  const result = await db.query<{
+    block_uuid: string
+    slug: string
+    body: string
+    block_type: string | null
+  }>(
     `SELECT b.block_uuid, b.slug, b.body, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -340,11 +346,11 @@ export async function getNoteSlugByUuid(
     [noteUuid]
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0]
   const blockType = row.block_type || 'scribe/markdown'
   return {
     block_uuid: row.block_uuid,
@@ -366,7 +372,7 @@ export async function getNotesBySlug(
   db: TributaryLocal,
   slug: string
 ): Promise<NoteSlug[]> {
-  const result = await db.query(
+  const result = await db.query<{ block_uuid: string; slug: string; body: string }>(
     `SELECT b.block_uuid, b.slug, b.body
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -374,7 +380,7 @@ export async function getNotesBySlug(
     [slug]
   )
 
-  return (result.rows || []).map((row: any) => ({
+  return result.rows.map(row => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractTitleFromMarkdown(row.body) || ''
@@ -405,16 +411,16 @@ export async function getAuthoritativeVersionByNoteUuid(
   db: TributaryLocal,
   noteUuid: string
 ): Promise<AuthoritativeVersion | null> {
-  const result = await db.query(
+  const result = await db.query<AuthoritativeVersion>(
     `SELECT * FROM authoritative_version WHERE block_uuid = $1`,
     [noteUuid]
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  return result.rows[0] as AuthoritativeVersion
+  return result.rows[0]
 }
 
 /**
@@ -423,8 +429,8 @@ export async function getAuthoritativeVersionByNoteUuid(
  * @returns Array of authoritative version mappings
  */
 export async function getAllAuthoritativeVersions(db: TributaryLocal): Promise<AuthoritativeVersion[]> {
-  const result = await db.query(`SELECT * FROM authoritative_version`, [])
-  return (result.rows || []) as AuthoritativeVersion[]
+  const result = await db.query<AuthoritativeVersion>(`SELECT * FROM authoritative_version`, [])
+  return result.rows
 }
 
 /**
@@ -437,13 +443,13 @@ export async function getTagsForNote(
   db: TributaryLocal,
   noteUuid: string
 ): Promise<string[]> {
-  const result = await db.query(
+  const result = await db.query<{ tag: string }>(
     `SELECT tag FROM block_tag WHERE block_uuid = $1`,
     [noteUuid]
   )
-  
+
   // Extract just the tag strings from the database rows
-  return (result.rows || []).map((row: any) => row.tag)
+  return result.rows.map(row => row.tag)
 }
 
 /**
@@ -456,13 +462,13 @@ export async function getNotesByTag(
   db: TributaryLocal,
   tag: string
 ): Promise<string[]> {
-  const result = await db.query(
+  const result = await db.query<{ block_uuid: string }>(
     `SELECT block_uuid FROM block_tag WHERE tag = $1`,
     [tag]
   )
-  
+
   // Extract just the block_uuid strings from the database rows
-  return (result.rows || []).map((row: any) => row.block_uuid)
+  return result.rows.map(row => row.block_uuid)
 }
 
 /**
@@ -471,13 +477,13 @@ export async function getNotesByTag(
  * @returns Array of all unique tags
  */
 export async function getAllTags(db: TributaryLocal): Promise<string[]> {
-  const result = await db.query(
+  const result = await db.query<{ tag: string }>(
     `SELECT DISTINCT tag FROM block_tag`,
     []
   )
-  
+
   // Extract just the tag strings from the database rows
-  return (result.rows || []).map((row: any) => row.tag)
+  return result.rows.map(row => row.tag)
 }
 
 /**
@@ -488,7 +494,14 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
  * @returns Array of notes with titles and slugs, sorted by most recently edited first
  */
 export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
-  const result = await db.query(
+  const result = await db.query<{
+    block_uuid: string
+    slug: string
+    body: string
+    insert_datetime: string
+    collection_id: string | null
+    block_type: string | null
+  }>(
     `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
@@ -496,7 +509,7 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
     []
   )
 
-  return (result.rows || []).map((row: any) => {
+  return result.rows.map(row => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -530,28 +543,33 @@ export async function getNotesInCollectionWithSlugs(
     }
   }
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id IS NULL
-       ORDER BY b.insert_datetime DESC`,
-      []
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id = $1
-       ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
-    )
+  type Row = {
+    block_uuid: string
+    slug: string
+    body: string
+    insert_datetime: string
+    collection_id: string | null
+    block_type: string | null
   }
+  const result = resolvedId === null
+    ? await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.collection_id IS NULL
+         ORDER BY b.insert_datetime DESC`,
+        []
+      )
+    : await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.collection_id = $1
+         ORDER BY b.insert_datetime DESC`,
+        [resolvedId]
+      )
 
-  return (result.rows || []).map((row: any) => {
+  return result.rows.map(row => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -607,11 +625,11 @@ export async function getCollidingSlugs(
   db: TributaryLocal,
   parentId: string
 ): Promise<Set<string>> {
-  const result = await db.query(
+  const result = await db.query<{ slug: string }>(
     `SELECT slug FROM slug_collision WHERE parent_id = $1`,
     [parentId]
   )
-  return new Set((result.rows || []).map((row: any) => row.slug))
+  return new Set(result.rows.map(row => row.slug))
 }
 
 /**
@@ -637,26 +655,29 @@ export async function getNotesBySlugInCollection(
     }
   }
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL`,
-      [slug]
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2`,
-      [slug, resolvedId]
-    )
+  type Row = {
+    block_uuid: string
+    slug: string
+    body: string
+    block_type: string | null
   }
+  const result = resolvedId === null
+    ? await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.slug = $1 AND b.collection_id IS NULL`,
+        [slug]
+      )
+    : await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.slug = $1 AND b.collection_id = $2`,
+        [slug, resolvedId]
+      )
 
-  return (result.rows || []).map((row: any) => ({
+  return result.rows.map(row => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractBlockTitle(row.body, row.block_type),
@@ -670,13 +691,12 @@ export async function getNotesBySlugInCollection(
  * @returns ISO string of the most recent note edit time, or null if no notes exist
  */
 export async function getLastEditedTime(db: TributaryLocal): Promise<string | null> {
-  const result = await db.query(
+  const result = await db.query<LastEditedResult>(
     `SELECT MAX(insert_datetime) as last_edited FROM block`,
     []
   )
 
-  const row = result.rows?.[0] as LastEditedResult | undefined
-  return row?.last_edited || null
+  return result.rows[0]?.last_edited || null
 }
 
 /**
@@ -735,7 +755,11 @@ export interface LibraryStats {
  * @returns Counts of edits, notes, and collections
  */
 export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats> {
-  const result = await db.query(
+  const result = await db.query<{
+    edit_count: number
+    note_count: number
+    collection_count: number
+  }>(
     `SELECT
        (SELECT COUNT(*)::int FROM block) AS edit_count,
        (SELECT COUNT(DISTINCT block_uuid)::int FROM block) AS note_count,
@@ -743,7 +767,7 @@ export async function getLibraryStats(db: TributaryLocal): Promise<LibraryStats>
     []
   )
 
-  const row = result.rows?.[0] as any
+  const row = result.rows[0]
   return {
     editCount: row?.edit_count ?? 0,
     noteCount: row?.note_count ?? 0,

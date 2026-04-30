@@ -174,11 +174,11 @@ export async function getCachedLinkedLibraries(
   homeLocal: TributaryLocal
 ): Promise<LinkedLibrary[]> {
   try {
-    const result = await homeLocal.query(
+    const result = await homeLocal.query<LinkedLibrary>(
       `SELECT * FROM linked_libraries ORDER BY title`,
       []
     )
-    return (result.rows || []) as LinkedLibrary[]
+    return result.rows
   } catch {
     // Table may not exist yet on older clients
     return []
@@ -249,13 +249,13 @@ export async function ensureSyncedMigrations(stream: TributaryStream): Promise<v
 export async function getLibraryPlugins(
   stream: TributaryStream
 ): Promise<PluginEntry[]> {
-  const result = await stream.query(
+  const result = await stream.query<PluginEntry>(
     `SELECT plugin_url, config_json, sort_order
      FROM library_plugins
      ORDER BY sort_order`,
     []
   )
-  return (result.rows || []) as PluginEntry[]
+  return result.rows
 }
 
 /**

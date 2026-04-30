@@ -178,30 +178,33 @@ export async function getImageBySlug(
 ): Promise<{ note: NoteSlug; body: ImageBlockBody } | null> {
   // getNotesBySlugInCollection returns all blocks matching the slug (including images)
   // We need to filter to only image blocks by querying block_type
-  let result
-  if (collectionId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL AND b.block_type = 'scribe/image'`,
-      [slug]
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2 AND b.block_type = 'scribe/image'`,
-      [slug, collectionId]
-    )
+  type Row = {
+    block_uuid: string
+    slug: string
+    body: string
+    block_type: string
   }
+  const result = collectionId === null
+    ? await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.slug = $1 AND b.collection_id IS NULL AND b.block_type = 'scribe/image'`,
+        [slug]
+      )
+    : await db.query<Row>(
+        `SELECT b.block_uuid, b.slug, b.body, b.block_type
+         FROM block b
+         INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+         WHERE b.slug = $1 AND b.collection_id = $2 AND b.block_type = 'scribe/image'`,
+        [slug, collectionId]
+      )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  const row = result.rows[0] as any
+  const row = result.rows[0]
   const body = JSON.parse(row.body) as ImageBlockBody
   return {
     note: {

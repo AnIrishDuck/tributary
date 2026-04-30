@@ -1,5 +1,5 @@
 // TributaryLocal class for local (non-synced) database operations
-import { PGliteInterface } from '@electric-sql/pglite';
+import { PGliteInterface, Results } from '@electric-sql/pglite';
 import { logger, debug } from './logger.js';
 
 export class TributaryLocal {
@@ -37,13 +37,12 @@ export class TributaryLocal {
    * @param params Query parameters
    * @returns Query result
    */
-  async query(query: string, params?: any[]) {
+  async query<T = unknown>(query: string, params?: any[]): Promise<Results<T>> {
     // Wrap in a transaction with SET LOCAL search_path so the search_path
     // is scoped to this operation and cannot be changed by concurrent streams.
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
-      // @ts-ignore
-      return await tx.query(query, params);
+      return await tx.query<T>(query, params);
     });
   }
 

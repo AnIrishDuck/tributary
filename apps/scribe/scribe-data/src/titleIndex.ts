@@ -40,17 +40,17 @@ export interface TitleLookupResult {
 export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   // Phase 1: Load all collections into memory and build a parent→slug map
   // so we can compute slug paths without N+1 queries.
-  const collectionsResult = await db.query(
-    `SELECT collection_uuid, title, slug, parent_collection_uuid
-     FROM collection`,
-    []
-  )
-  const collections = (collectionsResult.rows || []) as Array<{
+  const collectionsResult = await db.query<{
     collection_uuid: string
     title: string
     slug: string
     parent_collection_uuid: string | null
-  }>
+  }>(
+    `SELECT collection_uuid, title, slug, parent_collection_uuid
+     FROM collection`,
+    []
+  )
+  const collections = collectionsResult.rows
 
   // Build a lookup map: uuid → collection row
   const collectionMap = new Map<string, typeof collections[0]>()
@@ -74,7 +74,13 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   const entries: Array<{ title: string; entity_type: string; entity_uuid: string; slug_path: string }> = []
 
   // 2a: Authoritative blocks (notes and images) with titles
-  const blocksResult = await db.query(
+  const blocksResult = await db.query<{
+    block_uuid: string
+    slug: string
+    body: string
+    collection_id: string | null
+    block_type: string | null
+  }>(
     `SELECT b.block_uuid, b.slug, b.body, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av
@@ -82,7 +88,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     []
   )
 
-  for (const row of (blocksResult.rows || []) as any[]) {
+  for (const row of blocksResult.rows) {
     const blockType = row.block_type || 'scribe/markdown'
     let title: string | null
     if (blockType === 'scribe/image') {
@@ -156,14 +162,14 @@ export async function lookupByTitle(
   db: TributaryLocal,
   title: string
 ): Promise<TitleLookupResult[]> {
-  const result = await db.query(
+  const result = await db.query<TitleLookupResult>(
     `SELECT title, entity_type, entity_uuid, slug_path
      FROM title_index
      WHERE title_lower = $1`,
     [title.toLowerCase()]
   )
 
-  return (result.rows || []) as TitleLookupResult[]
+  return result.rows
 }
 
 /**
@@ -193,7 +199,7 @@ export async function suggestByTitlePrefix(
 ): Promise<TitleLookupResult[]> {
   const limit = options.limit ?? 5
 
-  const result = await db.query(
+  const result = await db.query<TitleLookupResult>(
     `SELECT title, entity_type, entity_uuid, slug_path
      FROM title_index
      WHERE title_lower LIKE $1
@@ -202,5 +208,5 @@ export async function suggestByTitlePrefix(
     [prefix.toLowerCase() + '%', limit]
   )
 
-  return (result.rows || []) as TitleLookupResult[]
+  return result.rows
 }

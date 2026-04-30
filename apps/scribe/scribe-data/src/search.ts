@@ -1,3 +1,4 @@
+import type { Transaction } from '@electric-sql/pglite'
 import { TributaryLocal, createLogger } from 'tributary-client'
 import { extractTitleFromMarkdown } from './indexing.js'
 
@@ -171,7 +172,7 @@ export async function indexSearchVectors(
     // Just fetch their authoritative content directly -- no scan required.
     // Skip non-markdown blocks (e.g. scribe/image) which have JSON bodies unsuitable for FTS.
     const placeholders = blockUuids.map((_, i) => `$${i + 1}`).join(', ')
-    const result = await localDb.query(`
+    const result = await localDb.query<UnindexedSearchNote>(`
       SELECT
         b.block_uuid,
         b.version_uuid,
@@ -184,11 +185,11 @@ export async function indexSearchVectors(
         AND (b.block_type IS NULL OR b.block_type = 'scribe/markdown')
     `, blockUuids)
 
-    unindexedNotes = (result.rows || []) as UnindexedSearchNote[]
+    unindexedNotes = result.rows
   } else {
     // Fallback: scan for notes that are authoritative but not yet search-indexed.
     // Skip non-markdown blocks (e.g. scribe/image) which have JSON bodies unsuitable for FTS.
-    const result = await localDb.query(`
+    const result = await localDb.query<UnindexedSearchNote>(`
       SELECT
         b.block_uuid,
         b.version_uuid,
@@ -206,7 +207,7 @@ export async function indexSearchVectors(
       LIMIT $1
     `, [limit])
 
-    unindexedNotes = (result.rows || []) as UnindexedSearchNote[]
+    unindexedNotes = result.rows
   }
 
   if (unindexedNotes.length === 0) {
@@ -241,7 +242,7 @@ export async function indexSearchVectors(
   // Phase 2: Batch DB writes — 2 queries instead of N round-trips.
   const dbStart = performance.now()
 
-  await localDb.transaction(async (tx: any) => {
+  await localDb.transaction(async (tx: Transaction) => {
     if (withText.length > 0) {
       const vals = withText.map((_, i) => {
         const b = i * 5
@@ -312,7 +313,13 @@ export async function searchNotes(
   const queryTerms = query.trim().split(/\s+/).map(term => `${term}:*`).join(' & ')
   
   try {
-    const result = await localDb.query(
+    const result = await localDb.query<{
+      block_uuid: string
+      slug: string | null
+      title: string | null
+      snippet: string | null
+      rank: number | string | null
+    }>(
       `WITH RECURSIVE coll_path(collection_uuid, path) AS (
          -- Base case: library roots have empty path
          SELECT c.collection_uuid, ''::text AS path
@@ -353,13 +360,13 @@ export async function searchNotes(
        LIMIT $2 OFFSET $3`,
       [queryTerms, limit, offset]
     )
-    
-    return (result.rows || []).map((row: any) => ({
+
+    return result.rows.map(row => ({
       block_uuid: row.block_uuid,
       slug: row.slug || null,
       title: row.title || null,
       snippet: row.snippet || '',
-      rank: parseFloat(row.rank) || 0
+      rank: parseFloat(String(row.rank ?? '')) || 0
     }))
   } catch (error) {
     logError('Error searching notes:', error)

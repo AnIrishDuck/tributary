@@ -122,14 +122,6 @@ export interface IndexedNote {
 }
 
 /**
- * Type for PGLite query result
- */
-export interface PGliteResult {
-  rows: any[];
-  affectedRows?: number;
-}
-
-/**
  * Type for a note slug database row.
  * Now backed by the synced `block` table directly (title extracted from body).
  */

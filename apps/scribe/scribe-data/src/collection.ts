@@ -1,3 +1,4 @@
+import type { Results } from '@electric-sql/pglite'
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, Collection, CollectionSlug, CollectionSlugRow, CollectionOptions, MergedCollectionOptions } from './types'
@@ -134,16 +135,16 @@ export async function getCollectionByUuid(
   db: TributaryStream,
   uuid: string
 ): Promise<Collection | null> {
-  const result = await db.query(
+  const result = await db.query<Collection>(
     `SELECT * FROM collection WHERE collection_uuid = $1`,
     [uuid]
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  return result.rows[0] as Collection
+  return result.rows[0]
 }
 
 /**
@@ -156,16 +157,16 @@ export async function getCollectionByUuid(
 export async function getLibrary(
   db: TributaryStream | TributaryLocal
 ): Promise<Collection | null> {
-  const result = await db.query(
+  const result = await db.query<Collection>(
     `SELECT * FROM collection WHERE parent_collection_uuid IS NULL`,
     []
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  return result.rows[0] as Collection
+  return result.rows[0]
 }
 
 /**
@@ -200,12 +201,12 @@ export async function getLibraryDisplayName(
 export async function getAllCollections(
   db: TributaryStream
 ): Promise<Collection[]> {
-  const result = await db.query(
+  const result = await db.query<Collection>(
     `SELECT * FROM collection WHERE parent_collection_uuid IS NOT NULL ORDER BY title`,
     []
   )
 
-  return (result.rows || []) as Collection[]
+  return result.rows
 }
 
 /**
@@ -219,7 +220,7 @@ export async function getAllCollections(
 export async function getAllCollectionsWithSlugs(
   db: TributaryLocal
 ): Promise<CollectionSlugRow[]> {
-  const result = await db.query(
+  const result = await db.query<CollectionSlugRow>(
     `SELECT collection_uuid, slug, title, insert_datetime
      FROM collection
      WHERE parent_collection_uuid IS NOT NULL
@@ -227,7 +228,7 @@ export async function getAllCollectionsWithSlugs(
     []
   )
 
-  return (result.rows || []) as CollectionSlugRow[]
+  return result.rows
 }
 
 /**
@@ -303,13 +304,13 @@ export async function getCollectionsBySlug(
   db: TributaryLocal,
   slug: string
 ): Promise<CollectionSlug[]> {
-  const result = await db.query(
+  const result = await db.query<CollectionSlug>(
     `SELECT collection_uuid, slug, title, parent_collection_uuid
      FROM collection WHERE slug = $1 AND parent_collection_uuid IS NOT NULL`,
     [slug]
   )
 
-  return (result.rows || []) as CollectionSlug[]
+  return result.rows
 }
 
 /**
@@ -323,12 +324,12 @@ export async function getChildCollections(
   db: TributaryStream | TributaryLocal,
   parentUuid: string
 ): Promise<Collection[]> {
-  const result = await db.query(
+  const result = await db.query<Collection>(
     `SELECT * FROM collection WHERE parent_collection_uuid = $1 ORDER BY title`,
     [parentUuid]
   )
 
-  return (result.rows || []) as Collection[]
+  return result.rows
 }
 
 /**
@@ -347,16 +348,16 @@ export async function getCollectionAncestors(
   let currentUuid: string | null = collectionUuid
 
   while (currentUuid) {
-    const result = await db.query(
+    const result: Results<Collection> = await db.query<Collection>(
       `SELECT * FROM collection WHERE collection_uuid = $1`,
       [currentUuid]
     )
 
-    if (!result.rows || result.rows.length === 0) {
+    if (result.rows.length === 0) {
       break
     }
 
-    const collection = result.rows[0] as Collection
+    const collection: Collection = result.rows[0]
     ancestors.unshift(collection) // prepend to build root-first order
     currentUuid = collection.parent_collection_uuid
   }
@@ -375,7 +376,7 @@ export async function getCollectionAncestors(
 export async function getLinkedLibraries(
   db: TributaryStream
 ): Promise<Collection[]> {
-  const result = await db.query(
+  const result = await db.query<Collection>(
     `SELECT * FROM collection
      WHERE parent_collection_uuid IS NOT NULL
        AND linked_stream_id IS NOT NULL
@@ -383,7 +384,7 @@ export async function getLinkedLibraries(
     []
   )
 
-  return (result.rows || []) as Collection[]
+  return result.rows
 }
 
 /**
@@ -409,34 +410,31 @@ export async function getNotesInCollection(
     }
   }
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.* FROM block b
-       INNER JOIN (
-         SELECT block_uuid, MAX(insert_datetime) as max_datetime
-         FROM block
-         GROUP BY block_uuid
-       ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id IS NULL
-       ORDER BY b.insert_datetime DESC`,
-      []
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.* FROM block b
-       INNER JOIN (
-         SELECT block_uuid, MAX(insert_datetime) as max_datetime
-         FROM block
-         GROUP BY block_uuid
-       ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id = $1
-       ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
-    )
-  }
+  const result = resolvedId === null
+    ? await db.query<Note>(
+        `SELECT b.* FROM block b
+         INNER JOIN (
+           SELECT block_uuid, MAX(insert_datetime) as max_datetime
+           FROM block
+           GROUP BY block_uuid
+         ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
+         WHERE b.collection_id IS NULL
+         ORDER BY b.insert_datetime DESC`,
+        []
+      )
+    : await db.query<Note>(
+        `SELECT b.* FROM block b
+         INNER JOIN (
+           SELECT block_uuid, MAX(insert_datetime) as max_datetime
+           FROM block
+           GROUP BY block_uuid
+         ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
+         WHERE b.collection_id = $1
+         ORDER BY b.insert_datetime DESC`,
+        [resolvedId]
+      )
 
-  return (result.rows || []) as Note[]
+  return result.rows
 }
 
 /**
@@ -453,17 +451,17 @@ export async function getCollectionBySlugUnderParent(
   slug: string,
   parentUuid: string
 ): Promise<CollectionSlug | null> {
-  const result = await db.query(
+  const result = await db.query<CollectionSlug>(
     `SELECT collection_uuid, slug, title, parent_collection_uuid
      FROM collection WHERE slug = $1 AND parent_collection_uuid = $2`,
     [slug, parentUuid]
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return null
   }
 
-  return result.rows[0] as CollectionSlug
+  return result.rows[0]
 }
 
 /**
@@ -500,20 +498,18 @@ export async function getNoteSlugPath(
   noteBlockUuid: string
 ): Promise<string[]> {
   // Get the note's slug and collection_id from the authoritative version
-  const result = await db.query(
+  const result = await db.query<{ slug: string; collection_id: string | null }>(
     `SELECT b.slug, b.collection_id FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
      WHERE b.block_uuid = $1`,
     [noteBlockUuid]
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (result.rows.length === 0) {
     return []
   }
 
-  const row = result.rows[0] as any
-  const noteSlug = row.slug as string
-  const collectionId = row.collection_id
+  const { slug: noteSlug, collection_id: collectionId } = result.rows[0]
 
   if (!collectionId) {
     return [noteSlug]
@@ -569,7 +565,7 @@ export async function getParentChain(
   db: TributaryStream | TributaryLocal,
   collectionUuid: string
 ): Promise<Collection[]> {
-  const result = await db.query(
+  const result = await db.query<Collection & { depth: number }>(
     `WITH RECURSIVE chain AS (
        SELECT *, 0 AS depth FROM collection WHERE collection_uuid = $1
        UNION ALL
@@ -580,13 +576,8 @@ export async function getParentChain(
     [collectionUuid]
   )
 
-  if (!result.rows) return []
-
   // Strip the depth column from results
-  return result.rows.map((row: any) => {
-    const { depth, ...collection } = row
-    return collection as Collection
-  })
+  return result.rows.map(({ depth, ...collection }) => collection)
 }
 
 /**
@@ -606,7 +597,7 @@ export async function mergeParentChainOptions(
   collectionUuid: string
 ): Promise<MergedCollectionOptions> {
   try {
-    const result = await db.query(
+    const result = await db.query<{ collection_uuid: string; options: string }>(
       `WITH RECURSIVE chain AS (
          SELECT collection_uuid, parent_collection_uuid, options, 0 AS depth
          FROM collection WHERE collection_uuid = $1
@@ -619,15 +610,14 @@ export async function mergeParentChainOptions(
       [collectionUuid]
     )
 
-    if (!result.rows || result.rows.length === 0) return { merged: {}, sources: {} }
+    if (result.rows.length === 0) return { merged: {}, sources: {} }
 
     let merged: CollectionOptions = {}
     const sources: Record<string, string> = {}
     for (const row of result.rows) {
-      const uuid = (row as any).collection_uuid as string
-      const opts = JSON.parse((row as any).options)
+      const opts = JSON.parse(row.options)
       for (const key of Object.keys(opts)) {
-        sources[key] = uuid
+        sources[key] = row.collection_uuid
       }
       merged = { ...merged, ...opts }
     }
@@ -658,14 +648,14 @@ export async function getCollectionOptions(
   collectionUuid: string
 ): Promise<CollectionOptions> {
   try {
-    const result = await db.query(
+    const result = await db.query<{ options: string }>(
       `SELECT options FROM collection WHERE collection_uuid = $1`,
       [collectionUuid]
     )
-    if (!result.rows || result.rows.length === 0) {
+    if (result.rows.length === 0) {
       return {}
     }
-    return JSON.parse((result.rows[0] as any).options)
+    return JSON.parse(result.rows[0].options)
   } catch (err: any) {
     if (err?.code === UNDEFINED_COLUMN) {
       // Column doesn't exist — library predates the options migration
