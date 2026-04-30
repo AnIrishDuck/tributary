@@ -5,6 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 import { Blob, BlobMetadata, CollectionInfo, AccountConfigEntry } from './models.ts';
 import { BlobObject, BlobUpload } from './blobModels.ts';
 
+/** PostgREST error code returned when `.single()` finds no matching row. */
+const ROW_NOT_FOUND = 'PGRST116';
+
 // Helper function to convert hex string to Uint8Array
 function hexStringToUint8Array(hexString: string): Uint8Array {
   // Remove the \x prefix if present
@@ -109,7 +112,7 @@ export class Database {
 
     if (error) {
       // Return null if not found (not an error)
-      if (error.code === 'PGRST116') {
+      if (error.code === ROW_NOT_FOUND) {
         return null;
       }
       console.error('Database error:', error);
@@ -130,7 +133,7 @@ export class Database {
 
     if (error) {
       // Return null if not found (not an error)
-      if (error.code === 'PGRST116') {
+      if (error.code === ROW_NOT_FOUND) {
         return null;
       }
       console.error('Database error:', error);
@@ -152,7 +155,7 @@ export class Database {
 
     if (error) {
       // Return null if no blobs found (not an error)
-      if (error.code === 'PGRST116') {
+      if (error.code === ROW_NOT_FOUND) {
         return null;
       }
       console.error('Database error:', error);
@@ -396,15 +399,12 @@ export class Database {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') return null;
+      if (error.code === ROW_NOT_FOUND) return null;
       console.error('Database error in getBlobUpload:', error);
       return null;
     }
 
-    if (data && typeof data.created_at === 'string') {
-      data.created_at = new Date(data.created_at);
-    }
-    return data as BlobUpload;
+    return processDatabaseResponse(data) as BlobUpload;
   }
 
   async incrementBlobUploadChunks(rootHash: string): Promise<number> {
@@ -477,15 +477,12 @@ export class Database {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') return null;
+      if (error.code === ROW_NOT_FOUND) return null;
       console.error('Database error in getBlobObject:', error);
       return null;
     }
 
-    if (data && typeof data.created_at === 'string') {
-      data.created_at = new Date(data.created_at);
-    }
-    return data as BlobObject;
+    return processDatabaseResponse(data) as BlobObject;
   }
 
   async deleteBlobUpload(rootHash: string): Promise<boolean> {
