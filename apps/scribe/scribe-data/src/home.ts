@@ -1,9 +1,11 @@
-import { TributaryClient } from 'tributary-client'
+import { TributaryClient, createLogger } from 'tributary-client'
 import { getCachedLinkedLibraries, seedLinkedLibrariesCache } from './library.js'
 import { getLinkedLibraries } from './collection.js'
 import { localMigrations } from './migrations.js'
 import { titleToSlug } from './indexing.js'
 import { LibraryInfo, LibrarySlugResult } from './types.js'
+
+const { error: logError } = createLogger('scribe-data')
 
 /**
  * Get all libraries tracked by the TributaryClient.
@@ -78,7 +80,7 @@ export async function getHomeCollections(client: TributaryClient): Promise<Libra
       try {
         await client.addWriteKey('scribe', collection.linked_stream_key)
       } catch (err) {
-        console.error(`Failed to register linked library ${collection.linked_stream_id}:`, err)
+        logError(`Failed to register linked library ${collection.linked_stream_id}:`, err)
       }
     }
   }

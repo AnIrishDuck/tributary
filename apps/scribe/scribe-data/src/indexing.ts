@@ -1,6 +1,8 @@
-import { TributaryLocal } from 'tributary-client'
+import { TributaryLocal, createLogger } from 'tributary-client'
 import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, PGliteResult, NoteSlugRow } from './types'
 import { getLibrary } from './collection.js'
+
+const { info } = createLogger('scribe-data')
 
 
 // Add proper typing for the query results
@@ -219,7 +221,7 @@ export async function indexSlugs(
     }
   }
 
-  console.log(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
+  info(`indexSlugs: ${unindexedNotes.length} new/changed authoritative notes to index`)
 
   // Phase 1: CPU-only work — extract tags from markdown.
   const cpuStart = performance.now()
@@ -308,7 +310,7 @@ export async function indexSlugs(
   })
 
   const dbMs = Math.round(performance.now() - dbStart)
-  console.log(`indexSlugs: indexed ${indexedCount} notes (cpu ${cpuMs}ms, db ${dbMs}ms)`)
+  info(`indexSlugs: indexed ${indexedCount} notes (cpu ${cpuMs}ms, db ${dbMs}ms)`)
 
   return {
     indexedCount,
