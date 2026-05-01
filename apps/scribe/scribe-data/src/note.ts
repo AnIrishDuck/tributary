@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { TributaryStream, TributaryLocal } from 'tributary-client'
-import { Note, PGliteResult, VersionSummary, VersionTreeNode } from './types'
+import { Note, VersionSummary, VersionTreeNode } from './types'
 import { getLibrary } from './collection.js'
 import { titleToSlug, extractTitleFromMarkdown } from './indexing.js'
 
@@ -203,7 +203,9 @@ export async function createNoteVersion(
     [block_uuid]
   )
 
-  const versionResult = result.rows && result.rows.length > 0 ? result.rows[0] as any : null
+  const versionResult = result.rows && result.rows.length > 0
+    ? result.rows[0] as { version_uuid: string; collection_id: string | null; slug: string | null }
+    : null
   const prior_version_uuid = versionResult ? versionResult.version_uuid : null
   // Use explicitly provided collection_id, otherwise carry forward from latest version
   const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
@@ -304,12 +306,12 @@ export async function getNoteCount(
     return 0
   }
   
-  return parseInt((result.rows[0] as any).count)
+  return parseInt((result.rows[0] as { count: string }).count)
 }
 
 /**
  * Get all notes in the database
- * 
+ *
  * @param db The TributaryStream database instance
  * @returns Array of all note records
  */
@@ -367,7 +369,7 @@ export async function getNoteVersionCount(
     return 0
   }
   
-  return parseInt((result.rows[0] as any).count)
+  return parseInt((result.rows[0] as { count: string }).count)
 }
 
 /**
@@ -444,7 +446,7 @@ export async function getVersionHistory(
     `SELECT COUNT(*) as count FROM block WHERE block_uuid = $1`,
     [block_uuid]
   )
-  const total = parseInt((countResult.rows?.[0] as any)?.count ?? '0')
+  const total = parseInt((countResult.rows?.[0] as { count: string } | undefined)?.count ?? '0')
   if (total === 0) return []
 
   const result = await db.query(
@@ -512,7 +514,7 @@ export async function getVersionPosition(
     [block_uuid, target.insert_datetime]
   )
 
-  const counts = countsResult.rows?.[0] as any
+  const counts = countsResult.rows?.[0] as { position: string; total: string }
   const position = parseInt(counts.position)
   const total = parseInt(counts.total)
 

@@ -511,8 +511,8 @@ export async function getNoteSlugPath(
     return []
   }
 
-  const row = result.rows[0] as any
-  const noteSlug = row.slug as string
+  const row = result.rows[0] as { slug: string; collection_id: string | null }
+  const noteSlug = row.slug
   const collectionId = row.collection_id
 
   if (!collectionId) {
@@ -623,9 +623,9 @@ export async function mergeParentChainOptions(
 
     let merged: CollectionOptions = {}
     const sources: Record<string, string> = {}
-    for (const row of result.rows) {
-      const uuid = (row as any).collection_uuid as string
-      const opts = JSON.parse((row as any).options)
+    for (const row of result.rows as { collection_uuid: string; options: string }[]) {
+      const uuid = row.collection_uuid
+      const opts = JSON.parse(row.options)
       for (const key of Object.keys(opts)) {
         sources[key] = uuid
       }
@@ -665,7 +665,7 @@ export async function getCollectionOptions(
     if (!result.rows || result.rows.length === 0) {
       return {}
     }
-    return JSON.parse((result.rows[0] as any).options)
+    return JSON.parse((result.rows[0] as { options: string }).options)
   } catch (err: any) {
     if (err?.code === UNDEFINED_COLUMN) {
       // Column doesn't exist — library predates the options migration
