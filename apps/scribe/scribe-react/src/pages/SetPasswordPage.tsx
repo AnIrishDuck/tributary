@@ -5,6 +5,7 @@ import nacl from 'tweetnacl'
 import { CONFIG } from '../config'
 import { createHomeLibrary } from 'scribe-data'
 import { LockClosedIcon } from '@heroicons/react/24/outline'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 
 interface SetPasswordPageProps {
   supabase: SupabaseClient
@@ -63,8 +64,8 @@ export default function SetPasswordPage({ supabase, session, client, onComplete 
 
       // 4. Done — App.tsx re-enters normal flow
       onComplete()
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'An unexpected error occurred'))
     } finally {
       setLoading(false)
     }

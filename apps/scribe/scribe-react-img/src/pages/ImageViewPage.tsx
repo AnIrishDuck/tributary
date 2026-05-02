@@ -5,6 +5,7 @@ import { Collection, ImageBlockBody } from 'scribe-data'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 
 export interface ImageViewPageProps {
   body: ImageBlockBody
@@ -60,9 +61,9 @@ const ImageViewPage: React.FC<ImageViewPageProps> = ({
         const blobObj = new Blob([data], { type: mimeType })
         const url = URL.createObjectURL(blobObj)
         setObjectUrl(url)
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setError('Failed to load image: ' + (err.message || 'Unknown error'))
+          setError('Failed to load image: ' + getErrorMessage(err))
           console.error('Error loading image blob:', err)
         }
       } finally {

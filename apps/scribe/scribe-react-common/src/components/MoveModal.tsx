@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import { useTributary } from '../context/tributaryContext'
+import { getErrorMessage } from '../utils/errors'
 
 export interface MoveModalProps {
   isOpen: boolean
@@ -193,8 +194,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           newSlug: entitySlug,
           hasCollision
         })
-      } catch (err: any) {
-        if (!cancelled) setValidation({ status: 'invalid', message: err.message || 'Validation error' })
+      } catch (err: unknown) {
+        if (!cancelled) setValidation({ status: 'invalid', message: getErrorMessage(err, 'Validation error') })
       } finally {
         if (!cancelled) setValidating(false)
       }
@@ -241,8 +242,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         : validation.resolvedPath
 
       onMoved(newPath)
-    } catch (err: any) {
-      setError(err.message || 'Failed to move')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to move'))
     } finally {
       setIsMoving(false)
     }

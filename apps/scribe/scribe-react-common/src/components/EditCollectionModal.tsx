@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 import { useTributary } from '../context/tributaryContext'
+import { getErrorMessage } from '../utils/errors'
 
 export interface EditCollectionModalProps {
   isOpen: boolean
@@ -52,8 +53,8 @@ export const EditCollectionModal: React.FC<EditCollectionModalProps> = ({
       await indexAll(stream.local())
 
       onSaved(trimmed)
-    } catch (err: any) {
-      setError(err.message || 'Failed to rename collection')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to rename collection'))
     } finally {
       setIsSaving(false)
     }

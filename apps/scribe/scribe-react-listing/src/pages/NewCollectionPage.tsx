@@ -6,6 +6,7 @@ import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { createCollection, getLibrary, indexAll, titleToSlug, getSlugPath, Collection } from 'scribe-data'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 
 export interface NewCollectionPageProps {
   prefix: string
@@ -76,8 +77,8 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
       } else {
         navigate(routeCtx.buildPath())
       }
-    } catch (err: any) {
-      setError('Failed to create collection: ' + (err.message || 'Unknown error'))
+    } catch (err: unknown) {
+      setError('Failed to create collection: ' + getErrorMessage(err))
       console.error('Error creating collection:', err)
     } finally {
       setIsLoading(false)

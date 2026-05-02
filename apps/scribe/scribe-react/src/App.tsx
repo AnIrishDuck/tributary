@@ -10,6 +10,7 @@ import * as base64url from 'urlsafe-base64'
 import { getPGlite, closePGlite, wipeDatabase } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 import SetPasswordPage from './pages/SetPasswordPage'
 
 // Create a Supabase auth client (only if project URL is configured).
@@ -170,8 +171,8 @@ function LoginScreen({ onLogin }: { onLogin: (result: LoginResult) => void }) {
       ])
       const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
       onLogin({ keyPair, storageKey: encKey })
-    } catch (err: any) {
-      setError(err.message || 'Login failed')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Login failed'))
     }
     setLoading(false)
   }
@@ -289,8 +290,8 @@ function PasswordReentryScreen({ email, onLogin }: { email: string; onLogin: (re
       ])
       const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
       onLogin({ keyPair, storageKey: encKey })
-    } catch (err: any) {
-      setError(err.message || 'Unlock failed')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Unlock failed'))
     }
     setLoading(false)
   }

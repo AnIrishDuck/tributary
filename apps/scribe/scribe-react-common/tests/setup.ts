@@ -72,8 +72,8 @@ if (NativeRequest) {
         try {
           super(input, init)
           return
-        } catch (e: any) {
-          if (e?.message?.includes('AbortSignal') || e?.message?.includes('signal')) {
+        } catch (e: unknown) {
+          if (e instanceof Error && (e.message?.includes('AbortSignal') || e.message?.includes('signal'))) {
             // Create a native AbortController by using Node's internal one
             // We remove the signal entirely since it's only used for cancellation
             // in navigation, and test navigation doesn't need cancellation support.

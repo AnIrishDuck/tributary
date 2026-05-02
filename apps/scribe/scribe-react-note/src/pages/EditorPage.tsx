@@ -13,6 +13,7 @@ import { getAuthoritativeVersionByNoteUuid, getNoteByVersion, getLibrary } from 
 import { noteLinkCompletion } from '../extensions/noteLinkCompletion'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 import { validateLinks, LinkStatusMap } from 'scribe-react-common/src/utils/linkValidation'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
@@ -200,8 +201,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           } catch {
             // Silently ignore version info errors
           }
-        } catch (err: any) {
-          setError('Failed to load note: ' + (err.message || 'Unknown error'))
+        } catch (err: unknown) {
+          setError('Failed to load note: ' + getErrorMessage(err))
           console.error('Error loading note:', err)
         }
       }
@@ -305,8 +306,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       }
 
       setShowConflictWarning(false)
-    } catch (err: any) {
-      setError('Failed to reload note: ' + (err.message || 'Unknown error'))
+    } catch (err: unknown) {
+      setError('Failed to reload note: ' + getErrorMessage(err))
     }
   }, [editBlockUuid, client, prefix, saveNow])
 
@@ -400,8 +401,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       } else {
         navigate('/')
       }
-    } catch (err: any) {
-      setError('Failed to save note: ' + (err.message || 'Unknown error'))
+    } catch (err: unknown) {
+      setError('Failed to save note: ' + getErrorMessage(err))
       console.error('Error saving note:', err)
     } finally {
       setIsLoading(false)

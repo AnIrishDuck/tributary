@@ -18,6 +18,7 @@ import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
 import LibrarySettingsPage from './LibrarySettingsPage'
 import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 import ImageAddPage from 'scribe-react-img/src/pages/ImageAddPage'
 import ImageViewPage from 'scribe-react-img/src/pages/ImageViewPage'
 
@@ -126,11 +127,11 @@ const SlugViewPage: React.FC = () => {
           }
 
           setMode({ type: 'titled', title, results })
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (!librarySynced && !globalSyncStatus.synced) {
             setMode({ type: 'loading' })
           } else {
-            setMode({ type: 'error', message: 'Failed to resolve title: ' + (err.message || 'Unknown error') })
+            setMode({ type: 'error', message: 'Failed to resolve title: ' + getErrorMessage(err) })
           }
         }
         return
@@ -633,14 +634,14 @@ const SlugViewPage: React.FC = () => {
           setMode({ type: 'collection', ...collectionData, slugPath: fullSlugPath, libraryName })
           return
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         // If the library is still syncing, the error may be due to
         // incomplete data (e.g. authoritative version not indexed yet).
         // Show loading and let the effect retry once more data arrives.
         if (!librarySynced && !globalSyncStatus.synced) {
           setMode({ type: 'loading' })
         } else {
-          setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
+          setMode({ type: 'error', message: 'Failed to load note: ' + getErrorMessage(err) })
         }
         console.error('Error loading content:', err)
       }

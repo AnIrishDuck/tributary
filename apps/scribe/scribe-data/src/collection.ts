@@ -632,8 +632,8 @@ export async function mergeParentChainOptions(
       merged = { ...merged, ...opts }
     }
     return { merged, sources }
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if (hasDatabaseErrorCode(err, UNDEFINED_COLUMN)) {
       return { merged: {}, sources: {} }
     }
     throw err
@@ -642,6 +642,10 @@ export async function mergeParentChainOptions(
 
 /** PostgreSQL error code for "undefined column". */
 const UNDEFINED_COLUMN = '42703'
+
+function hasDatabaseErrorCode(err: unknown, code: string): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === code
+}
 
 /**
  * Get the options JSON for a collection. Returns an empty object if the
@@ -666,8 +670,8 @@ export async function getCollectionOptions(
       return {}
     }
     return JSON.parse((result.rows[0] as any).options)
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if (hasDatabaseErrorCode(err, UNDEFINED_COLUMN)) {
       // Column doesn't exist — library predates the options migration
       return {}
     }

@@ -3,6 +3,7 @@ import { ArrowUpOnSquareIcon, XMarkIcon, PhotoIcon } from '@heroicons/react/24/o
 import { titleToSlug } from 'scribe-data'
 import { Collection } from 'scribe-data'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 import ImagePreview from './ImagePreview'
 
 export interface ImageDialogProps {
@@ -125,8 +126,8 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
     try {
       const { width, height } = await getImageDimensions(file)
       await onSave({ file, slug, title, width, height })
-    } catch (err: any) {
-      setError('Failed to save image: ' + (err.message || 'Unknown error'))
+    } catch (err: unknown) {
+      setError('Failed to save image: ' + getErrorMessage(err))
       console.error('Error saving image:', err)
     } finally {
       setIsLoading(false)

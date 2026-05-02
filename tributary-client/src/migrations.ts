@@ -41,6 +41,10 @@ import { info } from './logger.js';
 const UNDEFINED_TABLE = '42P01';
 const BATCH_SIZE = 100;
 
+function hasDatabaseErrorCode(err: unknown, code: string): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === code;
+}
+
 /**
  * Ensure the migration tracking table exists.
  * Safe to call on databases that already have the table.
@@ -138,8 +142,8 @@ export async function hasMigration(
       [name],
     );
     return result.rows.length > 0;
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_TABLE) {
+  } catch (err: unknown) {
+    if (hasDatabaseErrorCode(err, UNDEFINED_TABLE)) {
       return false;
     }
     throw err;

@@ -9,6 +9,7 @@ import {
 } from 'scribe-data'
 import type { BulkUploadPlan } from 'scribe-data'
 import { generateThumbnail } from '../utils/thumbnail'
+import { getErrorMessage } from 'scribe-react-common/src/utils/errors'
 
 type ImageStatus = 'pending' | 'uploading' | 'done' | 'error'
 
@@ -125,8 +126,8 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
           })
 
           updateStatus(i, 'done')
-        } catch (err: any) {
-          updateStatus(i, 'error', err.message || 'Upload failed')
+        } catch (err: unknown) {
+          updateStatus(i, 'error', getErrorMessage(err, 'Upload failed'))
         }
       }
 
@@ -135,8 +136,8 @@ const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
       await indexAll(stream.local())
 
       setPhase('done')
-    } catch (err: any) {
-      setError(err.message || 'Bulk upload failed')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Bulk upload failed'))
       setPhase('done')
     }
   }, [stream, plan, files, sortedIndices, updateStatus])
