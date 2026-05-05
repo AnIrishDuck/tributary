@@ -100,7 +100,7 @@ export async function createCollections(
   // Build multi-row INSERT: VALUES ($1,...,$8), ($9,...,$16), ...
   const cols = 8
   const valueClauses: string[] = []
-  const params: any[] = []
+  const params: (string | null)[] = []
   for (let i = 0; i < collections.length; i++) {
     const c = collections[i]
     const base = i * cols
@@ -583,9 +583,8 @@ export async function getParentChain(
   if (!result.rows) return []
 
   // Strip the depth column from results
-  return result.rows.map((row: any) => {
-    const { depth, ...collection } = row
-    return collection as Collection
+  return (result.rows as (Collection & { depth: number })[]).map(({ depth, ...collection }) => {
+    return collection
   })
 }
 
@@ -632,8 +631,8 @@ export async function mergeParentChainOptions(
       merged = { ...merged, ...opts }
     }
     return { merged, sources }
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if (isDbError(err) && err.code === UNDEFINED_COLUMN) {
       return { merged: {}, sources: {} }
     }
     throw err
@@ -642,6 +641,14 @@ export async function mergeParentChainOptions(
 
 /** PostgreSQL error code for "undefined column". */
 const UNDEFINED_COLUMN = '42703'
+
+interface DatabaseError extends Error {
+  code: string
+}
+
+function isDbError(err: unknown): err is DatabaseError {
+  return err instanceof Error && typeof (err as DatabaseError).code === 'string'
+}
 
 /**
  * Get the options JSON for a collection. Returns an empty object if the
@@ -666,8 +673,8 @@ export async function getCollectionOptions(
       return {}
     }
     return JSON.parse((result.rows[0] as { options: string }).options)
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if (isDbError(err) && err.code === UNDEFINED_COLUMN) {
       // Column doesn't exist — library predates the options migration
       return {}
     }
