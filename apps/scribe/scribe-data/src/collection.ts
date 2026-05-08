@@ -583,7 +583,7 @@ export async function getParentChain(
   if (!result.rows) return []
 
   // Strip the depth column from results
-  return result.rows.map((row: any) => {
+  return result.rows.map((row: Collection & { depth: number }) => {
     const { depth, ...collection } = row
     return collection as Collection
   })
@@ -632,8 +632,8 @@ export async function mergeParentChainOptions(
       merged = { ...merged, ...opts }
     }
     return { merged, sources }
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === UNDEFINED_COLUMN) {
       return { merged: {}, sources: {} }
     }
     throw err
@@ -666,9 +666,8 @@ export async function getCollectionOptions(
       return {}
     }
     return JSON.parse((result.rows[0] as { options: string }).options)
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_COLUMN) {
-      // Column doesn't exist — library predates the options migration
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === UNDEFINED_COLUMN) {
       return {}
     }
     throw err

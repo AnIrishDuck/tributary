@@ -291,7 +291,7 @@ export async function suggestSlugs(
         [parentUuid, likePattern, remaining]
       )
 
-      for (const row of (noteResult.rows || []) as any[]) {
+      for (const row of (noteResult.rows || []) as Array<{ block_uuid: string; slug: string; body: string; block_type: string | null }>) {
         suggestions.push({
           slug_path: pathPrefix + row.slug,
           title: extractBlockTitle(row.body, row.block_type),
