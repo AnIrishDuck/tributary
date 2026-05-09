@@ -42,7 +42,6 @@ export class TributaryLocal {
     // is scoped to this operation and cannot be changed by concurrent streams.
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
-      // @ts-ignore
       return await tx.query(query, params);
     });
   }
@@ -55,8 +54,6 @@ export class TributaryLocal {
   async exec(query: string, params?: any[]) {
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
-      // Use query instead of exec for parameterized operations to work around PGLite issue
-      // @ts-ignore
       if (params && params.length > 0) {
         await tx.query(query, params);
       } else {
