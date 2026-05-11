@@ -34,7 +34,7 @@ async function getHomeClient(): Promise<TributaryClient> {
   await fs.promises.mkdir(HOME_DB_PATH, { recursive: true });
   const pglite = new PGlite(HOME_DB_PATH);
   const server = await createCliServer();
-  return new TributaryClient({ server, db: pglite as any });
+  return new TributaryClient({ server, db: pglite });
 }
 
 /**
@@ -53,7 +53,7 @@ async function createSyncClient(directory: string, libraryPk: string, dbPath?: s
   await fs.promises.mkdir(pglitePath, { recursive: true });
   const pglite = new PGlite(pglitePath);
   const server = await createCliServer();
-  const client = new TributaryClient({ server, db: pglite as any });
+  const client = new TributaryClient({ server, db: pglite });
 
   // Look up the write key from the home library
   const homeClient = await getHomeClient();
@@ -228,7 +228,7 @@ program
         // Check if library already has notes
         try {
           const result = await stream.query('SELECT COUNT(*) as count FROM block', []);
-          const count = parseInt((result.rows[0] as any).count);
+          const count = parseInt((result.rows[0] as { count: string }).count);
           if (count === 0) {
             const now = new Date();
             await stream.exec(
