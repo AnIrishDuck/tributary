@@ -3,13 +3,11 @@ import { CollectionSlug, NoteSlug, BlockSlugInfo } from './types'
 import { getCollectionBySlugUnderParent } from './collection.js'
 import { getNotesBySlugInCollection, extractBlockTitle } from './indexing.js'
 
-export interface ResolveResult {
-  type: 'note' | 'collection' | 'collision' | 'image'
-  entity: any
-  ancestors: CollectionSlug[]
-  /** Present when type is 'collision': the matching notes, images, and collections. */
-  collisions?: { notes: BlockSlugInfo[]; collections: CollectionSlug[] }
-}
+export type ResolveResult =
+  | { type: 'note'; entity: BlockSlugInfo; ancestors: CollectionSlug[] }
+  | { type: 'image'; entity: BlockSlugInfo; ancestors: CollectionSlug[] }
+  | { type: 'collection'; entity: CollectionSlug; ancestors: CollectionSlug[] }
+  | { type: 'collision'; entity: null; ancestors: CollectionSlug[]; collisions: { notes: BlockSlugInfo[]; collections: CollectionSlug[] } }
 
 /**
  * Result of a partial slug resolution.
@@ -125,7 +123,7 @@ export async function resolveSlugPath(
 
   return {
     type: 'collection',
-    entity: matchingCollection,
+    entity: matchingCollection!,
     ancestors
   }
 }
@@ -291,7 +289,7 @@ export async function suggestSlugs(
         [parentUuid, likePattern, remaining]
       )
 
-      for (const row of (noteResult.rows || []) as any[]) {
+      for (const row of (noteResult.rows || []) as { block_uuid: string; slug: string; body: string; block_type: string }[]) {
         suggestions.push({
           slug_path: pathPrefix + row.slug,
           title: extractBlockTitle(row.body, row.block_type),

@@ -82,7 +82,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     []
   )
 
-  for (const row of (blocksResult.rows || []) as any[]) {
+  for (const row of (blocksResult.rows || []) as { block_uuid: string; slug: string; body: string; collection_id: string | null; block_type: string }[]) {
     const blockType = row.block_type || 'scribe/markdown'
     let title: string | null
     if (blockType === 'scribe/image') {
