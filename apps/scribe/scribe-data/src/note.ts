@@ -156,7 +156,7 @@ export async function createNotes(
   // Build multi-row INSERT: VALUES ($1,...,$9), ($10,...,$18), ...
   const cols = 9
   const valueClauses: string[] = []
-  const params: any[] = []
+  const params: (string | null)[] = []
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i]
     const base = i * cols
