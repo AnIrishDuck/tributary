@@ -89,6 +89,14 @@ interface UnindexedSearchNote {
   body: string
 }
 
+interface SearchRow {
+  block_uuid: string
+  slug: string | null
+  title: string | null
+  snippet: string
+  rank: string
+}
+
 /**
  * Extract searchable plain text from markdown body
  * Removes markdown syntax but keeps the actual content
@@ -241,7 +249,7 @@ export async function indexSearchVectors(
   // Phase 2: Batch DB writes — 2 queries instead of N round-trips.
   const dbStart = performance.now()
 
-  await localDb.transaction(async (tx: any) => {
+  await localDb.transaction(async (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => {
     if (withText.length > 0) {
       const vals = withText.map((_, i) => {
         const b = i * 5
@@ -354,7 +362,7 @@ export async function searchNotes(
       [queryTerms, limit, offset]
     )
     
-    return (result.rows || []).map((row: any) => ({
+    return ((result.rows || []) as SearchRow[]).map((row) => ({
       block_uuid: row.block_uuid,
       slug: row.slug || null,
       title: row.title || null,

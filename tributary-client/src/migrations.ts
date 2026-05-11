@@ -39,6 +39,15 @@ import { info } from './logger.js';
 
 /** PostgreSQL error code for "undefined table". */
 const UNDEFINED_TABLE = '42P01';
+
+interface DatabaseError extends Error {
+  code: string;
+}
+
+function isDbError(err: unknown): err is DatabaseError {
+  return err instanceof Error && typeof (err as DatabaseError).code === 'string';
+}
+
 const BATCH_SIZE = 100;
 
 /**
@@ -104,7 +113,7 @@ export async function migrate(
       `SELECT name FROM "${tableName}" WHERE name IN ${clause}`,
       params,
     );
-    const applied = new Set<string>(result.rows.map((r: any) => r.name));
+    const applied = new Set<string>((result.rows as { name: string }[]).map((r) => r.name));
 
     // Run missing migrations in list order.
     for (const migration of batch) {
@@ -138,8 +147,8 @@ export async function hasMigration(
       [name],
     );
     return result.rows.length > 0;
-  } catch (err: any) {
-    if (err?.code === UNDEFINED_TABLE) {
+  } catch (err: unknown) {
+    if (isDbError(err) && err.code === UNDEFINED_TABLE) {
       return false;
     }
     throw err;
