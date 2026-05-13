@@ -5,8 +5,14 @@ to dramatically reduce time-to-first-paint for warm databases (e.g. re-entering 
 Scribe Android activity that has already navigated to a note) by serving cached
 query results *in parallel* with the PGlite cold-start load.
 
-The architecture is also forward-looking: it is the same primitive that will back the
-future blob cache. SQL is the first consumer.
+The cache is consumed via a **stale-while-revalidate** React hook. Cached results
+render immediately; the verified result from PGlite arrives shortly after and either
+matches (no re-render) or differs (React swaps state, component re-renders). The
+cache never claims authority — it provides provisional answers that the verified
+layer reconciles.
+
+The architecture is also forward-looking: the same primitive will back the future
+blob cache. SQL is the first consumer.
 
 ---
 
@@ -36,94 +42,148 @@ it is mounted:
 - "version history footer" (`getVersionPosition`)
 
 These are pure functions of `(stream, query, params)` against the persisted state. If
-we cached the results of each `query()` keyed by stream + SQL + params, we could
-satisfy them from a tiny IndexedDB lookup *while* PGlite is still loading MEMFS, and
-the user sees content in tens of milliseconds rather than seconds.
+we cache the results of each `query()` keyed by stream + SQL + params, we can satisfy
+them from a tiny IndexedDB lookup *while* PGlite is still loading MEMFS, and the user
+sees content in tens of milliseconds rather than seconds.
+
+---
+
+## The Consistency Model
+
+The cache is the outermost ring of a single consistency chain. Three rings, each
+provisional with respect to the next:
+
+```
+SQL cache  ──► local PGlite DB  ──►  remote stream
+(provisional)  (verified locally)    (truth)
+```
+
+A read traverses outward-to-inward. The UI sees whatever ring answers first; lower
+rings reconcile via re-render. This unifies cold-start cache-hits with mid-sync UI
+under one mental model:
+
+| Phase                          | Banner text                  |
+|--------------------------------|------------------------------|
+| PGlite still loading MEMFS     | "Loading database…"          |
+| PGlite ready, sync in progress | "Syncing N / M…" (existing)  |
+| PGlite ready, sync caught up   | (no banner)                  |
+
+The banner already exists for the bottom two states. We add the top state and ship
+the cache as an opt-in optimization that surfaces through it.
+
+### Stale-while-revalidate, not invalidate-on-write
+
+There is **no explicit invalidation**. The cache simply records the latest verified
+result per `(stream, sql, params)` triple. Writes do not invalidate; they don't have
+to, because:
+
+- The component that issued the write almost always re-reads on the next render.
+  Under SWR, the cached (pre-write) result renders for ~one frame, the verified
+  (post-write) result replaces it via state update, and the cache is repopulated
+  with the new value. On a warm DB the swap is imperceptible.
+- A component on a different surface that *isn't* currently mounted has a stale
+  cached entry on disk. The next time that surface mounts, SWR catches it on the
+  cold-start frame and reconciles. No bug — same shape as the cold-start case the
+  cache exists to accelerate.
+- The cache never asserts "this is current." It says "this is what we last saw."
+  Verified truth always wins on reconcile.
+
+Eviction is therefore driven only by **LRU pressure** (entry count and byte
+bounds) and by explicit `clearCache()` on logout / wipe. There is no generation
+counter, no per-write bookkeeping, no per-table dependency tracking.
+
+### Concurrent tabs and the case the generation counter got wrong
+
+If another tab applies sync blobs while this tab is closed, on next open the cache's
+stored entries reflect the *previous* session's view of the DB and the on-disk DB
+reflects a newer view. A generation counter would either:
+
+- mark all entries valid (wrong — serves stale data with no recourse), or
+- mark all entries invalid (no faster than no cache at all).
+
+SWR sidesteps this entirely. The cache hit renders briefly; the verified query
+returns the newer result; React re-renders. Correct by construction.
 
 ---
 
 ## Design Decisions
 
-- **Cache key**: `streamId || sha256(sqlTextNormalized) || sha256(params)`. Stream
-  scoping prevents cross-stream leaks; hashing keeps keys small and uniform.
-- **Cache scope**: read queries only. `query()` for writes and `exec()` are never
-  cached and always invalidate.
+- **Cache key**: `streamId || sha256(sqlTextNormalized) || sha256(canonicalParams)`.
+  Stream scoping prevents cross-stream leaks; hashing keeps keys small.
+- **Cache scope**: read queries only. Writes and `exec()` go straight to PGlite and
+  do nothing to the cache; the cache self-heals on the next read.
 - **Storage backend**: a dedicated IndexedDB database, `tributary-cache`, with one
   object store per cache namespace (`sql`, later `blob`). Separate from the PGlite
-  IndexedDB so a cache wipe never risks corrupting Postgres state, and so we can read
-  the cache before PGlite has even started loading.
+  IndexedDB so a cache wipe never risks corrupting Postgres state, and so we can
+  read the cache *before* PGlite has even started loading.
 - **Eviction**: classic LRU keyed by access timestamp. Two simultaneous bounds —
   `maxEntries` (default 2000) and `maxBytes` (default 16 MiB). Eviction runs lazily
-  after writes; on insert we trim until both bounds are satisfied.
+  after writes; on insert we trim until both bounds are satisfied. **LRU is the
+  only eviction mechanism.**
 - **Encryption**: when the client was constructed with an `encryptionKey` (i.e.
   `EncryptedIdbFs` is the PGlite FS), the cache uses the *same* key with the existing
   `encryptBlob` / `decryptBlob` helpers from `encryptedIdbFs.ts`. No new crypto.
-- **Invalidation**: per-stream cache generation counter. Every write/exec on a stream
-  (and every applied incoming sync blob) bumps the counter; entries are tagged with
-  the generation they were produced at, and any entry whose generation is older than
-  the stream's current generation is treated as a miss and lazily evicted. This is
-  coarse but correct, easy to reason about, and trivially extendable to per-table
-  granularity later.
 - **Concurrency**: a single in-process write lock per cache key prevents two
   concurrent queries from racing to populate the same entry. Reads are lock-free.
-- **Read-through API**: callers don't pick. `TributaryStream.query()` becomes a
-  read-through cache: returns cached → otherwise dispatches to PGlite (which may
-  still be loading), stores, returns.
-- **DB-load timing**: instrument `EncryptedIdbFs.init()` / `initialSyncFs()` end-to-end
-  and log start, byte count, and elapsed via the existing `logger` so we can measure
-  cache effectiveness in the wild.
+- **API surface**: bare `TributaryStream.query()` is **unchanged** — it still
+  returns verified truth and is what every non-UI caller uses (CLI, sync internals,
+  scribe-data helpers that compose). The cache is consumed only by the
+  `useStreamQuery` React hook, which races cache and verified and yields whichever
+  is current.
+- **DB-load timing**: instrument `EncryptedIdbFs.init()` / `initialSyncFs()`
+  end-to-end and log start, byte count, and elapsed via the existing `logger` so we
+  can measure cache effectiveness in the wild. Surface as the
+  `consistencyState$.phase === 'loading-db'` signal for the banner.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ TributaryStream.query(sql, params)  ──┐                          │
-│   ├── if !cacheable → straight to PGlite (write/exec path)       │
-│   └── if cacheable → read-through:                               │
-│         1. cache.get(streamId, sql, params)                      │
-│         2. miss → await pgliteReady → pglite.query(...)          │
-│         3. cache.put(streamId, sql, params, result, gen)         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌──────────────────────────────┐
-              │   SqlCache (namespace)       │
-              │   - keyOf(stream, sql, args) │
-              │   - generation tracking      │
-              │   - serializeResult          │
-              └────────────┬─────────────────┘
-                           │
-                           ▼
-              ┌──────────────────────────────┐
-              │   LruCache<K, V>             │  generic, reusable
-              │   - in-memory hot map        │
-              │   - persistent backend       │
-              │   - LRU eviction by bytes +  │
-              │     entry count              │
-              └────────────┬─────────────────┘
-                           │
-                           ▼
-              ┌──────────────────────────────┐
-              │   CacheStore (backend)       │
-              │   - IdbCacheStore (default)  │
-              │   - MemoryCacheStore (tests) │
-              │   - optional EncryptedStore  │
-              │     wrapper (reuses          │
-              │     encryptBlob/decryptBlob) │
-              └──────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│ React component                                                    │
+│   const { data } = useStreamQuery(stream, sql, params)             │
+└──────────────────────┬─────────────────────────────────────────────┘
+                       │           ▲
+                       │           │ state updates (cache → verified)
+                       ▼           │
+┌────────────────────────────────────────────────────────────────────┐
+│ useStreamQuery (scribe-react-common, or tributary-client/react)    │
+│   1. cache.get(streamId, sql, params)   ──► resolves fast          │
+│   2. stream.query(sql, params)          ──► awaits PGlite          │
+│   3. if results differ: setData(verified); cache.put(verified)     │
+│   4. if results equal:  cache already current, no re-render        │
+└──────────────────────┬─────────────────────────────────────────────┘
+                       │
+        ┌──────────────┴───────────────┐
+        ▼                              ▼
+ ┌──────────────┐             ┌───────────────────┐
+ │  SqlCache    │             │  TributaryStream  │
+ │  (read-only  │             │  .query()         │
+ │  consumer)   │             │  (unchanged)      │
+ └──────┬───────┘             └─────────┬─────────┘
+        │                               │
+        ▼                               ▼
+ ┌───────────────┐               ┌──────────────┐
+ │ LruCache<V>   │               │   PGlite     │
+ │ (generic)     │               │   (MEMFS)    │
+ └──────┬────────┘               └──────────────┘
+        ▼
+ ┌───────────────┐
+ │ CacheStore    │
+ │ - IdbCacheStore │
+ │ - MemoryCacheStore │
+ │ - wrapEncrypted │
+ └───────────────┘
 ```
 
-The generic `LruCache<K, V>` knows nothing about SQL. It just stores opaque
-`Uint8Array` payloads with metadata `{ size, lastAccess, tag }`. The future blob
-cache will instantiate it with namespace `blob` and a different serializer.
+`LruCache<V>` knows nothing about SQL — it stores opaque `Uint8Array` payloads with
+metadata `{ size, lastAccess, tag }`. The future blob cache instantiates it with
+namespace `blob` and a different codec.
 
 ---
 
 ## Reuse map
-
-Everything that already exists in the repo:
 
 | Need | Reuse |
 |---|---|
@@ -131,11 +191,13 @@ Everything that already exists in the repo:
 | Nonce-prefixed AEAD | `encryptBlob` / `decryptBlob` from `encryptedIdbFs.ts` |
 | SHA-256 hashing | `computeHash` / `computeHashBytes` from `hashUtils.ts` |
 | Logger w/ levels | `logger.ts` (`info`, `debug`, `warn`) |
-| Storage quota probing | `estimateQuota()` from `storage.ts` (used to pick `maxBytes` ceiling) |
-| Read-vs-write detection | `isReadQuery()` already implemented in `TributaryStream` |
+| Storage quota probing | `estimateQuota()` from `storage.ts` |
+| Read-vs-write detection | `isReadQuery()` in `TributaryStream` |
+| Sync banner | existing `SyncStatus` + setup-step machinery in `App.tsx` |
 
 New code is restricted to: the generic LRU, the IDB backend, the SQL namespace
-adapter, the stream-side integration, and load-time instrumentation.
+adapter, the React SWR hook, the consistency state observable, and load-time
+instrumentation.
 
 ---
 
@@ -146,7 +208,7 @@ shared by SQL today and blobs tomorrow. No SQL knowledge.
 
 ### Files to create
 
-- `tributary-client/src/cache/lruCache.ts` — `LruCache<K, V>` core.
+- `tributary-client/src/cache/lruCache.ts` — `LruCache<V>` core.
 - `tributary-client/src/cache/cacheStore.ts` — `CacheStore` interface + the
   encrypted-wrapper helper.
 - `tributary-client/src/cache/idbCacheStore.ts` — IndexedDB-backed `CacheStore`.
@@ -161,8 +223,7 @@ shared by SQL today and blobs tomorrow. No SQL knowledge.
 export interface CacheEntryMeta {
   size: number          // bytes of `value`
   lastAccess: number    // ms epoch, for LRU
-  generation: number    // per-namespace versioning (e.g. stream gen)
-  tag?: string          // free-form, e.g. streamId for bulk invalidation
+  tag?: string          // free-form, e.g. streamId — used by clearByTag() on wipe
 }
 
 export interface CacheStore {
@@ -171,6 +232,7 @@ export interface CacheStore {
   delete(namespace: string, key: string): Promise<void>
   /** Iterate entries in LRU order (oldest first) — used for eviction. */
   listByLru(namespace: string): AsyncIterable<{ key: string; meta: CacheEntryMeta }>
+  /** Bulk-delete by tag — used by clearByTag (logout / wipe), NOT for invalidation. */
   deleteByTag(namespace: string, tag: string): Promise<void>
   totalBytes(namespace: string): Promise<number>
   entryCount(namespace: string): Promise<number>
@@ -187,172 +249,209 @@ export interface LruCacheOptions {
 
 export class LruCache<V> {
   constructor(opts: LruCacheOptions, codec: { encode(v: V): Uint8Array; decode(b: Uint8Array): V })
-  async get(key: string, generation: number, tag?: string): Promise<V | null>
-  async put(key: string, value: V, generation: number, tag?: string): Promise<void>
-  async invalidateByTag(tag: string): Promise<void>
+  async get(key: string): Promise<V | null>
+  async put(key: string, value: V, tag?: string): Promise<void>
+  /** For logout / wipe only. The runtime never calls this for invalidation. */
+  async clearByTag(tag: string): Promise<void>
   async clear(): Promise<void>
 }
 ```
 
 ### Behaviour
 
-- `get`: in-memory map first, then store; if the stored entry's `generation` is less
-  than the caller-provided `generation`, return `null` and delete asynchronously.
+- `get`: in-memory map first, then store. No staleness check — entries are always
+  "valid enough" to return; the caller (SWR) decides if it cares.
 - `put`: write to store, then evict until both bounds are satisfied using
   `listByLru()`. Update the in-memory mirror.
 - `IdbCacheStore` uses one IndexedDB DB (`tributary-cache`) with an object store
-  named after the namespace and an `lastAccess` index for cheap LRU iteration.
-- `EncryptedCacheStore` is a decorator (`wrapEncrypted(store, key)`) that
-  encrypt-on-write / decrypt-on-read using `encryptBlob`/`decryptBlob`. Metadata is
-  intentionally **not** encrypted — the size is needed for eviction and timestamps
-  are not sensitive — but the `value` bytes are.
+  named after the namespace and a `lastAccess` index for cheap LRU iteration.
+- `wrapEncrypted(store, key)` is a decorator that encrypt-on-write /
+  decrypt-on-read using `encryptBlob` / `decryptBlob`. Metadata is intentionally
+  **not** encrypted — size is needed for eviction and timestamps are not
+  sensitive — but the `value` bytes are. A decrypt failure (corruption, key
+  rotation) returns `null` from `get`, not a throw; the entry is deleted lazily.
 
 ### Test coverage
 
 - Hit/miss round-trip for plaintext and encrypted store.
 - LRU eviction by entry count.
-- LRU eviction by byte budget — verify largest-evicted-first when single oversized
-  insert blows the budget.
-- `invalidateByTag` removes all matching entries and only those.
-- Generation mismatch on `get` returns null and deletes lazily.
-- Encrypted store: tampered ciphertext yields a miss, not a throw.
+- LRU eviction by byte budget — verify largest-evicted-first when a single
+  oversized insert blows the budget.
+- `clearByTag` removes all matching entries and only those (used on logout, not
+  invalidation).
+- Encrypted store: tampered ciphertext yields `null` from `get`, not a throw, and
+  the corrupted entry is removed.
 - Concurrent `put` of the same key resolves to one persisted entry.
 
-### Estimated size: ~350 LOC code + ~300 LOC tests
+### Estimated size: ~320 LOC code + ~280 LOC tests
 
 ---
 
-## Prompt 2: SQL Cache + Stream Integration (`tributary-client`)
+## Prompt 2: SQL Cache + SWR Hook + Consistency State (`tributary-client`)
 
-**Goal**: Wire the LRU cache into `TributaryStream.query()` as a read-through cache,
-with stream-scoped invalidation on writes and on applied sync blobs.
+**Goal**: A read-only SQL cache populated by a stale-while-revalidate React hook,
+plus the consistency-state observable that drives the banner UI. Bare
+`TributaryStream.query()` is unchanged.
 
 ### Files to create / modify
 
-- **Create** `tributary-client/src/cache/sqlCache.ts` — namespace adapter.
-- **Modify** `tributary-client/src/tributaryStream.ts` — wrap `query()` and bump
-  generation on writes/syncs.
+- **Create** `tributary-client/src/cache/sqlCache.ts` — namespace adapter
+  (key derivation, codec for query result rows).
+- **Create** `tributary-client/src/cache/consistencyState.ts` —
+  `ConsistencyState` observable + `Client.consistencyState$`.
+- **Create** `tributary-client/src/react/useStreamQuery.ts` — SWR hook. (New
+  `react/` subdir under `tributary-client/src`; tree-shaken away in non-React
+  builds.)
 - **Modify** `tributary-client/src/tributaryClient.ts` — own the singleton
-  `SqlCache`, pass it to streams, expose `clearCache()`.
-- **Modify** `tributary-client/src/tributaryLocal.ts` — opt-in cache pass-through
-  (writes to a stream's schema via `TributaryLocal` are exec-only today; for now
-  treat any `TributaryLocal.exec` as a stream invalidation event).
-- **Modify** `tributary-client/src/index.ts` — export `SqlCache`, `LruCache`.
-- **Modify** `tributary-client/test/tributary-stream.test.ts` — add cache-coverage
-  cases.
+  `SqlCache`, expose `clearCache()` and `consistencyState$`. Wire the
+  load-finished signal from `EncryptedIdbFs` (Prompt 3) into the observable.
+- **Modify** `tributary-client/src/index.ts` — export `SqlCache`,
+  `useStreamQuery`, `ConsistencyState`, and the `LruCache` primitives.
 - **Create** `tributary-client/test/sql-cache.test.ts`
+- **Create** `tributary-client/test/use-stream-query.test.ts`
+  (vitest + `@testing-library/react`, both already used by `scribe-react-common`).
 
 ### Key shape
 
 ```ts
 function sqlCacheKey(streamId: string, sql: string, params?: unknown[]): string {
   const normalizedSql = sql.replace(/\s+/g, ' ').trim()
-  // small JSON canonicalization for params (numbers, strings, booleans, null,
-  // and Uint8Array → urlsafe-base64).
+  // canonical JSON for params: numbers, strings, booleans, null,
+  // and Uint8Array → urlsafe-base64.
   return `${streamId}|${sha256Hex(normalizedSql)}|${sha256Hex(canonicalJSON(params))}`
 }
 ```
 
-The `tag` is the streamId, so invalidation on write is a single `deleteByTag` call.
+`tag` is the streamId, so `clearByTag(streamId)` is used only on logout / wipe.
 
-### Cacheability rules (mirror `isReadQuery`)
+### Cacheability rules
 
 A query is cacheable iff:
 
 1. `isReadQuery(sql)` returns `true`, AND
 2. The query does not call non-deterministic functions we recognize
-   (`now()`, `current_timestamp`, `random()`, `clock_timestamp()`). When matched,
-   bypass the cache.
-3. The result row count × per-row byte estimate is under a per-entry cap (default
-   1 MiB). Oversized results bypass the cache rather than pushing useful smaller
-   entries out.
+   (`now()`, `current_timestamp`, `random()`, `clock_timestamp()`); matched
+   queries bypass the cache entirely, AND
+3. The serialized result is under a per-entry cap (default 1 MiB) — oversized
+   results bypass rather than push useful smaller entries out.
 
-### `query()` wrapping in `TributaryStream`
+### The SWR hook
 
 ```ts
-async query(sql: string, params?: any[]) {
-  if (!this.isReadQuery(sql) || !this.sqlCache) {
-    return this.runQueryUncached(sql, params)
-  }
-  if (containsNonDeterministic(sql) || estimatedSize(params) > LIMIT) {
-    return this.runQueryUncached(sql, params)
-  }
-  const key = sqlCacheKey(this.getId(), sql, params)
-  const gen = this.cacheGeneration  // bumped on every write/sync
-  const cached = await this.sqlCache.get(key, gen, this.getId())
-  if (cached) return cached
-  // Note: runQueryUncached awaits PGlite readiness internally.
-  const result = await this.runQueryUncached(sql, params)
-  await this.sqlCache.put(key, result, gen, this.getId())
-  return result
+export function useStreamQuery<Row = unknown>(
+  stream: TributaryStream | TributaryLocal | null | undefined,
+  sql: string,
+  params?: unknown[],
+): { data: Row[] | undefined; error?: Error } {
+  const [data, setData] = useState<Row[] | undefined>(undefined)
+  const [error, setError] = useState<Error | undefined>(undefined)
+
+  useEffect(() => {
+    if (!stream) return
+    let cancelled = false
+
+    // 1. Race: cache.get and stream.query in parallel.
+    const cachePromise = sqlCache.get(streamId(stream), sql, params)
+    const verifiedPromise = stream.query(sql, params)
+
+    cachePromise.then(cached => {
+      if (cancelled || !cached) return
+      // Only render cached if verified hasn't already won.
+      setData(prev => prev ?? cached)
+    })
+
+    verifiedPromise.then(result => {
+      if (cancelled) return
+      setData(result.rows as Row[])
+      sqlCache.put(streamId(stream), sql, params, result.rows)
+    }).catch(err => { if (!cancelled) setError(err) })
+
+    return () => { cancelled = true }
+  }, [stream, sql, JSON.stringify(params)])
+
+  return { data, error }
 }
 ```
 
-The `cacheGeneration` counter is initialized from a small "stream meta" object
-persisted in the cache store itself (so it survives reloads). Every successful write
-in `query()` / `exec()` and every applied sync blob bumps it and writes it back.
+Key properties:
 
-### Parallelism with cold start
+- **The verified write always wins.** If verified resolves before cache, the cache
+  result is discarded (`prev ?? cached` no-ops).
+- **No per-component "verified?" flag.** Components don't need to know. The banner
+  is the global indicator.
+- **Bare `stream.query()` is unchanged.** Non-UI callers — CLI, sync, scribe-data
+  helpers that compose results — keep getting verified truth, synchronously
+  composable.
 
-`runQueryUncached()` already awaits `initializeSchema()` /
-`initializeSyncState()`, both of which await PGlite. The cache lookup does **not**
-await PGlite, so on a cold start:
+### Consistency state
 
+```ts
+export type ConsistencyState =
+  | { phase: 'loading-db' }
+  | { phase: 'syncing'; current: number; final: number }
+  | { phase: 'ready' }
+
+interface TributaryClient {
+  // ... existing ...
+  readonly consistencyState$: Subscribable<ConsistencyState>
+}
 ```
-t=0   activity mounts, useEffect fires query()
-      cache.get(...)  ─────────────► hit at t=15ms, return to UI
-      PGlite          ─────────────────────────────────► ready at t=2200ms
-```
 
-On a miss, the call falls through to PGlite normally. The first warm load primes
-the cache for the next mount.
+Implementation: a tiny in-house `Subscribable` (≈30 LOC, no new dep — RxJS would
+be overkill). Initial state is `{ phase: 'loading-db' }`. Transitions:
 
-### Invalidation hooks
+- PGlite `initialSyncFs` callback fires → check `SyncStatus`; emit `syncing` or
+  `ready`.
+- Sync loop emits `syncing` updates with `currentIndex` / `finalIndex`.
+- Sync completes → emit `ready`.
 
-- `query()` non-read path: on commit, `this.cacheGeneration++` and persist.
-- `exec()`: same.
-- Sync: in the loop that applies remote blobs, increment generation once per blob
-  applied (or once per batch — tunable; coarse is correct).
-- `wipePGlite()` / `wipeDatabase()` in `apps/scribe/scribe-react/src/db/persistence.ts`:
-  also call `client.clearCache()` to avoid serving stale results against a freshly
-  empty DB.
+The Scribe banner subscribes via a small `useConsistencyState()` hook and renders
+text per the table at the top.
 
 ### Test coverage
 
-- Read query hits cache on second call; PGlite is invoked once.
-- Write (`exec`) bumps generation and forces the next read to miss.
-- Sync application invalidates results.
-- Different params produce different cache entries.
-- Cache is per-stream: stream A's writes don't invalidate stream B.
-- `containsNonDeterministic` queries bypass cache in both directions.
-- Encrypted mode: when constructed with a storage key, cached entries on disk are
-  ciphertext (verified by reading IDB directly through `fake-indexeddb`).
+- `useStreamQuery` returns cached data first, then verified data — verified
+  replaces cached when different.
+- `useStreamQuery` does not re-render when cached and verified are deep-equal.
+- `useStreamQuery` discards the cache result if verified resolves first (write-race).
+- Two components with the same `(stream, sql, params)` share one verified call
+  (deduplicated via in-flight map).
+- `consistencyState$` transitions `loading-db → syncing → ready` for a cold start.
+- `clearCache()` empties the SQL namespace; subsequent queries miss and repopulate.
+- `containsNonDeterministic` queries bypass the cache in both directions.
+- Encrypted mode: cached entries on disk are ciphertext (verified by reading IDB
+  directly through `fake-indexeddb`).
+- Per-stream isolation: `clearByTag(streamA)` does not touch streamB's entries.
 
-### Estimated size: ~250 LOC code + ~300 LOC tests
+### Estimated size: ~280 LOC code + ~320 LOC tests
 
 ---
 
-## Prompt 3: DB-Load Time Logging + Cache Construction in Scribe (`tributary-client` + `apps/scribe`)
+## Prompt 3: DB-Load Time Logging + Scribe Wiring (`tributary-client` + `apps/scribe`)
 
-**Goal**: Measure and log how long PGlite's initial sync takes, and wire the cache
-through Scribe so it actually runs in production.
+**Goal**: Surface the load-time signal so the consistency observable can emit
+`loading-db`, and wire the cache and banner through Scribe.
 
 ### Files to modify
 
 - **Modify** `tributary-client/src/encryptedIdbFs.ts` — instrument `init()` and
-  `initialSyncFs()` (inherited from `IdbFs`; override to wrap with timing) to log
-  start, file count, total bytes loaded, and elapsed ms. Use `logger.info` with a
-  stable prefix `[EncryptedIdbFs]` so log filters can pick it up.
+  `initialSyncFs()` (override with timing wrap) to log start, file count, total
+  bytes loaded, and elapsed ms. Emit a `loaded` event on a private emitter the
+  client picks up to flip `consistencyState$` out of `loading-db`. Use
+  `logger.info` with stable prefix `[EncryptedIdbFs]`.
 - **Modify** `tributary-client/src/tributaryClient.ts` — accept an optional
   `cache?: { encryptionKey?: Uint8Array; maxEntries?: number; maxBytes?: number }`
   option. When `encryptionKey` is present, wrap the IDB store with the encrypted
   decorator. Construct one `SqlCache` shared by all streams.
 - **Modify** `apps/scribe/scribe-react/src/App.tsx` — pass the already-derived
   `storageKey` (line ~169, ~288) into the `TributaryClient` constructor as
-  `cache.encryptionKey`. No new prompts to the user; the key is already derived.
-- **Modify** `apps/scribe/scribe-react/src/db/persistence.ts` — log the result of
-  `estimateQuota()` once at startup alongside the load timing so we have full
-  context in production traces.
+  `cache.encryptionKey`. No new prompts; the key is already derived.
+- **Modify** `apps/scribe/scribe-react/src/db/persistence.ts` — log
+  `estimateQuota()` once at startup alongside the load timing.
+- **Modify** the existing sync banner (currently driven by `setupStep` strings in
+  `App.tsx`) — replace string-state machine with subscription to
+  `client.consistencyState$`. Map phases to labels per the consistency-model
+  table.
 
 ### Logging contract
 
@@ -363,48 +462,49 @@ through Scribe so it actually runs in production.
 [TributaryClient] cache ready namespace=sql maxEntries=2000 maxBytes=16MiB encrypted=true
 [SqlCache] hit  stream=abcd... key=h(SELECT...) elapsedMs=3
 [SqlCache] miss stream=abcd... key=h(SELECT...) elapsedMs=812
+[ConsistencyState] phase=loading-db → syncing current=0 final=47
+[ConsistencyState] phase=syncing → ready
 ```
 
 ### Test coverage
 
 - `EncryptedIdbFs.initialSyncFs` returns the byte count it reports in the log
-  (refactor the totals out into a result type rather than only logging them, so a
-  test can assert on it).
+  (refactor totals out into a typed result so a test can assert on it).
 - `TributaryClient` constructed without `cache.encryptionKey` produces plaintext
   cache entries; with the key, ciphertext.
+- `consistencyState$` emits `loading-db` until the load callback fires.
 
-### Estimated size: ~80 LOC code + ~80 LOC tests
+### Estimated size: ~90 LOC code + ~80 LOC tests
 
 ---
 
-## Verification against Scribe (per the task)
+## Verification against Scribe
 
-Walking the hot paths to confirm the cache is correct and useful:
-
-1. **`NoteViewPage` mount** — `getVersionPosition(localDb, blockUuid, versionUuid)`
-   is a pure read; `validateLinks(localDb, content, splatPath)` runs N reads. All go
-   through `TributaryLocal.query()` → `TributaryStream`'s `pglite`. Either we plumb
-   the cache through `TributaryLocal` (preferred — same generation counter, same
-   stream tag) or the page passes `stream.query()` directly. Plan picks the former.
-2. **`scribe-data/src/note.ts`** — every exported helper is either a `db.query(...)`
-   (read) or `db.exec(...)` (write). Writes bump generation, so the next read after
-   a save legitimately misses. Reads after writes never serve stale data.
-3. **Indexing / search** — these regenerate derived rows via `exec()` on the same
-   stream; they bump generation, which is correct.
-4. **Two streams open at once** — a stream-scoped tag means writes on stream A
-   don't trash stream B's cache. Confirmed by test.
-5. **Background sync** — every applied blob bumps generation. The next read on the
-   relevant stream misses and repopulates. The previous-mount cache is therefore
-   only useful *before* sync completes — which is exactly the window we are
-   optimising for, and a small price after that.
-
-The one place we have to be careful: `useDraftAutoSave` writes constantly. Each
-write currently bumps the cache generation, which is correct but means the cache
-goes cold during active editing. That's the intended behaviour — the cache exists
-to accelerate cold-start, not steady-state editing — but we should confirm in a
-production trace that the generation churn doesn't itself cost measurable
-overhead. The bump is one in-memory `++` and one debounced IDB write of a single
-small object, so the expected cost is negligible.
+1. **`NoteViewPage` mount** — the page composes `getVersionPosition` and
+   `validateLinks`. Migrating these to `useStreamQuery` is mechanical: replace
+   the `useEffect(async () => stream.local().query(...))` blocks with the hook.
+   Same query identity across mounts → cache fill on first mount → cache hit on
+   re-mount. On cold start the banner reads "Loading database…" while the cached
+   content paints; banner clears as PGlite warms.
+2. **`scribe-data/src/note.ts`** — every exported helper still uses
+   `db.query()` / `db.exec()`. These don't change. The SWR hook only wraps
+   reads at the React seam, so composed helpers continue to see verified data
+   and remain trustworthy for sync / writes.
+3. **Indexing / search** — bulk `exec()` writes don't touch the cache. The next
+   read after a re-index gets cached (now stale) → re-renders to verified. Banner
+   doesn't change because we're not in `loading-db` and sync state is
+   independent.
+4. **Two streams open at once** — `clearByTag` only fires on logout / wipe per
+   stream. Steady-state reads from one stream never affect the other's cache.
+5. **`useDraftAutoSave`** — writes a lot. Under SWR + no invalidation, the cache
+   for "load this note's body" is briefly stale after each save, then refreshed
+   on the next render's verified read. Cost is zero per write (no bookkeeping),
+   one cache.put per *read* after a write. Imperceptible on warm DB.
+6. **Background sync** — sync application bumps `consistencyState$` progress;
+   banner shows `Syncing N/M`. Cached entries from before the sync render first
+   on next read, replaced by verified post-sync result on the same tick. No
+   correctness window in which the user is unaware the data is moving — the
+   banner says so.
 
 ---
 
@@ -422,27 +522,29 @@ const blobCache = new LruCache<Uint8Array>({
 }, { encode: x => x, decode: x => x })
 ```
 
-Keyed by `rootHash`. No generation tracking needed because blobs are immutable.
-Eviction policy is the same. The encrypted decorator is reused unchanged.
+Keyed by `rootHash`. Blobs are content-addressed and immutable, so the SWR layer
+is *not* needed for them — a hit is verified by construction (the key *is* the
+hash). `TributaryBlob.download(rootHash)` consults the cache first, falls
+through to `server.downloadBlob(...)` on miss, and stores on success.
 
-This is the single biggest reason the LRU is split into a generic core: when blobs
-land, no new caching code is needed below `TributaryBlob`. We extend `TributaryBlob`
-to consult `blobCache.get(rootHash)` before hitting `server.downloadBlob(...)`.
+This is the biggest reason the LRU is split into a generic core: when blobs land,
+no new caching code is needed below `TributaryBlob`.
 
 ---
 
 ## Key Files Reference
 
-- `tributary-client/src/encryptedIdbFs.ts` — encrypt/decrypt blob helpers and the
+- `tributary-client/src/encryptedIdbFs.ts` — encrypt/decrypt helpers and the
   IDBFS load path being measured.
-- `tributary-client/src/tributaryStream.ts` — `query()` / `exec()` entry points,
-  `isReadQuery()`, sync loop.
-- `tributary-client/src/tributaryClient.ts` — singleton owner for the shared cache.
-- `tributary-client/src/tributaryLocal.ts` — the path Scribe uses on `localDb`.
+- `tributary-client/src/tributaryStream.ts` — `query()` / `exec()` entry points
+  (unchanged), `isReadQuery()`, sync loop (emits consistency progress).
+- `tributary-client/src/tributaryClient.ts` — singleton owner for the shared
+  cache and the `consistencyState$` observable.
+- `tributary-client/src/tributaryLocal.ts` — read API consumed by `useStreamQuery`.
 - `tributary-client/src/hashUtils.ts` — `computeHash` for cache keys.
 - `tributary-client/src/kdf.ts` — `deriveStorageKey`, already plumbed in Scribe.
-- `apps/scribe/scribe-react/src/db/persistence.ts` — PGlite instance ownership and
-  the natural place to log quota / load timing.
-- `apps/scribe/scribe-react/src/App.tsx` — the call site that derives the storage
-  key and now passes it into the cache.
-- `plans/blobs.md` — companion plan; the blob cache plugs in below `TributaryBlob`.
+- `apps/scribe/scribe-react/src/db/persistence.ts` — PGlite instance ownership;
+  load-time logging.
+- `apps/scribe/scribe-react/src/App.tsx` — derives the storage key; passes it
+  into the cache; banner subscribes to `consistencyState$`.
+- `plans/blobs.md` — companion plan; blob cache plugs in below `TributaryBlob`.
