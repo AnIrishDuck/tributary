@@ -11,6 +11,14 @@ matches (no re-render) or differs (React swaps state, component re-renders). The
 cache never claims authority — it provides provisional answers that the verified
 layer reconciles.
 
+Each cache entry is tagged with the stream's blob index at fill time. When the
+current `stream.lastBlobIndex` is known and equals the tag, we know no observed
+writes have happened since the cache fill, so the entry is *known current*
+(modulo stochastic SQL, which is excluded from caching). When the index has
+advanced, the entry is *known stale*. When the index isn't known yet (PGlite
+still loading), the entry is *unknown*. These three states map directly onto the
+existing banner.
+
 The architecture is also forward-looking: the same primitive will back the future
 blob cache. SQL is the first consumer.
 
@@ -62,14 +70,42 @@ A read traverses outward-to-inward. The UI sees whatever ring answers first; low
 rings reconcile via re-render. This unifies cold-start cache-hits with mid-sync UI
 under one mental model:
 
-| Phase                          | Banner text                  |
-|--------------------------------|------------------------------|
-| PGlite still loading MEMFS     | "Loading database…"          |
-| PGlite ready, sync in progress | "Syncing N / M…" (existing)  |
-| PGlite ready, sync caught up   | (no banner)                  |
+| Phase                          | `lastBlobIndex` known? | Cache trust            | Banner text                  |
+|--------------------------------|------------------------|------------------------|------------------------------|
+| PGlite still loading MEMFS     | no                     | unknown                | "Loading database…"          |
+| Ready + indices match          | yes, `=` cached tag    | known current          | (no banner)                  |
+| Ready + indices diverge        | yes, `>` cached tag    | known stale            | "Syncing N / M…" (existing)  |
+| Ready + sync caught up         | yes                    | known current          | (no banner)                  |
 
-The banner already exists for the bottom two states. We add the top state and ship
-the cache as an opt-in optimization that surfaces through it.
+The banner already exists for the bottom three states. We add the top state and
+ship the cache as an opt-in optimization that surfaces through it.
+
+### The stream blob index as a validity oracle
+
+Every cache entry stores the value of `stream.lastBlobIndex` at the moment the
+verified read returned. On `get`, the SWR hook compares against the current
+`stream.lastBlobIndex`:
+
+- **Equal** → no observed writes or syncs have advanced the stream since fill.
+  The cache result is expected to equal the verified result. We *still* run the
+  verified query as a sanity check (cheap on warm MEMFS — microseconds) and log
+  a warning if results differ. A mismatch under indices-equal indicates either
+  cross-tab interference (another tab wrote and our `sequenceNumber` hasn't
+  caught up) or a key-canonicalization bug — both worth surfacing in logs. The
+  banner does **not** show for this case.
+- **Greater than cached tag** → writes or sync blobs have landed since fill. The
+  cache is known stale. Render cached, run verified, swap on arrival. The
+  existing sync banner already reflects the syncing state, so the user sees
+  "Syncing N/M" as a built-in indicator that on-screen data is still settling.
+- **`lastBlobIndex` is `null`** (PGlite hasn't loaded `sequenceNumber` from
+  `tributary.streams.last_sync_index` yet) → unknown. Render cached, banner
+  reads "Loading database…", reconcile when verified arrives.
+
+Why we don't skip the verified query on indices-equal: `lastBlobIndex` only
+reflects what *this tab* has seen. Cross-tab writes or applied syncs bump the
+on-disk index but not our in-memory `sequenceNumber` until we re-read it. The
+verified query catches those, and the warning log gives us a diagnostic when it
+happens.
 
 ### Stale-while-revalidate, not invalidate-on-write
 
@@ -92,17 +128,22 @@ Eviction is therefore driven only by **LRU pressure** (entry count and byte
 bounds) and by explicit `clearCache()` on logout / wipe. There is no generation
 counter, no per-write bookkeeping, no per-table dependency tracking.
 
-### Concurrent tabs and the case the generation counter got wrong
+### Concurrent tabs
 
-If another tab applies sync blobs while this tab is closed, on next open the cache's
-stored entries reflect the *previous* session's view of the DB and the on-disk DB
-reflects a newer view. A generation counter would either:
+If another tab applies sync blobs (or writes) while this tab is closed, on next
+open the on-disk `tributary.streams.last_sync_index` reflects the newer view.
+Once we load `sequenceNumber` from PGlite during stream init, our `lastBlobIndex`
+matches the on-disk reality, our cache tags are older, and the indices-diverge
+branch fires: render cached, banner shows "Syncing N/M" *or* the cache hit is
+treated as merely stale-pending-verification. Either way the verified query
+corrects, and the user sees a banner that honestly reflects "data is still
+settling."
 
-- mark all entries valid (wrong — serves stale data with no recourse), or
-- mark all entries invalid (no faster than no cache at all).
-
-SWR sidesteps this entirely. The cache hit renders briefly; the verified query
-returns the newer result; React re-renders. Correct by construction.
+If another tab writes *while this tab is open* — both tabs are sharing the same
+PGlite IndexedDB but each has its own in-memory `sequenceNumber` — our local
+`lastBlobIndex` lags reality. The indices-equal branch fires falsely; the
+sanity-check verified query catches the mismatch and logs a warning. The user
+sees correct data; we get a diagnostic.
 
 ---
 
@@ -311,7 +352,7 @@ plus the consistency-state observable that drives the banner UI. Bare
 - **Create** `tributary-client/test/use-stream-query.test.ts`
   (vitest + `@testing-library/react`, both already used by `scribe-react-common`).
 
-### Key shape
+### Key + payload shape
 
 ```ts
 function sqlCacheKey(streamId: string, sql: string, params?: unknown[]): string {
@@ -320,9 +361,20 @@ function sqlCacheKey(streamId: string, sql: string, params?: unknown[]): string 
   // and Uint8Array → urlsafe-base64.
   return `${streamId}|${sha256Hex(normalizedSql)}|${sha256Hex(canonicalJSON(params))}`
 }
+
+interface SqlCachePayload {
+  rows: unknown[]
+  /** stream.lastBlobIndex at the moment the verified read returned. */
+  streamIndex: number
+}
 ```
 
-`tag` is the streamId, so `clearByTag(streamId)` is used only on logout / wipe.
+The validity index lives in the SQL-specific payload, not in generic
+`CacheEntryMeta`, so the underlying `LruCache<V>` stays validity-agnostic
+(blobs, immutable + content-addressed, will never need it).
+
+`tag` (in the generic metadata) is the streamId, so `clearByTag(streamId)` is
+used only on logout / wipe.
 
 ### Cacheability rules
 
@@ -339,7 +391,7 @@ A query is cacheable iff:
 
 ```ts
 export function useStreamQuery<Row = unknown>(
-  stream: TributaryStream | TributaryLocal | null | undefined,
+  stream: TributaryStream | null | undefined,
   sql: string,
   params?: unknown[],
 ): { data: Row[] | undefined; error?: Error } {
@@ -349,21 +401,30 @@ export function useStreamQuery<Row = unknown>(
   useEffect(() => {
     if (!stream) return
     let cancelled = false
+    let cachedPayload: SqlCachePayload | null = null
 
-    // 1. Race: cache.get and stream.query in parallel.
-    const cachePromise = sqlCache.get(streamId(stream), sql, params)
+    const cachePromise = sqlCache.get(stream.getId(), sql, params)
     const verifiedPromise = stream.query(sql, params)
 
-    cachePromise.then(cached => {
-      if (cancelled || !cached) return
+    cachePromise.then(payload => {
+      if (cancelled || !payload) return
+      cachedPayload = payload
       // Only render cached if verified hasn't already won.
-      setData(prev => prev ?? cached)
+      setData(prev => prev ?? (payload.rows as Row[]))
     })
 
     verifiedPromise.then(result => {
       if (cancelled) return
+      const currentIndex = stream.lastBlobIndex ?? 0
+      // Sanity check: indices-equal hits should match verified results.
+      if (cachedPayload && cachedPayload.streamIndex === currentIndex
+          && !deepEqual(cachedPayload.rows, result.rows)) {
+        warn('[SqlCache] hit at known-current index disagreed with verified ' +
+             `query (likely cross-tab write); sql=${sql.slice(0, 80)}`)
+      }
       setData(result.rows as Row[])
-      sqlCache.put(streamId(stream), sql, params, result.rows)
+      sqlCache.put(stream.getId(), sql, params,
+        { rows: result.rows, streamIndex: currentIndex })
     }).catch(err => { if (!cancelled) setError(err) })
 
     return () => { cancelled = true }
@@ -375,13 +436,20 @@ export function useStreamQuery<Row = unknown>(
 
 Key properties:
 
-- **The verified write always wins.** If verified resolves before cache, the cache
-  result is discarded (`prev ?? cached` no-ops).
-- **No per-component "verified?" flag.** Components don't need to know. The banner
-  is the global indicator.
-- **Bare `stream.query()` is unchanged.** Non-UI callers — CLI, sync, scribe-data
-  helpers that compose results — keep getting verified truth, synchronously
-  composable.
+- **The verified result always wins.** If verified resolves before cache, the
+  cache result is discarded (`prev ?? cached` no-ops).
+- **Indices-equal mismatches are logged.** A warning gives us a diagnostic for
+  cross-tab writes or canonicalization bugs without breaking correctness — the
+  verified result is what the UI ends up rendering either way.
+- **No per-component "verified?" flag.** Components don't need to know. The
+  banner is the global indicator.
+- **Bare `stream.query()` is unchanged.** Non-UI callers — CLI, sync,
+  scribe-data helpers that compose results — keep getting verified truth,
+  synchronously composable.
+
+For `TributaryLocal` callers (Scribe uses `stream.local()` extensively for
+query-only paths), the hook accepts the parent `TributaryStream` and calls
+`.local().query()` internally so the index oracle still applies.
 
 ### Consistency state
 
@@ -413,14 +481,26 @@ text per the table at the top.
 - `useStreamQuery` returns cached data first, then verified data — verified
   replaces cached when different.
 - `useStreamQuery` does not re-render when cached and verified are deep-equal.
-- `useStreamQuery` discards the cache result if verified resolves first (write-race).
+- `useStreamQuery` discards the cache result if verified resolves first
+  (write-race).
+- **Index oracle, indices-equal, results equal**: no warning, no re-render,
+  cached payload's `streamIndex` is preserved (re-put with same index is fine).
+- **Index oracle, indices-equal, results differ**: warning is logged; verified
+  wins; cache is overwritten with verified rows + current index.
+- **Index oracle, indices diverge**: cache renders briefly, verified replaces,
+  cache is overwritten with the new index. No warning.
+- **Index oracle, `lastBlobIndex` null** (PGlite not yet loaded): cache renders,
+  verified replaces when PGlite finishes; no warning regardless of equality
+  (we couldn't claim "known current" so a difference is expected).
 - Two components with the same `(stream, sql, params)` share one verified call
   (deduplicated via in-flight map).
-- `consistencyState$` transitions `loading-db → syncing → ready` for a cold start.
-- `clearCache()` empties the SQL namespace; subsequent queries miss and repopulate.
+- `consistencyState$` transitions `loading-db → syncing → ready` for a cold
+  start.
+- `clearCache()` empties the SQL namespace; subsequent queries miss and
+  repopulate.
 - `containsNonDeterministic` queries bypass the cache in both directions.
-- Encrypted mode: cached entries on disk are ciphertext (verified by reading IDB
-  directly through `fake-indexeddb`).
+- Encrypted mode: cached entries on disk are ciphertext (verified by reading
+  IDB directly through `fake-indexeddb`).
 - Per-stream isolation: `clearByTag(streamA)` does not touch streamB's entries.
 
 ### Estimated size: ~280 LOC code + ~320 LOC tests
@@ -484,8 +564,11 @@ text per the table at the top.
    `validateLinks`. Migrating these to `useStreamQuery` is mechanical: replace
    the `useEffect(async () => stream.local().query(...))` blocks with the hook.
    Same query identity across mounts → cache fill on first mount → cache hit on
-   re-mount. On cold start the banner reads "Loading database…" while the cached
-   content paints; banner clears as PGlite warms.
+   re-mount. On cold start the banner reads "Loading database…" while the
+   cached content paints; once PGlite is up, if no writes have landed since the
+   previous mount, the cached entry's `streamIndex` matches `lastBlobIndex`,
+   the verified query confirms equality, no banner ever shows. This is the
+   intended hot-path UX.
 2. **`scribe-data/src/note.ts`** — every exported helper still uses
    `db.query()` / `db.exec()`. These don't change. The SWR hook only wraps
    reads at the React seam, so composed helpers continue to see verified data
@@ -496,10 +579,12 @@ text per the table at the top.
    independent.
 4. **Two streams open at once** — `clearByTag` only fires on logout / wipe per
    stream. Steady-state reads from one stream never affect the other's cache.
-5. **`useDraftAutoSave`** — writes a lot. Under SWR + no invalidation, the cache
-   for "load this note's body" is briefly stale after each save, then refreshed
-   on the next render's verified read. Cost is zero per write (no bookkeeping),
-   one cache.put per *read* after a write. Imperceptible on warm DB.
+5. **`useDraftAutoSave`** — writes a lot. Each save bumps `lastBlobIndex`, so
+   subsequent reads from the same surface fall into the indices-diverge branch
+   and reconcile via verified-replaces-cached. The banner does *not* flicker
+   for local writes (`syncing` is driven by remote sync state, not local
+   writes), which is correct: the user knows they just saved. Cost is zero per
+   write, one cache.put per *read* after a write. Imperceptible on warm DB.
 6. **Background sync** — sync application bumps `consistencyState$` progress;
    banner shows `Syncing N/M`. Cached entries from before the sync render first
    on next read, replaced by verified post-sync result on the same tick. No
