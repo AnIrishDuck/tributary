@@ -23,3 +23,10 @@ export {
 export { migrate, hasMigration } from './migrations.js';
 export type { Migration, MigratableDb, MigrateOptions } from './migrations.js';
 export { createLogger } from './logger.js';
+export { LruCache } from './cache/lruCache.js';
+export type { CacheCodec, LruCacheOptions } from './cache/lruCache.js';
+export { wrapEncrypted } from './cache/cacheStore.js';
+export type { CacheStore, CacheStoreEntry, CacheEntryMeta } from './cache/cacheStore.js';
+export { IdbCacheStore } from './cache/idbCacheStore.js';
+export type { IdbCacheStoreOptions } from './cache/idbCacheStore.js';
+export { MemoryCacheStore } from './cache/memoryCacheStore.js';
