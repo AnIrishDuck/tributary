@@ -160,6 +160,54 @@ Deno.test('Route testing: Latest blob endpoint', async () => {
   }
 });
 
+function assertCorsHeaders(response: Response, label: string) {
+  assertEquals(response.headers.get('Access-Control-Allow-Origin'), '*', `${label}: missing CORS Allow-Origin`);
+  assert(response.headers.get('Access-Control-Allow-Methods')?.includes('GET'), `${label}: missing CORS Allow-Methods`);
+}
+
+Deno.test('Route testing: CORS headers on all response types', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db, fakeAuthenticator);
+
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+
+  // Health endpoint (200)
+  const healthResp = await handler(createFakeRequest('/health'));
+  assertCorsHeaders(healthResp, 'health');
+
+  // Info endpoint (200)
+  const infoResp = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'info')));
+  assertCorsHeaders(infoResp, 'info');
+
+  // Latest endpoint (404 — no blobs)
+  const latestResp = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'latest')));
+  assertEquals(latestResp.status, 404);
+  assertCorsHeaders(latestResp, 'latest 404');
+
+  // Retrieve non-existent blob (404)
+  const retrieveResp = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'nonexistent')));
+  assertEquals(retrieveResp.status, 404);
+  assertCorsHeaders(retrieveResp, 'retrieve 404');
+
+  // Upload with missing headers (400)
+  const badUploadResp = await handler(createFakeRequest(createEncodedPath(encodedPubkey), {
+    method: 'POST',
+    body: new TextEncoder().encode('test')
+  }));
+  assertEquals(badUploadResp.status, 400);
+  assertCorsHeaders(badUploadResp, 'upload 400');
+
+  // Invalid blobs params (400)
+  const badBlobsResp = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'blobs') + '?start_sequence=-1'));
+  assertEquals(badBlobsResp.status, 400);
+  assertCorsHeaders(badBlobsResp, 'blobs 400');
+
+  // Unknown route (404)
+  const unknownResp = await handler(new Request('http://localhost:54321/functions/v1/stream', { method: 'DELETE' }));
+  assertCorsHeaders(unknownResp, 'unknown route 404');
+});
+
 Deno.test('Route testing: Error cases', async () => {
   // Create a database instance with noSessions flag for testing
   const db = new Database(true);

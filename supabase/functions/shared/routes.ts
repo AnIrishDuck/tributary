@@ -31,7 +31,6 @@ function createResponse(body: string, status: number, additionalHeaders: Record<
 export const createRouteHandler = (db: Database, authenticator: Authenticator = authenticateUser) => {
   return async (req: Request): Promise<Response> => {
     // Handle CORS preflight
-    console.log(req.method)
     if (req.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
@@ -98,14 +97,6 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
     // Use the URL-safe base64 directly without conversion
     const encodedPubkey = urlSafePubkey;
     
-    // Debug logging
-    console.log('Routing debug:', {
-      url: req.url,
-      pathParts,
-      startIndex,
-      encodedPubkey
-    });
-    
     if (req.method === 'POST') {
       // POST /{pubkey} - must have exactly one part after stream
       if (pathParts.length === startIndex + 1) {
@@ -114,7 +105,6 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
     } else if (req.method === 'GET') {
       // GET requests
       if (pathParts.length === startIndex + 1) {
-        // Only pubkey provided - not a valid GET pattern
         return createResponse(
           JSON.stringify({ error: 'Not found' }),
           404,
@@ -141,13 +131,10 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
       }
     }
     
-    // If we get here, the path doesn't match any known pattern
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Not found' }),
-      { 
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      404,
+      { 'Content-Type': 'application/json' }
     );
   };
 };
@@ -160,10 +147,9 @@ async function handleRetrieve(req: Request, encodedPubkey: string, id: string, d
     const blob = await db.retrieveBlob(encodedPubkey, id);
     
     if (blob) {
-      // Convert Uint8Array to array of numbers for JSON serialization
       const dataAsArray = Array.from(blob.data);
-      
-      return new Response(
+
+      return createResponse(
         JSON.stringify({
           id: blob.id,
           pubkey: blob.pubkey,
@@ -174,28 +160,22 @@ async function handleRetrieve(req: Request, encodedPubkey: string, id: string, d
           sequence_number: blob.sequence_number,
           created_at: blob.created_at.toISOString()
         }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        200,
+        { 'Content-Type': 'application/json' }
       );
     } else {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Blob not found' }),
-        { 
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        404,
+        { 'Content-Type': 'application/json' }
       );
     }
   } catch (error) {
     console.error('Error in retrieve function:', error);
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
@@ -207,26 +187,22 @@ async function handleInfo(req: Request, encodedPubkey: string, db: Database): Pr
     // Get collection info from the database
     const collectionInfo = await db.getCollectionInfo(encodedPubkey);
     
-    return new Response(
+    return createResponse(
       JSON.stringify({
         pubkey: encodedPubkey,
         blob_count: collectionInfo.blob_count,
         first_blob_timestamp: collectionInfo.first_blob_timestamp ? collectionInfo.first_blob_timestamp.toISOString() : null,
         last_blob_timestamp: collectionInfo.last_blob_timestamp ? collectionInfo.last_blob_timestamp.toISOString() : null
       }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      200,
+      { 'Content-Type': 'application/json' }
     );
   } catch (error) {
     console.error('Error in info function:', error);
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
@@ -239,10 +215,9 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
     const latestBlob = await db.getLatestBlob(encodedPubkey);
     
     if (latestBlob) {
-      // Convert Uint8Array to array of numbers for JSON serialization
       const dataAsArray = Array.from(latestBlob.data);
-      
-      return new Response(
+
+      return createResponse(
         JSON.stringify({
           id: latestBlob.id,
           pubkey: latestBlob.pubkey,
@@ -253,28 +228,22 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
           created_at: latestBlob.created_at.toISOString(),
           data: dataAsArray
         }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        200,
+        { 'Content-Type': 'application/json' }
       );
     } else {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'No blobs found for this pubkey' }),
-        { 
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        404,
+        { 'Content-Type': 'application/json' }
       );
     }
   } catch (error) {
     console.error('Error in latest function:', error);
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
@@ -325,22 +294,18 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const signature = req.headers.get('X-Tributary-Authorization');
 
     if (!providedHash) {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Missing X-Tributary-Hash header' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
 
     if (!signature) {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Missing X-Tributary-Authorization header' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
 
@@ -368,9 +333,8 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     // The expected hash is computed using chain hash function
     const expectedHash = await computeChainHash(latestBlobInfo.hash, body);
     
-    // Validate that the provided hash matches our expectation
     if (providedHash !== expectedHash) {
-      return new Response(
+      return createResponse(
         JSON.stringify({
           error: 'Hash mismatch - possible chain mismatch',
           expected_hash: expectedHash,
@@ -379,10 +343,8 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
           latest_sequence_number: latestBlobInfo.sequence_number,
           latest_hash: latestBlobInfo.hash
         }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
 
@@ -393,16 +355,14 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const isValidSignature = await verifySignature(encodedPubkey, signature, expectedDataToSign);
 
     if (!isValidSignature) {
-      return new Response(
+      return createResponse(
         JSON.stringify({
           error: 'Invalid signature - possible chain mismatch',
           latest_sequence_number: latestBlobInfo.sequence_number,
           latest_hash: latestBlobInfo.hash
         }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
 
@@ -424,7 +384,7 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const stored = await db.storeBlob(blob, ownerId, origin);
     
     if (stored) {
-      return new Response(
+      return createResponse(
         JSON.stringify({
           status: 'stored',
           id: blobId,
@@ -432,28 +392,22 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
           sequence_number: blob.sequence_number,
           hash: blob.hash
         }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        200,
+        { 'Content-Type': 'application/json' }
       );
     } else {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Failed to store blob' }),
-        { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        500,
+        { 'Content-Type': 'application/json' }
       );
     }
   } catch (error) {
     console.error('Error in upload function:', error);
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
@@ -599,7 +553,7 @@ async function handleAllMetadata(req: Request, encodedPubkey: string, db: Databa
     // Get paginated blob metadata from the database
     const result = await db.getAllBlobMetadataPaginated(encodedPubkey, startSeq, maxCount);
     
-    return new Response(
+    return createResponse(
       JSON.stringify({
         blobs: result.blobs.map(blob => ({
           id: blob.id,
@@ -613,19 +567,15 @@ async function handleAllMetadata(req: Request, encodedPubkey: string, db: Databa
         })),
         total_count: result.total_count
       }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      200,
+      { 'Content-Type': 'application/json' }
     );
   } catch (error) {
     console.error('Error in all metadata function:', error);
-    return new Response(
+    return createResponse(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
@@ -645,22 +595,18 @@ async function handleGetBlobs(req: Request, encodedPubkey: string, db: Database)
     
     // Validate parameters
     if (startSeq !== undefined && (isNaN(startSeq) || startSeq < 0)) {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Invalid start_sequence parameter' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
-    
+
     if (isNaN(maxCount) || maxCount <= 0) {
-      return new Response(
+      return createResponse(
         JSON.stringify({ error: 'Invalid max parameter' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        400,
+        { 'Content-Type': 'application/json' }
       );
     }
     
@@ -722,16 +668,13 @@ async function handleGetBlobs(req: Request, encodedPubkey: string, db: Database)
     });
   } catch (error) {
     console.error('Error in get blobs function:', error);
-    // Return JSON error (not Arrow) for error cases
-    return new Response(
-      JSON.stringify({ 
+    return createResponse(
+      JSON.stringify({
         error: 'Internal server error',
-        message: (error as Error).message 
+        message: (error as Error).message
       }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      500,
+      { 'Content-Type': 'application/json' }
     );
   }
 }
