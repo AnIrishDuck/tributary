@@ -9,14 +9,10 @@
 
 /** Common query interface satisfied by both TributaryStream and TributaryLocal. */
 export interface MigratableDb {
-  query(sql: string, params?: any[]): Promise<any>;
-  exec(sql: string, params?: any[]): Promise<void>;
-  /** Default tracking table name for this db type. */
+  query(sql: string, params?: unknown[]): Promise<{ rows: any[] }>;
+  exec(sql: string, params?: unknown[]): Promise<void>;
   defaultMigrationsTable: string;
-  /**
-   * The blob index of the last write operation, or null if the db
-   * does not produce blobs (e.g. TributaryLocal).
-   */
+  /** Null when the db does not produce blobs (e.g. TributaryLocal). */
   lastBlobIndex: number | null;
 }
 

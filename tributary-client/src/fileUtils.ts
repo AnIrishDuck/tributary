@@ -5,7 +5,7 @@
  * @param fs The Node.js fs module (promises version)
  * @returns A function that reads file content as Uint8Array
  */
-export function createNodeFileReader(fs: any) {
+export function createNodeFileReader(fs: { readFile(path: string): Promise<Buffer> }) {
   return async function (localPath: string): Promise<Uint8Array> {
     const buffer = await fs.readFile(localPath);
     return new Uint8Array(buffer);
