@@ -1,6 +1,7 @@
 // TributaryLocal class for local (non-synced) database operations
 import { PGliteInterface } from '@electric-sql/pglite';
 import { logger, debug } from './logger.js';
+import type { StreamTransaction } from './tributaryStream.js';
 
 export class TributaryLocal {
   private pglite: PGliteInterface;
@@ -37,7 +38,7 @@ export class TributaryLocal {
    * @param params Query parameters
    * @returns Query result
    */
-  async query(query: string, params?: any[]) {
+  async query(query: string, params?: unknown[]) {
     // Wrap in a transaction with SET LOCAL search_path so the search_path
     // is scoped to this operation and cannot be changed by concurrent streams.
     return await this.pglite.transaction(async (tx) => {
@@ -51,7 +52,7 @@ export class TributaryLocal {
    * @param query SQL command to execute
    * @param params Command parameters
    */
-  async exec(query: string, params?: any[]) {
+  async exec(query: string, params?: unknown[]) {
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       if (params && params.length > 0) {
@@ -67,12 +68,20 @@ export class TributaryLocal {
    * @param callback Transaction callback
    * @returns Transaction result
    */
-  async transaction<T>(callback: (tx: any) => Promise<T>) {
-    // Set search_path inside the transaction so it's scoped and cannot
-    // be changed by concurrent operations on other streams.
+  async transaction<T>(callback: (tx: StreamTransaction) => Promise<T>) {
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
-      return await callback(tx);
+      const wrappedTx: StreamTransaction = {
+        query: <T>(query: string, params?: unknown[]) => tx.query<T>(query, params as any[]),
+        exec: async (query, params) => {
+          if (params && params.length > 0) {
+            await tx.query(query, params as any[]);
+          } else {
+            await tx.exec(query);
+          }
+        }
+      };
+      return await callback(wrappedTx);
     });
   }
 }

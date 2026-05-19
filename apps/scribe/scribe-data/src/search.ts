@@ -249,7 +249,7 @@ export async function indexSearchVectors(
   // Phase 2: Batch DB writes — 2 queries instead of N round-trips.
   const dbStart = performance.now()
 
-  await localDb.transaction(async (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => {
+  await localDb.transaction(async (tx) => {
     if (withText.length > 0) {
       const vals = withText.map((_, i) => {
         const b = i * 5

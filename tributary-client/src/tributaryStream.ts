@@ -1,5 +1,5 @@
 // TributaryStream class for managing individual streams
-import { PGliteInterface } from '@electric-sql/pglite';
+import { PGliteInterface, Results } from '@electric-sql/pglite';
 import nacl from 'tweetnacl';
 import * as base64url from 'urlsafe-base64';
 import { Server } from './server.js';
@@ -10,13 +10,27 @@ import { computeHash } from './hashUtils.js';
 import { deriveEncryptionKey } from './blobHelpers.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
 
-// Type definitions for our transaction log
+/**
+ * Transaction interface exposed to callers of TributaryStream.transaction()
+ * and TributaryLocal.transaction(). Provides query and exec with consistent
+ * parameter support across both synced and local-only databases.
+ */
+export interface StreamTransaction {
+  query<T>(query: string, params?: unknown[]): Promise<Results<T>>;
+  exec(query: string, params?: unknown[]): Promise<void>;
+}
+
+interface RecordedCommand {
+  query: string;
+  params?: unknown[];
+}
+
 interface TransactionLogEntry {
   id: string;
   timestamp: number;
   query: string;
-  params?: any[];
-  result?: any;
+  params?: unknown[] | RecordedCommand[];
+  result?: unknown;
 }
 
 /**
@@ -219,7 +233,7 @@ export class TributaryStream {
    * @param params Query parameters
    * @returns Query result
    */
-  async query(query: string, params?: any[]) {
+  async query(query: string, params?: unknown[]) {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -275,7 +289,7 @@ export class TributaryStream {
    * @param query SQL command to execute
    * @param params Command parameters
    */
-  async exec(query: string, params?: any[]) {
+  async exec(query: string, params?: unknown[]) {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -334,7 +348,7 @@ export class TributaryStream {
    * @param callback Transaction callback
    * @returns Transaction result
    */
-  async transaction<T>(callback: (tx: any) => Promise<T>) {
+  async transaction<T>(callback: (tx: StreamTransaction) => Promise<T>) {
     // Initialize sync state if not already done
     if (!this.syncStateInitialized) {
       await this.initializeSchema();
@@ -352,7 +366,7 @@ export class TributaryStream {
     // the PGlite transaction. If any step fails, PGlite rolls back everything.
 
     // Create array to store commands for server persistence
-    const recordedCommands: Array<{ query: string, params?: any[] }> = [];
+    const recordedCommands: RecordedCommand[] = [];
 
     info('TRANSACTION: About to call pglite.transaction');
 
@@ -364,23 +378,21 @@ export class TributaryStream {
       info('TRANSACTION: Inside pglite.transaction callback with transaction object');
 
       // Create a transaction object that executes immediately AND records
-      const recordingTx = {
-        query: async (query: string, params?: any[]) => {
+      const recordingTx: StreamTransaction = {
+        query: async <T>(query: string, params?: unknown[]) => {
           info('TRANSACTION: recordingTx.query called with:', query);
-          const queryResult = await tx.query(query, params);
-          // Record the command for server persistence
+          const queryResult = await tx.query<T>(query, params as any[]);
           recordedCommands.push({ query, params });
           info('TRANSACTION: recordingTx.query completed');
           return queryResult;
         },
-        exec: async (query: string, params?: any[]) => {
+        exec: async (query: string, params?: unknown[]) => {
           info('TRANSACTION: recordingTx.exec called with:', query);
           if (params && params.length > 0) {
-            await tx.query(query, params);
+            await tx.query(query, params as any[]);
           } else {
             await tx.exec(query);
           }
-          // Record the command for server persistence
           recordedCommands.push({ query, params });
           info('TRANSACTION: recordingTx.exec completed');
         }
@@ -445,7 +457,7 @@ export class TributaryStream {
     errorMessage: string,
     blobSequence?: number,
     query?: string,
-    params?: any[]
+    params?: unknown[]
   ): Promise<void> {
     try {
       const id = `err-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -665,7 +677,7 @@ export class TributaryStream {
     // to avoid deadlocking on a nested pglite.query() call.
     const pendingErrors: Array<{
       errorType: string; errorMessage: string;
-      blobSequence?: number; query?: string; params?: any[];
+      blobSequence?: number; query?: string; params?: unknown[];
     }> = [];
     if (writeBlobs.length > 0 || finalSyncIndex !== initialLastSyncIndex) {
       await this.pglite.transaction(async (tx) => {
@@ -681,7 +693,7 @@ export class TributaryStream {
           await tx.exec(`SAVEPOINT blob_${sequenceNumber}`);
           try {
             if (entry.query === 'TRANSACTION' && Array.isArray(entry.params)) {
-              for (const command of entry.params as Array<{ query: string, params?: any[] }>) {
+              for (const command of entry.params as RecordedCommand[]) {
                 if (command.query) {
                   if (command.params && command.params.length > 0) {
                     await tx.query(command.query, command.params);

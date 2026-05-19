@@ -254,7 +254,7 @@ export async function indexSlugs(
   // instead of ~5N + M individual round-trips through PGliteWorker.
   const dbStart = performance.now()
 
-  await localDb.transaction(async (tx: any) => {
+  await localDb.transaction(async (tx) => {
     // Batch upsert indexed_block (N rows, 1 query)
     {
       const vals = processed.map((_, i) => {
