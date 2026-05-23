@@ -4,22 +4,16 @@
 import { createClient } from '@supabase/supabase-js';
 import { Blob, BlobMetadata, CollectionInfo, AccountConfigEntry } from './models.ts';
 import { BlobObject, BlobUpload } from './blobModels.ts';
+import { hexToBytes } from './merkleProof.ts';
 
 /** PostgREST error code returned when `.single()` finds no matching row. */
 const ROW_NOT_FOUND = 'PGRST116';
 
-// Helper function to convert hex string to Uint8Array
 function hexStringToUint8Array(hexString: string): Uint8Array {
-  // Remove the \x prefix if present
   if (hexString.startsWith('\\x')) {
     hexString = hexString.substring(2);
   }
-  
-  const bytes = new Uint8Array(hexString.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
-  }
-  return bytes;
+  return hexToBytes(hexString);
 }
 
 // Helper function to convert Uint8Array to hex string for storage
