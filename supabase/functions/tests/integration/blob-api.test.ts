@@ -8,6 +8,7 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import { Database } from '../../shared/database.ts';
 import { computeHash, verifyMerkleProof } from '../../shared/crypto.ts';
+import { hexToBytes } from '../../shared/merkleProof.ts';
 import { createBlobRouteHandler } from '../../shared/blobRoutes.ts';
 import { type Authenticator } from '../../shared/routes.ts';
 
@@ -43,14 +44,6 @@ async function buildTestTree(chunkHashes: string[]): Promise<{
   // Pad to power of 2 by duplicating last leaf (merkletreejs default)
   // Actually merkletreejs doesn't pad — odd leaves get promoted.
   // For simplicity, we'll handle 1 and 2 leaves which cover our test cases.
-
-  const hexToBytes = (hex: string): Uint8Array => {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-    }
-    return bytes;
-  };
 
   const hashPair = async (a: string, b: string): Promise<string> => {
     const aBuf = hexToBytes(a);
