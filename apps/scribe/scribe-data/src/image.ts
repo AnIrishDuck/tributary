@@ -2,6 +2,7 @@ import { TributaryStream, TributaryLocal } from 'tributary-client'
 import { Note, ImageBlockBody, NoteSlug } from './types'
 import { createNote, createNotes, createNoteVersion, getLatestNoteVersion } from './note.js'
 import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing.js'
+import { collectionCondition } from './collection.js'
 
 /**
  * Parse the JSON body of an image block into an ImageBlockBody.
@@ -176,26 +177,15 @@ export async function getImageBySlug(
   slug: string,
   collectionId: string | null
 ): Promise<{ note: NoteSlug; body: ImageBlockBody } | null> {
-  // getNotesBySlugInCollection returns all blocks matching the slug (including images)
-  // We need to filter to only image blocks by querying block_type
-  let result
-  if (collectionId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL AND b.block_type = 'scribe/image'`,
-      [slug]
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2 AND b.block_type = 'scribe/image'`,
-      [slug, collectionId]
-    )
-  }
+  const cond = collectionCondition(collectionId, 2)
+
+  const result = await db.query(
+    `SELECT b.block_uuid, b.slug, b.body, b.block_type
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.slug = $1 AND b.${cond.sql} AND b.block_type = 'scribe/image'`,
+    [slug, ...cond.params]
+  )
 
   if (!result.rows || result.rows.length === 0) {
     return null

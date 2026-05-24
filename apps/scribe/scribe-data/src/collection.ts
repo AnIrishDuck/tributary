@@ -169,6 +169,34 @@ export async function getLibrary(
 }
 
 /**
+ * Resolve a collectionId: if null, attempt to find the library's UUID.
+ * Returns null only when no library exists yet.
+ */
+export async function resolveCollectionId(
+  db: TributaryStream | TributaryLocal,
+  collectionId: string | null
+): Promise<string | null> {
+  if (collectionId !== null) return collectionId
+  const library = await getLibrary(db)
+  return library?.collection_uuid ?? null
+}
+
+/**
+ * Build a SQL condition fragment and params for filtering by collection_id.
+ * When id is null, returns an `IS NULL` condition; otherwise an equality check.
+ * `paramOffset` is the 1-based index for the next positional parameter.
+ */
+export function collectionCondition(
+  id: string | null,
+  paramOffset: number
+): { sql: string; params: unknown[] } {
+  if (id === null) {
+    return { sql: `collection_id IS NULL`, params: [] }
+  }
+  return { sql: `collection_id = $${paramOffset}`, params: [id] }
+}
+
+/**
  * Get the display name for a library.
  * Returns the library title if one exists, otherwise null
  * (callers should treat null as the default name "Notes").
@@ -401,40 +429,20 @@ export async function getNotesInCollection(
   db: TributaryStream,
   collectionId: string | null
 ): Promise<Note[]> {
-  let resolvedId = collectionId
-  if (resolvedId === null) {
-    const library = await getLibrary(db)
-    if (library) {
-      resolvedId = library.collection_uuid
-    }
-  }
+  const resolvedId = await resolveCollectionId(db, collectionId)
+  const cond = collectionCondition(resolvedId, 1)
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.* FROM block b
-       INNER JOIN (
-         SELECT block_uuid, MAX(insert_datetime) as max_datetime
-         FROM block
-         GROUP BY block_uuid
-       ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id IS NULL
-       ORDER BY b.insert_datetime DESC`,
-      []
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.* FROM block b
-       INNER JOIN (
-         SELECT block_uuid, MAX(insert_datetime) as max_datetime
-         FROM block
-         GROUP BY block_uuid
-       ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
-       WHERE b.collection_id = $1
-       ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
-    )
-  }
+  const result = await db.query(
+    `SELECT b.* FROM block b
+     INNER JOIN (
+       SELECT block_uuid, MAX(insert_datetime) as max_datetime
+       FROM block
+       GROUP BY block_uuid
+     ) latest ON b.block_uuid = latest.block_uuid AND b.insert_datetime = latest.max_datetime
+     WHERE b.${cond.sql}
+     ORDER BY b.insert_datetime DESC`,
+    cond.params
+  )
 
   return (result.rows || []) as Note[]
 }

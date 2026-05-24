@@ -1,6 +1,6 @@
 import { TributaryLocal, createLogger } from 'tributary-client'
 import { Note, NoteSlug, BlockSlugInfo, AuthoritativeVersion, NoteTag, NoteSlugRow } from './types'
-import { getLibrary } from './collection.js'
+import { getLibrary, resolveCollectionId, collectionCondition } from './collection.js'
 
 const { info } = createLogger('scribe-data')
 
@@ -522,34 +522,17 @@ export async function getNotesInCollectionWithSlugs(
   db: TributaryLocal,
   collectionId: string | null
 ): Promise<NoteSlugRow[]> {
-  let resolvedId = collectionId
-  if (resolvedId === null) {
-    const library = await getLibrary(db)
-    if (library) {
-      resolvedId = library.collection_uuid
-    }
-  }
+  const resolvedId = await resolveCollectionId(db, collectionId)
+  const cond = collectionCondition(resolvedId, 1)
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id IS NULL
-       ORDER BY b.insert_datetime DESC`,
-      []
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id = $1
-       ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
-    )
-  }
+  const result = await db.query(
+    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.${cond.sql}
+     ORDER BY b.insert_datetime DESC`,
+    cond.params
+  )
 
   return (result.rows || []).map((row: any) => {
     const blockType = row.block_type || 'scribe/markdown'
@@ -629,32 +612,16 @@ export async function getNotesBySlugInCollection(
   slug: string,
   collectionId: string | null
 ): Promise<BlockSlugInfo[]> {
-  let resolvedId = collectionId
-  if (resolvedId === null) {
-    const library = await getLibrary(db)
-    if (library) {
-      resolvedId = library.collection_uuid
-    }
-  }
+  const resolvedId = await resolveCollectionId(db, collectionId)
+  const cond = collectionCondition(resolvedId, 2)
 
-  let result
-  if (resolvedId === null) {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL`,
-      [slug]
-    )
-  } else {
-    result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.block_type
-       FROM block b
-       INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2`,
-      [slug, resolvedId]
-    )
-  }
+  const result = await db.query(
+    `SELECT b.block_uuid, b.slug, b.body, b.block_type
+     FROM block b
+     INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.slug = $1 AND b.${cond.sql}`,
+    [slug, ...cond.params]
+  )
 
   return (result.rows || []).map((row: any) => ({
     block_uuid: row.block_uuid,
