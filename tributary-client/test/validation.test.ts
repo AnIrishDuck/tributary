@@ -1,6 +1,6 @@
 // Comprehensive validation test for the simplified hash process
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTestServer, createTestClient } from '../src/index';
+import { createTestServer, createTestClient, computeHash } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
 
@@ -174,20 +174,3 @@ describe('Hash Process Validation', () => {
   });
 });
 
-// Helper function to compute SHA256 hash (same as client implementation)
-async function computeHash(data: Uint8Array): Promise<string> {
-  try {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256');
-    hash.update(Buffer.from(data));
-    return hash.digest('hex');
-  } catch (nodeCryptoError) {
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } else {
-      throw new Error('Neither Node.js nor Web Crypto API available - cannot compute hash');
-    }
-  }
-}

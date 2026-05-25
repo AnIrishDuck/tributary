@@ -11,7 +11,7 @@ function bytesToHex(bytes: Uint8Array): string {
  * @returns Hash as Uint8Array
  */
 export async function computeNodeHashBytes(data: Uint8Array): Promise<Uint8Array> {
-  const crypto = require('crypto');
+  const crypto = await import('node:crypto');
   const hash = crypto.createHash('sha256');
   hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   const hashBuffer = hash.digest();
