@@ -1,23 +1,8 @@
 // Tests for server persistence functionality
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTestServer, createTestClient } from '../src/index';
+import { createTestServer, createTestClient, computeHash } from '../src/index';
 import * as base64url from 'urlsafe-base64';
 import nacl from 'tweetnacl';
-
-// Helper functions to compute hashes the same way as the client and server
-async function computeHashInTest(data: Uint8Array): Promise<string> {
-  // Use node crypto if available, otherwise use web crypto
-  if (typeof require !== 'undefined') {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256');
-    hash.update(data);
-    return hash.digest('hex');
-  } else {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-}
 
 describe('Server Persistence', () => {
   let testServer: any;
@@ -120,9 +105,9 @@ describe('Server Persistence', () => {
       for (let i = 0; i < blobs.length; i++) {
         const blob = blobs[i];
         const priorHash = blob.priorHash;
-        const bodyHash = await computeHashInTest(blob.data);
+        const bodyHash = await computeHash(blob.data);
         const concatenated = `${priorHash}${bodyHash}`;
-        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        const expectedHash = await computeHash(new TextEncoder().encode(concatenated));
         expect(blob.hash).toBe(expectedHash);
       }
     }
@@ -194,9 +179,9 @@ describe('Server Persistence', () => {
       // 3. Verify that hashes are computed correctly (SHA256(priorHash + bodyHash))
       for (let i = 0; i < blobs.length; i++) {
         const blob = blobs[i];
-        const bodyHash = await computeHashInTest(blob.data);
+        const bodyHash = await computeHash(blob.data);
         const concatenated = `${blob.priorHash}${bodyHash}`;
-        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        const expectedHash = await computeHash(new TextEncoder().encode(concatenated));
         expect(blob.hash).toBe(expectedHash);
       }
       
@@ -300,9 +285,9 @@ describe('Server Persistence', () => {
       for (let i = 0; i < blobs.length; i++) {
         const blob = blobs[i];
         const priorHash = blob.priorHash;
-        const bodyHash = await computeHashInTest(blob.data);
+        const bodyHash = await computeHash(blob.data);
         const concatenated = `${priorHash}${bodyHash}`;
-        const expectedHash = await computeHashInTest(new TextEncoder().encode(concatenated));
+        const expectedHash = await computeHash(new TextEncoder().encode(concatenated));
         expect(blob.hash).toBe(expectedHash);
       }
     }
