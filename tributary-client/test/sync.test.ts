@@ -36,7 +36,7 @@ describe('Sync Functionality', () => {
     }
     
     // Get the blob metadata before sync to verify filtering works
-    const blobMetadataBefore = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
+    const blobMetadataBefore = await testServer.getAllBlobMetadata(stream.getId());
     expect(blobMetadataBefore.blobs.length).toBe(3);
     
     // After executing operations locally, the lastSyncIndex should reflect the operations executed
@@ -54,7 +54,7 @@ describe('Sync Functionality', () => {
     await stream.query("INSERT INTO test VALUES (3, 'third')");
     
     // Get updated blob metadata
-    const blobMetadataAfter = await testServer.getAllBlobMetadata(stream.getPublicKeyBase64());
+    const blobMetadataAfter = await testServer.getAllBlobMetadata(stream.getId());
     expect(blobMetadataAfter.blobs.length).toBe(4);
     
     // Now if we sync again, it should still process 0 new blobs (since the fourth operation was also applied locally)
@@ -192,7 +192,7 @@ describe('Sync Functionality', () => {
     await stream1.query("INSERT INTO test_table VALUES (2)");
     
     // Verify server has 3 blobs
-    const blobMetadata = await testServer.getAllBlobMetadata(stream1.getPublicKeyBase64());
+    const blobMetadata = await testServer.getAllBlobMetadata(stream1.getId());
     expect(blobMetadata.blobs.length).toBe(3);
     
     // Stream 2 (fresh) hasn't synced yet, so its lastSyncIndex = 0

@@ -72,6 +72,7 @@ export class TributaryStream {
   private syncStateInitialized: boolean = false;
   private appId: string;
   private schemaId: string;
+  private readonly id: string;
   private rawSchemaName: string;
   private schemaName: string;
   private searchPathSQL: string;
@@ -109,6 +110,7 @@ export class TributaryStream {
     this.pglite = options.pglite;
     this.appId = options.appId;
     this.schemaId = options.schemaId;
+    this.id = base64url.encode(Buffer.from(this.publicKey));
     this.rawSchemaName = `${this.appId}_${this.schemaId}`;
     this.schemaName = `"${this.rawSchemaName}"`;
     // Pre-compute the SET LOCAL statement. SET LOCAL scopes the search_path
@@ -119,7 +121,7 @@ export class TributaryStream {
   }
 
   getId(): string {
-    return base64url.encode(Buffer.from(this.publicKey));
+    return this.id;
   }
 
   /**
@@ -171,6 +173,19 @@ export class TributaryStream {
       await this.pglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
     } catch (error: unknown) {
       warn('Could not initialize schema:', error as Error);
+    }
+  }
+
+  /**
+   * Eagerly persist this stream's metadata to the tributary.streams table.
+   * Normally sync state is lazily initialized on first query/exec/sync, but
+   * callers like TributaryClient.addWriteKey need the row to exist immediately
+   * so that list() can return it.
+   */
+  async ensurePersisted(): Promise<void> {
+    if (!this.syncStateInitialized) {
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
     }
   }
 
@@ -323,7 +338,7 @@ export class TributaryStream {
    * Throws SyncRequiredError if ANY remote transactions exist beyond guardIndex.
    */
   private async checkSyncGuard(guardIndex: number): Promise<void> {
-    const probe = await this.server.getBlobsArrow(this.getPublicKeyBase64(), guardIndex, 1);
+    const probe = await this.server.getBlobsArrow(this.id, guardIndex, 1);
     if (probe.totalCount > guardIndex) {
       throw new SyncRequiredError(guardIndex, probe.totalCount);
     }
@@ -563,7 +578,7 @@ export class TributaryStream {
       // Use the new Arrow endpoint to fetch blobs with data in a single request
       // This is more efficient than the old approach of fetching metadata then individual blobs
       result = await this.server.getBlobsArrow(
-        this.getPublicKeyBase64(),
+        this.id,
         this.lastSyncIndex,
         max
       );
@@ -580,7 +595,7 @@ export class TributaryStream {
       const prevSequence = result.blobs[0].sequenceNumber - 1;
       if (prevSequence === this.lastSyncIndex) {
         // We just synced this blob, try to get it from server
-        const prevBlobMeta = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+        const prevBlobMeta = await this.server.getLatestBlobMetadata(this.id);
         if (prevBlobMeta && prevBlobMeta.sequenceNumber >= prevSequence) {
           // The expected hash for the first blob should chain from this previous blob
           expectedHash = prevBlobMeta.hash;
@@ -652,7 +667,7 @@ export class TributaryStream {
     if (moreToFetch) {
       this.prefetchCache = {
         promise: this.server.getBlobsArrow(
-          this.getPublicKeyBase64(),
+          this.id,
           finalSyncIndex,
           max
         ),
@@ -763,7 +778,7 @@ export class TributaryStream {
     // Get the latest blob metadata from the server for proper chaining.
     // When guardIndex is provided, we already know the expected server state from
     // the sync guard check — but we still need the latest hash for chain verification.
-    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.getPublicKeyBase64());
+    const latestBlobMetadata = await this.server.getLatestBlobMetadata(this.id);
     debug('ensureServerPersistence: Latest blob metadata from server:', latestBlobMetadata);
 
     // Use the latest hash from the server for chaining, or empty string if no blobs exist
@@ -829,7 +844,7 @@ export class TributaryStream {
       
       // Store the encrypted blob on the server
       const success = await this.server.storeBlob(
-        this.getPublicKeyBase64(),
+        this.id,
         encryptedData,
         hash,
         priorHash,
@@ -950,10 +965,6 @@ export class TributaryStream {
     return trimmedQuery.startsWith('select') || 
            trimmedQuery.startsWith('explain') || 
            trimmedQuery.startsWith('show');
-  }
-
-  private getPublicKeyBase64(): string {
-    return base64url.encode(Buffer.from(this.publicKey));
   }
 
   private generateTransactionId(): string {

@@ -221,10 +221,9 @@ export class TributaryClient {
     await stream.initializeSchema();
     info(`[addWriteKey] initializeSchema done at ${(performance.now() - t0).toFixed(0)}ms`);
 
-    // Initialize sync state to ensure stream is saved to database
-    // @ts-ignore - accessing private method for initialization
-    await stream.initializeSyncState();
-    info(`[addWriteKey] initializeSyncState done at ${(performance.now() - t0).toFixed(0)}ms`);
+    // Eagerly persist stream metadata so list() can return it
+    await stream.ensurePersisted();
+    info(`[addWriteKey] ensurePersisted done at ${(performance.now() - t0).toFixed(0)}ms`);
     
     // Store the stream
     this.streams.set(streamIdStr, stream);
