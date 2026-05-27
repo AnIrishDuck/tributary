@@ -83,11 +83,12 @@ const CardFooter: React.FC<CardFooterProps> = ({ children, className = '', divid
   );
 };
 
-// Type assertion to allow static properties
-(Card as any).Header = CardHeader;
-(Card as any).Title = CardTitle;
-(Card as any).Description = CardDescription;
-(Card as any).Content = CardContent;
-(Card as any).Footer = CardFooter;
+const CardCompound = Object.assign(Card, {
+  Header: CardHeader,
+  Title: CardTitle,
+  Description: CardDescription,
+  Content: CardContent,
+  Footer: CardFooter,
+});
 
-export default Card;
+export default CardCompound;

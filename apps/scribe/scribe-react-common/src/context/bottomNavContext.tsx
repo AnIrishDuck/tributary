@@ -6,9 +6,6 @@ export interface FloatingActionItem {
   to: string
 }
 
-/** @deprecated Use FloatingActionItem instead */
-export type FloatingAction = FloatingActionItem
-
 interface BottomNavContextValue {
   setFloatingAction: (action: FloatingActionItem | FloatingActionItem[] | null) => void
 }

@@ -468,7 +468,7 @@ const SlugViewPage: React.FC = () => {
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         if (uuidPattern.test(lastSegment)) {
           // Direct UUID access — load the note directly
-          const blockSlugInfo = await getNoteSlugByUuid(localDb, lastSegment) as BlockSlugInfo | null
+          const blockSlugInfo = await getNoteSlugByUuid(localDb, lastSegment) as BlockSlugInfoType | null
           if (!blockSlugInfo) {
             throw new Error('Note not found')
           }
@@ -496,10 +496,10 @@ const SlugViewPage: React.FC = () => {
           }
 
           // Check if this is an image block
-          if ((blockSlugInfo as any).block_type === 'scribe/image') {
+          if (blockSlugInfo.block_type === 'scribe/image') {
             const imageResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
             const { parseImageBlockBody } = await import('scribe-data')
-            const imageBody = parseImageBlockBody({ body: imageResult.body } as any)
+            const imageBody = parseImageBlockBody({ body: imageResult.body })
             setMode({ type: 'image', body: imageBody, title: blockSlugInfo.title || '', slugPath: fullSlugPath, ancestors: noteAncestors, libraryName, blockUuid: blockSlugInfo.block_uuid })
             return
           }
@@ -606,7 +606,7 @@ const SlugViewPage: React.FC = () => {
           const { parseImageBlockBody } = await import('scribe-data')
 
           const imageResult = await loadNoteContent(localDb, blockSlugInfo, getAuthoritativeVersionByNoteUuid, getNoteByVersion)
-          const imageBody = parseImageBlockBody({ body: imageResult.body } as any)
+          const imageBody = parseImageBlockBody({ body: imageResult.body })
 
           // Get parent collection ancestors for breadcrumbs
           let imageAncestors: Collection[] = []
