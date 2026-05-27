@@ -29,7 +29,7 @@ export async function deriveMasterKey(password: string, email: string): Promise<
 async function hkdfExpand(masterKeyBytes: Uint8Array, info: string): Promise<Uint8Array> {
   const masterKey = await crypto.subtle.importKey(
     'raw',
-    masterKeyBytes as unknown as ArrayBuffer,
+    masterKeyBytes.buffer as ArrayBuffer,
     'HKDF',
     false,
     ['deriveBits']
@@ -40,7 +40,7 @@ async function hkdfExpand(masterKeyBytes: Uint8Array, info: string): Promise<Uin
       name: 'HKDF',
       hash: 'SHA-256',
       salt: new ArrayBuffer(0), // empty salt — PBKDF2 already salted with email
-      info: encoder.encode(info) as unknown as ArrayBuffer,
+      info: encoder.encode(info).buffer as ArrayBuffer,
     },
     masterKey,
     256

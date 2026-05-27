@@ -18,12 +18,6 @@ export type VersionUuid = string
 export type BlockType = 'scribe/markdown' | 'scribe/image'
 
 /**
- * Type of note - currently only scribe/markdown is supported
- * @deprecated Use BlockType instead
- */
-export type NoteType = 'scribe/markdown'
-
-/**
  * Metadata stored in the body field of a scribe/image block (JSON-serialized).
  */
 export interface ImageBlockBody {

@@ -10,7 +10,7 @@ import { getNotesBySlugInCollection, extractTitleFromMarkdown } from './indexing
  * @returns The parsed ImageBlockBody
  * @throws If the body is not valid JSON or missing required fields
  */
-export function parseImageBlockBody(note: Note): ImageBlockBody {
+export function parseImageBlockBody(note: Pick<Note, 'body'>): ImageBlockBody {
   const parsed = JSON.parse(note.body)
   if (!parsed.blobHash || !parsed.contentType) {
     throw new Error('Invalid image block body: missing blobHash or contentType')
