@@ -25,7 +25,7 @@ describe('Sync Errors', () => {
     await stream1.query("INSERT INTO test VALUES (1)");
 
     // Corrupt the data of the second blob in the fake server
-    const pubkey = stream1.getPublicKeyBase64();
+    const pubkey = stream1.getId();
     const allBlobs = Array.from(testServer.blobs.values()) as any[];
     const targetBlob = allBlobs.find(
       (b: any) => b.pubkey === pubkey && b.sequenceNumber === 2
@@ -64,7 +64,7 @@ describe('Sync Errors', () => {
     await stream1.query("CREATE TABLE test (id INTEGER)");
 
     // Corrupt the blob
-    const pubkey = stream1.getPublicKeyBase64();
+    const pubkey = stream1.getId();
     const allBlobs = Array.from(testServer.blobs.values()) as any[];
     const targetBlob = allBlobs.find(
       (b: any) => b.pubkey === pubkey && b.sequenceNumber === 1
@@ -91,7 +91,7 @@ describe('Sync Errors', () => {
     await stream1.query("CREATE TABLE test (id INTEGER)");
 
     // Corrupt the blob
-    const pubkey = stream1.getPublicKeyBase64();
+    const pubkey = stream1.getId();
     const allBlobs = Array.from(testServer.blobs.values()) as any[];
     const targetBlob = allBlobs.find(
       (b: any) => b.pubkey === pubkey && b.sequenceNumber === 1
@@ -124,7 +124,7 @@ describe('Sync Errors', () => {
     await stream1.query("CREATE TABLE test (id INTEGER)");
 
     // Corrupt the blob
-    const pubkey = stream1.getPublicKeyBase64();
+    const pubkey = stream1.getId();
     const allBlobs = Array.from(testServer.blobs.values()) as any[];
     const targetBlob = allBlobs.find(
       (b: any) => b.pubkey === pubkey && b.sequenceNumber === 1
