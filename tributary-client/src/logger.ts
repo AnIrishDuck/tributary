@@ -6,7 +6,7 @@ export function createLogger(name: string) {
     name,
     type: "pretty" as const,
     minLevel: process.env.TRIBUTARY_LOG_LEVEL ?
-      parseInt(process.env.TRIBUTARY_LOG_LEVEL) : 3, // Default to INFO level
+      parseInt(process.env.TRIBUTARY_LOG_LEVEL, 10) : 3, // Default to INFO level
     prettyLogTemplate: "{{yyyy}}.{{mm}}.{{dd}} {{hh}}:{{MM}}:{{ss}}:{{ms}}\t{{logLevelName}}\t[{{filePathWithLine}}]\t",
     prettyLogStyles: {
       logLevelName: {
