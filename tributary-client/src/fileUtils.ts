@@ -1,11 +1,15 @@
 // Utility functions for working with files in different environments
 
+export interface FileSystem {
+  readFile(path: string): Promise<Buffer | Uint8Array>;
+}
+
 /**
  * Create a file reader function for Node.js environment
  * @param fs The Node.js fs module (promises version)
  * @returns A function that reads file content as Uint8Array
  */
-export function createNodeFileReader(fs: any) {
+export function createNodeFileReader(fs: FileSystem) {
   return async function (localPath: string): Promise<Uint8Array> {
     const buffer = await fs.readFile(localPath);
     return new Uint8Array(buffer);
@@ -39,7 +43,12 @@ export function createBrowserFileReader() {
 export function createDragAndDropFileReader() {
   return async function (dataTransferItem: DataTransferItem): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
-      dataTransferItem.getAsFile()?.arrayBuffer()
+      const file = dataTransferItem.getAsFile();
+      if (!file) {
+        reject(new Error('DataTransferItem did not contain a file'));
+        return;
+      }
+      file.arrayBuffer()
         .then(buffer => resolve(new Uint8Array(buffer)))
         .catch(reject);
     });
