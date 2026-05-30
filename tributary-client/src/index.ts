@@ -20,6 +20,7 @@ export {
   createDragAndDropFileReader,
   createStringFileReader
 } from './fileUtils.js';
+export type { NodeFsLike } from './fileUtils.js';
 export { migrate, hasMigration } from './migrations.js';
 export type { Migration, MigratableDb, MigrateOptions } from './migrations.js';
 export { createLogger } from './logger.js';
