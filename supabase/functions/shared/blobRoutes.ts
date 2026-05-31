@@ -5,32 +5,9 @@ import { Database } from './database.ts';
 import { computeHash, verifyMerkleProof } from './crypto.ts';
 import { type Authenticator } from './routes.ts';
 import { type InitBlobUploadRequest, type BlobObjectMetadata } from './blobModels.ts';
+import { corsHeaders, jsonResponse, errorResponse } from './httpHelpers.ts';
 
 const BLOB_CHUNK_SIZE = 6 * 1024 * 1024; // 6MB — must match client
-
-// CORS headers for all responses
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Merkle-Proof',
-  'Access-Control-Max-Age': '86400',
-  'Cross-Origin-Resource-Policy': 'cross-origin',
-};
-
-function createResponse(body: string, status: number, additionalHeaders: Record<string, string> = {}): Response {
-  return new Response(body, {
-    status,
-    headers: { ...corsHeaders, ...additionalHeaders },
-  });
-}
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return createResponse(JSON.stringify(data), status, { 'Content-Type': 'application/json' });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
-}
 
 /**
  * Create the route handler for blob object endpoints.
