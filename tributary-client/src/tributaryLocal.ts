@@ -1,5 +1,5 @@
 // TributaryLocal class for local (non-synced) database operations
-import { PGliteInterface } from '@electric-sql/pglite';
+import { PGliteInterface, Transaction, Results } from '@electric-sql/pglite';
 import { logger, debug } from './logger.js';
 
 export class TributaryLocal {
@@ -37,12 +37,12 @@ export class TributaryLocal {
    * @param params Query parameters
    * @returns Query result
    */
-  async query(query: string, params?: any[]) {
+  async query<T = { [key: string]: any }>(query: string, params?: any[]): Promise<Results<T>> {
     // Wrap in a transaction with SET LOCAL search_path so the search_path
     // is scoped to this operation and cannot be changed by concurrent streams.
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
-      return await tx.query(query, params);
+      return await tx.query<T>(query, params);
     });
   }
 
@@ -51,7 +51,7 @@ export class TributaryLocal {
    * @param query SQL command to execute
    * @param params Command parameters
    */
-  async exec(query: string, params?: any[]) {
+  async exec(query: string, params?: any[]): Promise<void> {
     return await this.pglite.transaction(async (tx) => {
       await tx.exec(this.searchPathSQL);
       if (params && params.length > 0) {
@@ -67,7 +67,7 @@ export class TributaryLocal {
    * @param callback Transaction callback
    * @returns Transaction result
    */
-  async transaction<T>(callback: (tx: any) => Promise<T>) {
+  async transaction<T>(callback: (tx: Transaction) => Promise<T>): Promise<T> {
     // Set search_path inside the transaction so it's scoped and cannot
     // be changed by concurrent operations on other streams.
     return await this.pglite.transaction(async (tx) => {
