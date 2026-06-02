@@ -317,3 +317,52 @@ Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
     throw error;
   }
 });
+
+function assertCorsHeaders(response: Response, label: string) {
+  assertEquals(response.headers.get('Access-Control-Allow-Origin'), '*', `${label}: missing Allow-Origin`);
+  assert(response.headers.get('Access-Control-Allow-Methods')!.includes('POST'), `${label}: missing Allow-Methods`);
+}
+
+Deno.test('Route testing: CORS headers on all response types', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db, fakeAuthenticator);
+
+  const keyPair = nacl.sign.keyPair();
+  const testPubkey = encodeUrlBase64(keyPair.publicKey);
+
+  // Health endpoint (200)
+  const healthResp = await handler(createFakeRequest('/health'));
+  assertCorsHeaders(healthResp, 'health 200');
+
+  // Info endpoint (200)
+  const infoResp = await handler(createFakeRequest(createEncodedPath(testPubkey, 'info')));
+  assertCorsHeaders(infoResp, 'info 200');
+
+  // Latest endpoint (404 — no blobs)
+  const latestResp = await handler(createFakeRequest(createEncodedPath(testPubkey, 'latest')));
+  assertEquals(latestResp.status, 404);
+  assertCorsHeaders(latestResp, 'latest 404');
+
+  // Retrieve non-existent blob (404)
+  const retrieveResp = await handler(createFakeRequest(createEncodedPath(testPubkey, 'no-such-blob')));
+  assertEquals(retrieveResp.status, 404);
+  assertCorsHeaders(retrieveResp, 'retrieve 404');
+
+  // Upload with missing headers (400)
+  const badUploadResp = await handler(createFakeRequest(createEncodedPath(testPubkey), {
+    method: 'POST',
+    body: new TextEncoder().encode('data')
+  }));
+  assertEquals(badUploadResp.status, 400);
+  assertCorsHeaders(badUploadResp, 'upload 400');
+
+  // Unknown path (404)
+  const notFoundResp = await handler(new Request('http://localhost:54321/functions/v1/stream', { method: 'GET' }));
+  assertEquals(notFoundResp.status, 404);
+  assertCorsHeaders(notFoundResp, 'not-found 404');
+
+  // Blobs with invalid params (400)
+  const badBlobsResp = await handler(createFakeRequest(createEncodedPath(testPubkey, 'blobs') + '?start_sequence=-1'));
+  assertEquals(badBlobsResp.status, 400);
+  assertCorsHeaders(badBlobsResp, 'blobs 400');
+});
