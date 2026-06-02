@@ -557,7 +557,7 @@ async function handleAllMetadata(req: Request, encodedPubkey: string, db: Databa
     
     // Get paginated blob metadata from the database
     const result = await db.getAllBlobMetadataPaginated(encodedPubkey, startSeq, maxCount);
-    
+
     return createResponse(
       JSON.stringify({
         blobs: result.blobs.map(blob => ({
