@@ -1,9 +1,5 @@
 // Implementation of Server interface that communicates with tributary-server
 import { Server, BlobMetadata, BlobData, ArrowBlob, ObjectBlobMetadata } from './server.js';
-import { warn } from './logger.js';
-
-// Import base64url functions
-import * as base64url from 'urlsafe-base64';
 
 // Import Apache Arrow for blob batch retrieval
 import { tableFromIPC } from 'apache-arrow';
@@ -71,6 +67,27 @@ export class TributaryServer implements Server {
     return undefined;
   }
 
+  private buildHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...extra };
+    const authHeader = this.getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    return headers;
+  }
+
+  private buildPaginatedUrl(basePath: string, startSequence?: number, max?: number): string {
+    const params = new URLSearchParams();
+    if (startSequence !== undefined) {
+      params.set('start_sequence', startSequence.toString());
+    }
+    if (max !== undefined) {
+      params.set('max', max.toString());
+    }
+    const qs = params.toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+  }
+
   async storeBlob(
     pubkey: string,
     data: Uint8Array,
@@ -113,16 +130,11 @@ export class TributaryServer implements Server {
     // We don't send the ID in the URL anymore, just the pubkey
     const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}`;
 
-    const headers: Record<string, string> = {
+    const headers = this.buildHeaders({
       'Content-Type': 'application/octet-stream',
-      'X-Tributary-Hash': hash, // Send the concatenated hash
+      'X-Tributary-Hash': hash,
       'X-Tributary-Authorization': signature
-    };
-
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
+    });
 
     const response = await fetch(url, {
       method: 'POST',
@@ -148,14 +160,7 @@ export class TributaryServer implements Server {
     id: string
   ): Promise<BlobData | null> {
     const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/${encodeURIComponent(id)}`;
-    
-    const headers: Record<string, string> = {};
-    
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-    
+    const headers = this.buildHeaders();
     const response = await fetch(url, { headers });
     
     if (response.ok) {
@@ -175,14 +180,8 @@ export class TributaryServer implements Server {
     pubkey: string
   ): Promise<BlobMetadata | null> {
     const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/latest`;
-    
-    const headers: Record<string, string> = {};
-    
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-    
+    const headers = this.buildHeaders();
+
     try {
       const response = await fetch(url, { headers });
       
@@ -213,27 +212,11 @@ export class TributaryServer implements Server {
     blobs: BlobMetadata[];
     totalCount: number;
   }> {
-    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/all`;
-    
-    const params = new URLSearchParams();
-    if (startSequence !== undefined) {
-      params.set('start_sequence', startSequence.toString());
-    }
-    if (max !== undefined) {
-      params.set('max', max.toString());
-    }
-    
-    const urlString = params.toString() 
-      ? `${url}?${params.toString()}`
-      : url;
-    
-    const headers: Record<string, string> = {};
-    
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-    
+    const urlString = this.buildPaginatedUrl(
+      `${this.streamUrl}/${encodeURIComponent(pubkey)}/all`, startSequence, max
+    );
+    const headers = this.buildHeaders();
+
     try {
       const response = await fetch(urlString, { headers });
       
@@ -257,12 +240,7 @@ export class TributaryServer implements Server {
 
   async getAccountConfig(): Promise<Array<{ key: string; value: string }>> {
     const url = `${this.streamUrl}/config`;
-    const headers: Record<string, string> = {};
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-
+    const headers = this.buildHeaders();
     const response = await fetch(url, { headers });
     if (!response.ok) {
       throw new Error(`Failed to get account config: ${response.status} ${response.statusText}`);
@@ -274,14 +252,7 @@ export class TributaryServer implements Server {
 
   async setAccountConfig(key: string, value: string): Promise<boolean> {
     const url = `${this.streamUrl}/config`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-
+    const headers = this.buildHeaders({ 'Content-Type': 'application/json' });
     const response = await fetch(url, {
       method: 'PUT',
       headers,
@@ -300,14 +271,7 @@ export class TributaryServer implements Server {
 
   async deleteAccountConfig(key: string): Promise<boolean> {
     const url = `${this.streamUrl}/config`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-
+    const headers = this.buildHeaders({ 'Content-Type': 'application/json' });
     const response = await fetch(url, {
       method: 'DELETE',
       headers,
@@ -333,27 +297,11 @@ export class TributaryServer implements Server {
     blobs: ArrowBlob[];
     totalCount: number;
   }> {
-    const url = `${this.streamUrl}/${encodeURIComponent(pubkey)}/blobs`;
-    
-    const params = new URLSearchParams();
-    if (startSequence !== undefined) {
-      params.set('start_sequence', startSequence.toString());
-    }
-    if (max !== undefined) {
-      params.set('max', max.toString());
-    }
-    
-    const urlString = params.toString() 
-      ? `${url}?${params.toString()}`
-      : url;
-    
-    const headers: Record<string, string> = {};
-    
-    const authHeader = this.getAuthHeader();
-    if (authHeader) {
-      headers['Authorization'] = authHeader;
-    }
-    
+    const urlString = this.buildPaginatedUrl(
+      `${this.streamUrl}/${encodeURIComponent(pubkey)}/blobs`, startSequence, max
+    );
+    const headers = this.buildHeaders();
+
     try {
       const response = await fetch(urlString, { headers });
       
@@ -416,14 +364,11 @@ export class TributaryServer implements Server {
     domain?: string;
   }): Promise<{ tusUploadUrl: string }> {
     const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/upload`);
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const extra: Record<string, string> = { 'Content-Type': 'application/json' };
     // In a browser the Origin header is set automatically, but from Node.js
     // we need to set it explicitly so the server can identify the domain.
-    if (params.domain) headers['Origin'] = params.domain;
-    const authHeader = this.getAuthHeader();
-    if (authHeader) headers['Authorization'] = authHeader;
+    if (params.domain) extra['Origin'] = params.domain;
+    const headers = this.buildHeaders(extra);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -446,12 +391,10 @@ export class TributaryServer implements Server {
   async uploadBlobChunk(rootHash: string, chunkIndex: number,
     data: Uint8Array, proof: Array<{ position: 'left' | 'right'; data: string }>): Promise<boolean> {
     const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/chunk/${chunkIndex}`);
-    const headers: Record<string, string> = {
+    const headers = this.buildHeaders({
       'Content-Type': 'application/octet-stream',
       'X-Merkle-Proof': JSON.stringify(proof),
-    };
-    const authHeader = this.getAuthHeader();
-    if (authHeader) headers['Authorization'] = authHeader;
+    });
 
     const response = await fetch(url, {
       method: 'PATCH',
@@ -469,9 +412,7 @@ export class TributaryServer implements Server {
 
   async getBlobObjectMetadata(rootHash: string): Promise<ObjectBlobMetadata | null> {
     const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}`);
-    const headers: Record<string, string> = {};
-    const authHeader = this.getAuthHeader();
-    if (authHeader) headers['Authorization'] = authHeader;
+    const headers = this.buildHeaders();
 
     const response = await fetch(url, { headers });
 
@@ -492,9 +433,7 @@ export class TributaryServer implements Server {
 
   async downloadBlob(rootHash: string): Promise<Uint8Array | null> {
     const url = this.getBlobUrl(`/${encodeURIComponent(rootHash)}/data`);
-    const headers: Record<string, string> = {};
-    const authHeader = this.getAuthHeader();
-    if (authHeader) headers['Authorization'] = authHeader;
+    const headers = this.buildHeaders();
 
     const response = await fetch(url, { headers });
 
