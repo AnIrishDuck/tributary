@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeftIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { Collection, ImageBlockBody } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { SlugActionBar } from 'scribe-react-common/src/components/SlugActionBar'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
+
+const { error: logError } = createLogger('scribe-react-img')
 
 export interface ImageViewPageProps {
   body: ImageBlockBody
@@ -63,7 +66,7 @@ const ImageViewPage: React.FC<ImageViewPageProps> = ({
       } catch (err: any) {
         if (!cancelled) {
           setError('Failed to load image: ' + (err.message || 'Unknown error'))
-          console.error('Error loading image blob:', err)
+          logError('Error loading image blob:', err)
         }
       } finally {
         if (!cancelled) {

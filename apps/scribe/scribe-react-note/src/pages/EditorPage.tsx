@@ -9,10 +9,13 @@ import { languages } from '@codemirror/language-data'
 import { EditorView } from '@codemirror/view'
 import { wikilinkExtension } from 'scribe-react-common/src/wikilink/codemirror'
 import { NoteSlug, Note, Collection, titleToSlug, extractTitleFromMarkdown } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { getAuthoritativeVersionByNoteUuid, getNoteByVersion, getLibrary } from 'scribe-data'
 import { noteLinkCompletion } from '../extensions/noteLinkCompletion'
 import { ArrowUpOnSquareIcon, XMarkIcon, DocumentTextIcon, ExclamationCircleIcon, EyeIcon, PencilSquareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { renderMarkdown } from 'scribe-react-common/src/utils/markdown'
+
+const { error: logError } = createLogger('scribe-react-note')
 import { validateLinks, LinkStatusMap } from 'scribe-react-common/src/utils/linkValidation'
 import { useDraftAutoSave } from '../hooks/useDraftAutoSave'
 import VersionFooter from '../components/VersionFooter'
@@ -202,7 +205,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
           }
         } catch (err: any) {
           setError('Failed to load note: ' + (err.message || 'Unknown error'))
-          console.error('Error loading note:', err)
+          logError('Error loading note:', err)
         }
       }
     }
@@ -402,7 +405,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ prefix, collectionId, editBlock
       }
     } catch (err: any) {
       setError('Failed to save note: ' + (err.message || 'Unknown error'))
-      console.error('Error saving note:', err)
+      logError('Error saving note:', err)
     } finally {
       setIsLoading(false)
     }

@@ -1,4 +1,7 @@
 import { SCRIBE_PLUGIN_API_VERSION, type PluginEntry, type ScribePlugin, type ScribePluginFactory } from './types'
+import { createLogger } from 'tributary-client'
+
+const { error: logError } = createLogger('scribe-react-common')
 
 type ImportFn = (url: string) => Promise<any>
 
@@ -11,14 +14,14 @@ export async function loadPlugin(
     const factory: ScribePluginFactory = mod.default
 
     if (typeof factory !== 'function') {
-      console.error(`Plugin at ${entry.url} has no default export function. Skipping.`)
+      logError(`Plugin at ${entry.url} has no default export function. Skipping.`)
       return null
     }
 
     const plugin = factory(entry.config ?? {})
 
     if (plugin.apiVersion !== SCRIBE_PLUGIN_API_VERSION) {
-      console.error(
+      logError(
         `Plugin "${plugin.name}" targets API v${plugin.apiVersion}, ` +
         `but scribe requires v${SCRIBE_PLUGIN_API_VERSION}. Skipping.`
       )
@@ -27,7 +30,7 @@ export async function loadPlugin(
 
     return plugin
   } catch (err) {
-    console.error(`Failed to load plugin from ${entry.url}:`, err)
+    logError(`Failed to load plugin from ${entry.url}:`, err)
     return null
   }
 }

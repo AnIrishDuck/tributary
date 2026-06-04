@@ -4,8 +4,11 @@ import { PlusIcon, DocumentTextIcon, ArrowDownOnSquareIcon, Cog6ToothIcon, XMark
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { getLibraries, getHomeCollections, importLibrary, createLibrary, titleToSlug, LibraryInfo } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { CONFIG } from '../config'
 import * as base64url from 'urlsafe-base64'
+
+const { error: logError } = createLogger('scribe-react')
 
 /**
  * Validate that a string is a plausible Ed25519 private key:
@@ -285,7 +288,7 @@ const HomePage: React.FC = () => {
             setLibraries(libraryList)
           }
         } catch (error) {
-          console.error('Failed to fetch home data:', error)
+          logError('Failed to fetch home data:', error)
         } finally {
           setLoading(false)
         }

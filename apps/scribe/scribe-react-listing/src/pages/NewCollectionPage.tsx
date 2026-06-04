@@ -4,8 +4,11 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { createCollection, getLibrary, indexAll, titleToSlug, getSlugPath, Collection } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { FolderPlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
+
+const { error: logError } = createLogger('scribe-react-listing')
 
 export interface NewCollectionPageProps {
   prefix: string
@@ -78,7 +81,7 @@ const NewCollectionPage: React.FC<NewCollectionPageProps> = ({ prefix, parentUui
       }
     } catch (err: any) {
       setError('Failed to create collection: ' + (err.message || 'Unknown error'))
-      console.error('Error creating collection:', err)
+      logError('Error creating collection:', err)
     } finally {
       setIsLoading(false)
     }

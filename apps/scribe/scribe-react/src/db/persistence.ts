@@ -1,6 +1,8 @@
 import { PGlite, PGliteInterface } from '@electric-sql/pglite'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
-import { EncryptedIdbFs } from 'tributary-client'
+import { EncryptedIdbFs, createLogger } from 'tributary-client'
+
+const { info, warn, error: logError } = createLogger('scribe-react')
 
 /**
  * Whether to run PGlite in a background Web Worker or in the foreground
@@ -106,11 +108,11 @@ async function deleteIndexedDBs(predicate: (name: string) => boolean): Promise<v
         .map((db) => new Promise<void>((resolve) => {
           const req = indexedDB.deleteDatabase(db.name)
           req.onsuccess = () => {
-            console.log(`[deleteIndexedDBs] deleteDatabase("${db.name}") succeeded`)
+            info(`[deleteIndexedDBs] deleteDatabase("${db.name}") succeeded`)
             resolve()
           }
           req.onerror = () => {
-            console.error(`[deleteIndexedDBs] deleteDatabase("${db.name}") failed:`, req.error)
+            logError(`[deleteIndexedDBs] deleteDatabase("${db.name}") failed:`, req.error)
             resolve()
           }
           // onblocked fires when other connections are still open.
@@ -119,7 +121,7 @@ async function deleteIndexedDBs(predicate: (name: string) => boolean): Promise<v
           // so the page reload can proceed — the reload itself will close
           // the lingering connections.
           req.onblocked = () => {
-            console.warn(`[deleteIndexedDBs] deleteDatabase("${db.name}") blocked — waiting up to 2s`)
+            warn(`[deleteIndexedDBs] deleteDatabase("${db.name}") blocked — waiting up to 2s`)
             setTimeout(resolve, 2000)
           }
         }))

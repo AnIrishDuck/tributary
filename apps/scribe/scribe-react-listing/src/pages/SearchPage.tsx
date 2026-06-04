@@ -4,9 +4,12 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { searchNotes, SearchResult } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { SearchBar } from 'scribe-react-common/src/components/SearchBar'
 import { SearchResultCard } from 'scribe-react-common/src/components/SearchResultCard'
 import { MagnifyingGlassIcon, DocumentTextIcon, PlusIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+
+const { error: logError } = createLogger('scribe-react-listing')
 
 const RESULTS_PER_PAGE = 20
 
@@ -66,7 +69,7 @@ const SearchPage: React.FC = () => {
       // If we got a full page, there might be more
       setHasMore(searchResults.length === RESULTS_PER_PAGE)
     } catch (err) {
-      console.error('Error searching:', err)
+      logError('Error searching:', err)
       setError(`Search failed: ${(err as Error).message}`)
       setResults([])
     } finally {

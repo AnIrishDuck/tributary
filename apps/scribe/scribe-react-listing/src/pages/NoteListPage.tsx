@@ -4,7 +4,10 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getNotesInCollectionWithSlugs, getCollidingSlugs, NoteSlugRow, getLibraryDisplayName, getLibrary, getChildCollections, Collection, schemaReady } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import NoteListView from './SlugNoteListPage'
+
+const { error: logError } = createLogger('scribe-react-listing')
 
 const NoteListPage: React.FC = () => {
   const routeCtx = useRouteContext()
@@ -104,7 +107,7 @@ const NoteListPage: React.FC = () => {
         setError(null)
         setLoading(false)
       } catch (err) {
-        console.error('Error loading notes:', err)
+        logError('Error loading notes:', err)
         const libStatus = syncStatus[prefix]
         if (!libStatus || !libStatus.synced) {
           // Still syncing — the error may be due to incomplete data.

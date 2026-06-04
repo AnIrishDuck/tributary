@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, Link, useParams } from 'react-router'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { importLibrary } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { ShieldCheckIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+
+const { error: logError } = createLogger('scribe-react')
 
 const GrantWriteAccessPage: React.FC = () => {
   const { client } = useTributary()
@@ -32,7 +35,7 @@ const GrantWriteAccessPage: React.FC = () => {
           navigate(`/${newPrefix}/`)
         }, 1500)
       } catch (err) {
-        console.error('Error importing library:', err)
+        logError('Error importing library:', err)
         setStatus('error')
         setErrorMessage((err as Error).message || 'Failed to import library')
       }

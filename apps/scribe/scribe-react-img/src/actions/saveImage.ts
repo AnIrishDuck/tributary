@@ -1,7 +1,9 @@
-import { TributaryStream } from 'tributary-client'
+import { TributaryStream, createLogger } from 'tributary-client'
 import * as scribeData from 'scribe-data'
 import type { Note } from 'scribe-data'
 import { generateThumbnail } from '../utils/thumbnail'
+
+const { info } = createLogger('scribe-react-img')
 
 export interface SaveImageParams {
   fileData: Uint8Array
@@ -43,7 +45,7 @@ export async function saveImage(
 
   // Sync to ensure persistence
   const syncStatus = await stream.sync(1000)
-  console.log(`Image saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
+  info(`Image saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
 
   // After sync, run indexing on the local database
   const localDb = stream.local()

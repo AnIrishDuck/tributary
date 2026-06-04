@@ -3,9 +3,12 @@ import { Link } from 'react-router'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { getHomeCollections, getLibraries, estimateQuota } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import type { QuotaEstimate } from 'scribe-data'
 import { wipeDatabase } from '../db/persistence'
 import { CONFIG } from '../config'
+
+const { error: logError } = createLogger('scribe-react')
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -74,7 +77,7 @@ const AccountPage: React.FC = () => {
 
       window.location.reload()
     } catch (err) {
-      console.error('Failed to toggle encrypted storage:', err)
+      logError('Failed to toggle encrypted storage:', err)
       setToggling(false)
     }
   }

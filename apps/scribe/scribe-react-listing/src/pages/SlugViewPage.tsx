@@ -6,6 +6,7 @@ import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import { Collection, CollectionSlug, NoteSlugRow, ImageBlockBody, BlockSlugInfo as BlockSlugInfoType, AuthoritativeVersion, Note, schemaReady } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import SlugErrorPage from './SlugErrorPage'
 import NoteViewPage from 'scribe-react-note/src/pages/NoteViewPage'
 import NoteListView from './SlugNoteListPage'
@@ -18,6 +19,8 @@ import MissingSlugPage from './MissingSlugPage'
 import MissingParentPage from './MissingParentPage'
 import LibrarySettingsPage from './LibrarySettingsPage'
 import { getDraftForNote } from 'scribe-react-note/src/drafts/draftStorage'
+
+const { error: logError } = createLogger('scribe-react-listing')
 import ImageAddPage from 'scribe-react-img/src/pages/ImageAddPage'
 import ImageViewPage from 'scribe-react-img/src/pages/ImageViewPage'
 
@@ -642,7 +645,7 @@ const SlugViewPage: React.FC = () => {
         } else {
           setMode({ type: 'error', message: 'Failed to load note: ' + (err.message || 'Unknown error') })
         }
-        console.error('Error loading content:', err)
+        logError('Error loading content:', err)
       }
     }
 
