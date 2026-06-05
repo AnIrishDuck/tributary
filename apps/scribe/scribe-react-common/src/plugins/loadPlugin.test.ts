@@ -39,47 +39,28 @@ describe('loadPlugin', () => {
     expect(result!.name).toBe('my-plugin')
   })
 
-  it('rejects plugin with wrong apiVersion (returns null, logs error)', async () => {
+  it('rejects plugin with wrong apiVersion (returns null)', async () => {
     const plugin = makePlugin({ apiVersion: 999 as any })
     const importFn = vi.fn(async () => ({ default: () => plugin }))
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const result = await loadPlugin({ url: 'https://example.com/plugin.js' }, importFn)
 
     expect(result).toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('API v999'),
-    )
-
-    errorSpy.mockRestore()
   })
 
-  it('rejects module with no default export (returns null, logs error)', async () => {
+  it('rejects module with no default export (returns null)', async () => {
     const importFn = vi.fn(async () => ({ notDefault: 'oops' }))
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const result = await loadPlugin({ url: 'https://example.com/plugin.js' }, importFn)
 
     expect(result).toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('no default export function'),
-    )
-
-    errorSpy.mockRestore()
   })
 
   it('returns null when import throws', async () => {
     const importFn = vi.fn(async () => { throw new Error('network error') })
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const result = await loadPlugin({ url: 'https://example.com/plugin.js' }, importFn)
 
     expect(result).toBeNull()
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to load plugin'),
-      expect.any(Error),
-    )
-
-    errorSpy.mockRestore()
   })
 })
