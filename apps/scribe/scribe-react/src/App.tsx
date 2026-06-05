@@ -3,7 +3,7 @@ import { RouterProvider, createHashRouter } from 'react-router'
 import { routes } from './route'
 import { TributaryProvider } from 'scribe-react-common/src/context/tributaryContext'
 import { SyncStatusProvider } from 'scribe-react-common/src/context/syncStatusContext'
-import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed, deriveStorageKey } from 'tributary-client'
+import { TributaryClient, TributaryServer, deriveAuthKey, deriveStreamSeed, deriveStorageKey, createLogger } from 'tributary-client'
 import { createClient as createSupabaseClient, SupabaseClient, Session } from '@supabase/supabase-js'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
@@ -11,6 +11,8 @@ import { getPGlite, closePGlite, wipeDatabase } from './db/persistence'
 import { CONFIG } from './config'
 import { ShieldCheckIcon, ExclamationCircleIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import SetPasswordPage from './pages/SetPasswordPage'
+
+const { debug, info, warn, error: logError } = createLogger('scribe-react')
 
 // Create a Supabase auth client (only if project URL is configured).
 // The default auth options (persistSession, autoRefreshToken, detectSessionInUrl
@@ -60,7 +62,7 @@ async function createTributaryClient(session: Session | null, encryptionKey?: Ui
         try {
           await wipeDatabase(CONFIG.DB_NAME)
         } catch (err) {
-          console.warn('[createTributaryClient] failed to clean up legacy DB:', err)
+          warn('[createTributaryClient] failed to clean up legacy DB:', err)
         }
       }
     }
@@ -379,7 +381,7 @@ function App() {
     try {
       await closePGlite()
     } catch (err) {
-      console.error('closePGlite failed during logout:', err)
+      logError('closePGlite failed during logout:', err)
     }
     clientPromise = null
     setClient(null)
@@ -406,7 +408,7 @@ function App() {
       await wipeDatabase(baseDbName)
       await wipeDatabase(`${baseDbName}-encrypted`)
     } catch (err) {
-      console.error('wipeDatabase failed during clear:', err)
+      logError('wipeDatabase failed during clear:', err)
     }
     window.location.reload()
   }
@@ -462,7 +464,7 @@ function App() {
           }
         }
       } catch (err) {
-        console.error('Failed to check account config:', err)
+        logError('Failed to check account config:', err)
         // Fail-open to unencrypted so the app remains usable
         if (mounted) setEncryptedStorageEnabled(false)
       }
@@ -561,18 +563,18 @@ function App() {
       const t0 = performance.now()
       const elapsed = () => `${(performance.now() - t0).toFixed(0)}ms`
       try {
-        console.log(`[registerHomeKey] start`)
+        debug(`[registerHomeKey] start`)
         if (mounted) setSetupStep('Registering encryption keys...')
         await client!.addWriteKey(CONFIG.APP_ID, derivedKeyPair!.secretKey)
-        console.log(`[registerHomeKey] addWriteKey done at ${elapsed()}`)
+        debug(`[registerHomeKey] addWriteKey done at ${elapsed()}`)
 
         const existingHome = await client!.getHomeStream()
-        console.log(`[registerHomeKey] getHomeStream done at ${elapsed()}, exists=${!!existingHome}`)
+        debug(`[registerHomeKey] getHomeStream done at ${elapsed()}, exists=${!!existingHome}`)
         if (!existingHome) {
           if (mounted) setSetupStep('Setting up your library...')
           const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
           await client!.setHomeStream(publicKeyBase64)
-          console.log(`[registerHomeKey] setHomeStream done at ${elapsed()}`)
+          debug(`[registerHomeKey] setHomeStream done at ${elapsed()}`)
         }
 
         // Database setup completed — clear the stuck-database timeout before
@@ -583,13 +585,13 @@ function App() {
         if (mounted) setSetupStep('Syncing your library...')
         const publicKeyBase64 = base64url.encode(Buffer.from(derivedKeyPair!.publicKey))
         const stream = await client!.get(CONFIG.APP_ID, publicKeyBase64)
-        console.log(`[registerHomeKey] get stream done at ${elapsed()}, found=${!!stream}`)
+        debug(`[registerHomeKey] get stream done at ${elapsed()}, found=${!!stream}`)
         if (stream) {
           await stream.sync(1000)
-          console.log(`[registerHomeKey] initial sync done at ${elapsed()}`)
+          debug(`[registerHomeKey] initial sync done at ${elapsed()}`)
         }
       } catch (err) {
-        console.error(`[registerHomeKey] failed at ${elapsed()}:`, err)
+        logError(`[registerHomeKey] failed at ${elapsed()}:`, err)
       }
 
       if (mounted && !timedOut) {
@@ -601,7 +603,7 @@ function App() {
     const timeoutId = setTimeout(() => {
       if (mounted) {
         timedOut = true
-        console.error('[app] registerHomeKey timed out — local database may be stuck')
+        logError('[app] registerHomeKey timed out — local database may be stuck')
         setError(
           'Setup timed out. Your browser\'s local database may be corrupted. ' +
           'Try clearing site data for this origin, or close other tabs that may have this site open.'
@@ -643,11 +645,11 @@ function App() {
       if (!homeStream && mounted) {
         const rootSeed = loadPersistedRootSeed(userId)
         if (rootSeed) {
-          console.info('[app] No home stream — restoring key pair from persisted root seed')
+          info('[app] No home stream — restoring key pair from persisted root seed')
           const keyPair = nacl.sign.keyPair.fromSeed(rootSeed)
           setDerivedKeyPair(keyPair)
         } else {
-          console.warn('[app] No home stream and no persisted root seed — forcing re-authentication')
+          warn('[app] No home stream and no persisted root seed — forcing re-authentication')
           logout().then(() => window.location.reload())
         }
       }

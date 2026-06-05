@@ -1,6 +1,8 @@
-import { TributaryStream } from 'tributary-client'
+import { TributaryStream, createLogger } from 'tributary-client'
 import * as scribeData from 'scribe-data'
 import type { Note } from 'scribe-data'
+
+const { info } = createLogger('scribe-react-note')
 
 export async function saveNote(
   stream: TributaryStream,
@@ -32,7 +34,7 @@ export async function saveNote(
   // Sync to ensure persistence
   // Using max of 1000 blobs to prevent memory issues
   const syncStatus = await stream.sync(1000)
-  console.log(`Note saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
+  info(`Note saved and synced: ${syncStatus.currentIndex}/${syncStatus.finalIndex}`)
 
   // After sync, run indexing on the local database
   const localDb = stream.local()

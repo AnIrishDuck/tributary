@@ -6,7 +6,10 @@ import { RouteContextProvider } from 'scribe-react-common/src/context/routeConte
 import { PluginProvider } from 'scribe-react-common/src/context/pluginContext'
 import { useLibraryPlugins } from 'scribe-react-common/src/plugins/useLibraryPlugins'
 import { resolveLibrarySlug, LibrarySlugResult } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import LibraryConflictPage from '../pages/LibraryConflictPage'
+
+const { error: logError } = createLogger('scribe-react')
 
 /**
  * Resolves a named library route (#n/:librarySlug/...) to the correct
@@ -52,7 +55,7 @@ const NamedRouteResolver: React.FC = () => {
           }
         }
       } catch (err) {
-        console.error('Failed to resolve named route:', err)
+        logError('Failed to resolve named route:', err)
         setState({ type: 'not_found' })
       }
     }

@@ -5,7 +5,10 @@ import { useTributary } from 'scribe-react-common/src/context/tributaryContext'
 import { useSyncStatus } from 'scribe-react-common/src/context/syncStatusContext'
 import { useRouteContext } from 'scribe-react-common/src/context/routeContext'
 import { getLibraryDisplayName, getLibraryStats, getLibraryPlugins, setLibraryPlugins, LibraryStats, StreamStorageEstimate, PluginEntry } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { AddPluginModal } from '../components/AddPluginModal'
+
+const { error: logError } = createLogger('scribe-react-listing')
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -75,7 +78,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
           setPlugins(libraryPlugins)
         }
       } catch (err) {
-        console.error('Failed to load library settings:', err)
+        logError('Failed to load library settings:', err)
       } finally {
         setLoading(false)
       }
@@ -95,7 +98,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
       const updated = await getLibraryPlugins(stream)
       setPlugins(updated)
     } catch (err) {
-      console.error('Failed to save plugins:', err)
+      logError('Failed to save plugins:', err)
     } finally {
       setPluginSaving(false)
     }
@@ -131,7 +134,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
     try {
       const writeKey = await client.getWriteKey(prefix)
       if (!writeKey) {
-        console.error('No write key found for library')
+        logError('No write key found for library')
         return
       }
       const url = `${window.location.origin}${window.location.pathname}#/?import&writeKey=${writeKey}`
@@ -139,7 +142,7 @@ const LibrarySettingsPage: React.FC<LibrarySettingsPageProps> = ({ prefix }) => 
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('Failed to copy share link:', err)
+      logError('Failed to copy share link:', err)
     }
   }
 

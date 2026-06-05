@@ -1,9 +1,12 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { ArrowUpOnSquareIcon, XMarkIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { titleToSlug } from 'scribe-data'
+import { createLogger } from 'tributary-client'
 import { Collection } from 'scribe-data'
 import { Breadcrumbs } from 'scribe-react-common/src/components/Breadcrumbs'
 import ImagePreview from './ImagePreview'
+
+const { error: logError } = createLogger('scribe-react-img')
 
 export interface ImageDialogProps {
   prefix: string
@@ -127,7 +130,7 @@ const ImageDialog: React.FC<ImageDialogProps> = ({
       await onSave({ file, slug, title, width, height })
     } catch (err: any) {
       setError('Failed to save image: ' + (err.message || 'Unknown error'))
-      console.error('Error saving image:', err)
+      logError('Error saving image:', err)
     } finally {
       setIsLoading(false)
     }
