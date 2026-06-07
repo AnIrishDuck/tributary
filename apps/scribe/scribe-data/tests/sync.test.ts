@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { TestFakeServer } from './test-server'
+import { TestFakeServer } from 'tributary-client'
 import { createNote } from '../src/note.js'
 import { createHomeLibrary, createLibrary } from '../src/library.js'
 import { PGlite } from '@electric-sql/pglite'

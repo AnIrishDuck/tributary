@@ -4,7 +4,7 @@ export { TributaryStream } from './tributaryStream.js';
 export { TributaryLocal } from './tributaryLocal.js';
 export { TributaryServer } from './tributaryServer.js';
 export { FakeServer } from './fakeServer.js';
-export { createTestServer, createTestClient, createTestDb } from './testUtils.js';
+export { createTestServer, createTestClient, createTestDb, TestFakeServer } from './testUtils.js';
 export type { Server, BlobMetadata, BlobData, ArrowBlob, ObjectBlobMetadata } from './server.js';
 export { TributaryBlob } from './tributaryBlob.js';
 export { SyncRequiredError } from './tributaryStream.js';

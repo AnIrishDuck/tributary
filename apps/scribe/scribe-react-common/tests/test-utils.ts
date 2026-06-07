@@ -2,12 +2,11 @@ import React from 'react'
 import nacl from 'tweetnacl'
 import * as base64url from 'urlsafe-base64'
 import { PGlite } from '@electric-sql/pglite'
-import { TributaryClient, TributaryStream, Server } from 'tributary-client'
+import { TributaryClient, TributaryStream, Server, TestFakeServer } from 'tributary-client'
 import { createHomeLibrary, createLibrary } from 'scribe-data'
 import { createTestTributaryClient } from '../src/context/tributaryContext'
 import { TributaryProvider } from '../src/context/tributaryContext'
 import { SyncStatusProvider } from '../src/context/syncStatusContext'
-import { TestFakeServer } from './test-server'
 
 /**
  * Create a test client with a stream for testing

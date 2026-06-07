@@ -1,6 +1,6 @@
 // Utility functions for tests
 import { PGlite, PGliteInterface } from '@electric-sql/pglite';
-import { Server } from './server.js';
+import { Server, BlobMetadata, BlobData, ArrowBlob } from './server.js';
 import { FakeServer } from './fakeServer.js';
 import { TributaryServer } from './tributaryServer.js';
 import { TributaryClient } from './tributaryClient.js';
@@ -43,6 +43,108 @@ export async function createTestDb(): Promise<PGliteInterface> {
     });
   }
   return new PGlite();
+}
+
+export class TestFakeServer extends FakeServer {
+  private _disconnected = false
+  private maxBlobsPerSync: Map<string, number> = new Map()
+
+  disconnect(): void {
+    this._disconnected = true
+  }
+
+  reconnect(): void {
+    this._disconnected = false
+  }
+
+  setMaxBlobsPerSync(pubkey: string, max: number): void {
+    this.maxBlobsPerSync.set(pubkey, max)
+  }
+
+  clearMaxBlobsPerSync(pubkey: string): void {
+    this.maxBlobsPerSync.delete(pubkey)
+  }
+
+  clearAllMaxBlobsPerSync(): void {
+    this.maxBlobsPerSync.clear()
+  }
+
+  isDisconnected(): boolean {
+    return this._disconnected
+  }
+
+  async storeBlob(
+    pubkey: string,
+    data: Uint8Array,
+    hash: string,
+    priorHash: string,
+    signature: string,
+    sequenceNumber: number
+  ): Promise<boolean> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+    return super.storeBlob(pubkey, data, hash, priorHash, signature, sequenceNumber)
+  }
+
+  async retrieveBlob(
+    pubkey: string,
+    id: string
+  ): Promise<BlobData | null> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+    return super.retrieveBlob(pubkey, id)
+  }
+
+  async getLatestBlobMetadata(
+    pubkey: string
+  ): Promise<BlobMetadata | null> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+    return super.getLatestBlobMetadata(pubkey)
+  }
+
+  async getBlobsArrow(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: ArrowBlob[]
+    totalCount: number
+  }> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+    return super.getBlobsArrow(pubkey, startSequence, max)
+  }
+
+  async getAllBlobMetadata(
+    pubkey: string,
+    startSequence?: number,
+    max?: number
+  ): Promise<{
+    blobs: BlobMetadata[]
+    totalCount: number
+  }> {
+    if (this._disconnected) {
+      throw new Error('Network error: Server disconnected')
+    }
+
+    const result = await super.getAllBlobMetadata(pubkey, startSequence, max)
+
+    const maxForPubkey = this.maxBlobsPerSync.get(pubkey)
+    if (maxForPubkey !== undefined && maxForPubkey > 0) {
+      const limitedBlobs = result.blobs.slice(0, maxForPubkey)
+      return {
+        blobs: limitedBlobs,
+        totalCount: result.totalCount
+      }
+    }
+
+    return result
+  }
 }
 
 /**
