@@ -408,7 +408,7 @@ export async function getNotesBySlug(
     [slug]
   )
 
-  return (result.rows || []).map((row: BlockSlugBodyRow) => ({
+  return ((result.rows || []) as BlockSlugBodyRow[]).map((row) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractTitleFromMarkdown(row.body) || ''
@@ -476,7 +476,7 @@ export async function getTagsForNote(
     [noteUuid]
   )
   
-  return (result.rows || []).map((row: TagRow) => row.tag)
+  return ((result.rows || []) as TagRow[]).map((row) => row.tag)
 }
 
 /**
@@ -493,8 +493,8 @@ export async function getNotesByTag(
     `SELECT block_uuid FROM block_tag WHERE tag = $1`,
     [tag]
   )
-  
-  return (result.rows || []).map((row: BlockUuidRow) => row.block_uuid)
+
+  return ((result.rows || []) as BlockUuidRow[]).map((row) => row.block_uuid)
 }
 
 /**
@@ -507,8 +507,8 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
     `SELECT DISTINCT tag FROM block_tag`,
     []
   )
-  
-  return (result.rows || []).map((row: TagRow) => row.tag)
+
+  return ((result.rows || []) as TagRow[]).map((row) => row.tag)
 }
 
 /**
@@ -527,7 +527,7 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
     []
   )
 
-  return (result.rows || []).map((row: NoteSlugQueryRow) => {
+  return ((result.rows || []) as NoteSlugQueryRow[]).map((row) => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -582,7 +582,7 @@ export async function getNotesInCollectionWithSlugs(
     )
   }
 
-  return (result.rows || []).map((row: NoteSlugQueryRow) => {
+  return ((result.rows || []) as NoteSlugQueryRow[]).map((row) => {
     const blockType = row.block_type || 'scribe/markdown'
     return {
       block_uuid: row.block_uuid,
@@ -642,7 +642,7 @@ export async function getCollidingSlugs(
     `SELECT slug FROM slug_collision WHERE parent_id = $1`,
     [parentId]
   )
-  return new Set((result.rows || []).map((row: SlugRow) => row.slug))
+  return new Set(((result.rows || []) as SlugRow[]).map((row) => row.slug))
 }
 
 /**
@@ -687,7 +687,7 @@ export async function getNotesBySlugInCollection(
     )
   }
 
-  return (result.rows || []).map((row: BlockSlugBodyTypeRow) => ({
+  return ((result.rows || []) as BlockSlugBodyTypeRow[]).map((row) => ({
     block_uuid: row.block_uuid,
     slug: row.slug,
     title: extractBlockTitle(row.body, row.block_type),
