@@ -174,10 +174,8 @@ export class TributaryStream {
     }
   }
 
-  /**
-   * Initialize the sync state for this stream
-   */
-  private async initializeSyncState(): Promise<void> {
+  /** @internal Called by TributaryClient during stream setup. */
+  async initializeSyncState(): Promise<void> {
     try {
       info('Initializing sync state for stream:', this.getId());
       // Check if we're already tracking this stream

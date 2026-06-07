@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { generateKeyPair, saveKeyPair, listKeys, showKey, exportKey, importKey, loadKeyPair } from './key';
 import { executeSQL } from './psql';
-import { info, error as errorLog } from './logger';
+import { info, error as errorLog, formatError } from './logger';
 import { getClient } from './util';
 
 function parseAppStreamId(appStreamId: string): [string, string] {
@@ -51,8 +51,8 @@ keyCmd
       } else {
         console.log(streamId);
       }
-    } catch (error) {
-      errorLog('Error:', (error as Error).stack || (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });
@@ -92,8 +92,8 @@ keyCmd
           appKeys.forEach(key => info(`  ${key}`));
         }
       }
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });
@@ -113,8 +113,8 @@ keyCmd
       const keyDetails = await showKey(client, appId, streamId);
       info(`Key: ${streamId}`);
       info(`Public Key: ${keyDetails.publicKey}`);
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });
@@ -134,8 +134,8 @@ keyCmd
       const base64Key = await exportKey(client, appId, streamId);
       // Print to stdout for piping
       console.log(base64Key);
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });
@@ -170,13 +170,13 @@ keyCmd
           base64Key = base64Key.trim();
           const streamId = await importKey(client, appId, base64Key);
           info(`Key imported successfully for app '${appId}' with stream ID '${streamId}'.`);
-        } catch (error) {
-          errorLog('Error:', (error as Error).message);
+        } catch (err) {
+          errorLog('Error:', formatError(err));
           process.exit(1);
         }
       });
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });
@@ -197,8 +197,8 @@ program
         sync: options.sync // Commander.js sets this to false when --no-sync is used
       });
       info('Result:', result);
-    } catch (error) {
-      errorLog('Error:', (error as Error).message);
+    } catch (err) {
+      errorLog('Error:', formatError(err));
       process.exit(1);
     }
   });

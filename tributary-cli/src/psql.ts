@@ -36,9 +36,6 @@ export async function executeSQL(
   // Execute the SQL command if provided
   if (sql) {
     info(`Executing SQL: ${sql}`);
-    if (shouldSync) {
-      await validateAuthToken();
-    }
     const target = shouldSync ? stream : stream.local();
     if (isReadQuery(sql)) {
       return await target.query(sql);
