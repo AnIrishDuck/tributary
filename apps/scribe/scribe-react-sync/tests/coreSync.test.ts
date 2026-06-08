@@ -209,7 +209,7 @@ describe('Sync Errors', () => {
     await stream1.query("CREATE TABLE test (id INTEGER)")
     await stream1.query("INSERT INTO test VALUES (1)")
 
-    const pubkey = stream1.getPublicKeyBase64()
+    const pubkey = stream1.getId()
     const allBlobs = Array.from(testServer.blobs.values()) as any[]
     const targetBlob = allBlobs.find((b: any) => b.pubkey === pubkey && b.sequenceNumber === 2)
     targetBlob.data = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
