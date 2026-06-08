@@ -174,10 +174,6 @@ export class TributaryStream {
     }
   }
 
-  /**
-   * Ensure the stream's schema and sync state are fully initialized.
-   * Safe to call multiple times — only performs work on the first call.
-   */
   async ensureInitialized(): Promise<void> {
     if (this.syncStateInitialized) return;
     await this.initializeSchema();
