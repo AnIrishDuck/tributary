@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 
 // Helper to create response with CORS headers
-function createResponse(body: string, status: number, additionalHeaders: Record<string, string> = {}): Response {
+function createResponse(body: string | null, status: number, additionalHeaders: Record<string, string> = {}): Response {
   return new Response(body, {
     status,
     headers: {
@@ -27,16 +27,21 @@ function createResponse(body: string, status: number, additionalHeaders: Record<
   });
 }
 
+function jsonResponse(data: unknown, status = 200): Response {
+  return createResponse(JSON.stringify(data), status, { 'Content-Type': 'application/json' });
+}
+
+function errorResponse(message: string, status: number): Response {
+  return jsonResponse({ error: message }, status);
+}
+
 // Route handler function that processes HTTP requests
 export const createRouteHandler = (db: Database, authenticator: Authenticator = authenticateUser) => {
   return async (req: Request): Promise<Response> => {
     // Handle CORS preflight
     console.log(req.method)
     if (req.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders
-      });
+      return createResponse(null, 204);
     }
     
     // Parse the URL to determine which endpoint is being called
@@ -46,15 +51,11 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
     // Early check for health endpoint (no pubkey needed)
     // Handle both GET and POST for maximum compatibility
     if (pathParts.includes('health')) {
-      return createResponse(
-        JSON.stringify({
-          status: 'healthy',
-          service: 'tributary-fn',
-          timestamp: new Date().toISOString()
-        }),
-        200,
-        { 'Content-Type': 'application/json' }
-      );
+      return jsonResponse({
+        status: 'healthy',
+        service: 'tributary-fn',
+        timestamp: new Date().toISOString()
+      });
     }
     
     // Handle account config endpoints (before pubkey routing)
@@ -79,14 +80,10 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
       // Move past the 'stream' part
       startIndex += 1;
     }
-    
+
     // If we don't have enough path parts, return 404
     if (pathParts.length <= startIndex) {
-      return createResponse(
-        JSON.stringify({ error: 'Not found' }),
-        404,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Not found', 404);
     }
     
     // Extract the parts properly
@@ -115,11 +112,7 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
       // GET requests
       if (pathParts.length === startIndex + 1) {
         // Only pubkey provided - not a valid GET pattern
-        return createResponse(
-          JSON.stringify({ error: 'Not found' }),
-          404,
-          { 'Content-Type': 'application/json' }
-        );
+        return errorResponse('Not found', 404);
       } else if (pathParts.length >= startIndex + 2) {
         // GET /{pubkey}/{endpoint}
         // GOOSE: extract endpoint here, pubkey is url base64 encoded, see crypto utils
@@ -142,13 +135,7 @@ export const createRouteHandler = (db: Database, authenticator: Authenticator = 
     }
     
     // If we get here, the path doesn't match any known pattern
-    return new Response(
-      JSON.stringify({ error: 'Not found' }),
-      { 
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Not found', 404);
   };
 };
 
@@ -160,43 +147,22 @@ async function handleRetrieve(req: Request, encodedPubkey: string, id: string, d
     const blob = await db.retrieveBlob(encodedPubkey, id);
     
     if (blob) {
-      // Convert Uint8Array to array of numbers for JSON serialization
-      const dataAsArray = Array.from(blob.data);
-      
-      return new Response(
-        JSON.stringify({
-          id: blob.id,
-          pubkey: blob.pubkey,
-          data: dataAsArray,
-          hash: blob.hash,
-          prior_hash: blob.prior_hash,
-          signature: blob.signature,
-          sequence_number: blob.sequence_number,
-          created_at: blob.created_at.toISOString()
-        }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return jsonResponse({
+        id: blob.id,
+        pubkey: blob.pubkey,
+        data: Array.from(blob.data),
+        hash: blob.hash,
+        prior_hash: blob.prior_hash,
+        signature: blob.signature,
+        sequence_number: blob.sequence_number,
+        created_at: blob.created_at.toISOString()
+      });
     } else {
-      return new Response(
-        JSON.stringify({ error: 'Blob not found' }),
-        { 
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Blob not found', 404);
     }
   } catch (error) {
     console.error('Error in retrieve function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -207,27 +173,15 @@ async function handleInfo(req: Request, encodedPubkey: string, db: Database): Pr
     // Get collection info from the database
     const collectionInfo = await db.getCollectionInfo(encodedPubkey);
     
-    return new Response(
-      JSON.stringify({
-        pubkey: encodedPubkey,
-        blob_count: collectionInfo.blob_count,
-        first_blob_timestamp: collectionInfo.first_blob_timestamp ? collectionInfo.first_blob_timestamp.toISOString() : null,
-        last_blob_timestamp: collectionInfo.last_blob_timestamp ? collectionInfo.last_blob_timestamp.toISOString() : null
-      }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return jsonResponse({
+      pubkey: encodedPubkey,
+      blob_count: collectionInfo.blob_count,
+      first_blob_timestamp: collectionInfo.first_blob_timestamp ? collectionInfo.first_blob_timestamp.toISOString() : null,
+      last_blob_timestamp: collectionInfo.last_blob_timestamp ? collectionInfo.last_blob_timestamp.toISOString() : null
+    });
   } catch (error) {
     console.error('Error in info function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -239,43 +193,22 @@ async function handleLatest(req: Request, encodedPubkey: string, db: Database): 
     const latestBlob = await db.getLatestBlob(encodedPubkey);
     
     if (latestBlob) {
-      // Convert Uint8Array to array of numbers for JSON serialization
-      const dataAsArray = Array.from(latestBlob.data);
-      
-      return new Response(
-        JSON.stringify({
-          id: latestBlob.id,
-          pubkey: latestBlob.pubkey,
-          hash: latestBlob.hash,
-          prior_hash: latestBlob.prior_hash,
-          signature: latestBlob.signature,
-          sequence_number: latestBlob.sequence_number,
-          created_at: latestBlob.created_at.toISOString(),
-          data: dataAsArray
-        }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return jsonResponse({
+        id: latestBlob.id,
+        pubkey: latestBlob.pubkey,
+        hash: latestBlob.hash,
+        prior_hash: latestBlob.prior_hash,
+        signature: latestBlob.signature,
+        sequence_number: latestBlob.sequence_number,
+        created_at: latestBlob.created_at.toISOString(),
+        data: Array.from(latestBlob.data)
+      });
     } else {
-      return new Response(
-        JSON.stringify({ error: 'No blobs found for this pubkey' }),
-        { 
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('No blobs found for this pubkey', 404);
     }
   } catch (error) {
     console.error('Error in latest function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -311,11 +244,7 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     // Authenticate the user via Supabase JWT
     const authResult = await authenticate(req);
     if (!authResult) {
-      return createResponse(
-        JSON.stringify({ error: 'Unauthorized: valid Supabase auth token required' }),
-        401,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Unauthorized: valid Supabase auth token required', 401);
     }
     const ownerId = authResult.userId;
     const origin = req.headers.get('Origin');
@@ -325,23 +254,11 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const signature = req.headers.get('X-Tributary-Authorization');
 
     if (!providedHash) {
-      return new Response(
-        JSON.stringify({ error: 'Missing X-Tributary-Hash header' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Missing X-Tributary-Hash header', 400);
     }
 
     if (!signature) {
-      return new Response(
-        JSON.stringify({ error: 'Missing X-Tributary-Authorization header' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Missing X-Tributary-Authorization header', 400);
     }
 
     // Get request body
@@ -370,20 +287,14 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     
     // Validate that the provided hash matches our expectation
     if (providedHash !== expectedHash) {
-      return new Response(
-        JSON.stringify({
-          error: 'Hash mismatch - possible chain mismatch',
-          expected_hash: expectedHash,
-          provided_hash: providedHash,
-          body_hash: bodyHash,
-          latest_sequence_number: latestBlobInfo.sequence_number,
-          latest_hash: latestBlobInfo.hash
-        }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return jsonResponse({
+        error: 'Hash mismatch - possible chain mismatch',
+        expected_hash: expectedHash,
+        provided_hash: providedHash,
+        body_hash: bodyHash,
+        latest_sequence_number: latestBlobInfo.sequence_number,
+        latest_hash: latestBlobInfo.hash
+      }, 400);
     }
 
     // Create the data that should have been signed (the hash)
@@ -393,17 +304,11 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const isValidSignature = await verifySignature(encodedPubkey, signature, expectedDataToSign);
 
     if (!isValidSignature) {
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid signature - possible chain mismatch',
-          latest_sequence_number: latestBlobInfo.sequence_number,
-          latest_hash: latestBlobInfo.hash
-        }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return jsonResponse({
+        error: 'Invalid signature - possible chain mismatch',
+        latest_sequence_number: latestBlobInfo.sequence_number,
+        latest_hash: latestBlobInfo.hash
+      }, 400);
     }
 
     // Signature is valid, proceed with storing
@@ -424,37 +329,19 @@ async function handleUpload(req: Request, encodedPubkey: string, db: Database, a
     const stored = await db.storeBlob(blob, ownerId, origin);
     
     if (stored) {
-      return new Response(
-        JSON.stringify({
-          status: 'stored',
-          id: blobId,
-          pubkey: encodedPubkey,
-          sequence_number: blob.sequence_number,
-          hash: blob.hash
-        }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return jsonResponse({
+        status: 'stored',
+        id: blobId,
+        pubkey: encodedPubkey,
+        sequence_number: blob.sequence_number,
+        hash: blob.hash
+      });
     } else {
-      return new Response(
-        JSON.stringify({ error: 'Failed to store blob' }),
-        { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Failed to store blob', 500);
     }
   } catch (error) {
     console.error('Error in upload function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -464,26 +351,14 @@ async function handleGetConfig(req: Request, db: Database, authenticate: Authent
   try {
     const authResult = await authenticate(req);
     if (!authResult) {
-      return createResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        401,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Unauthorized', 401);
     }
 
     const entries = await db.getAccountConfig(authResult.userId);
-    return createResponse(
-      JSON.stringify({ account: entries }),
-      200,
-      { 'Content-Type': 'application/json' }
-    );
+    return jsonResponse({ account: entries });
   } catch (error) {
     console.error('Error in getConfig:', error);
-    return createResponse(
-      JSON.stringify({ error: 'Internal server error' }),
-      500,
-      { 'Content-Type': 'application/json' }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -494,53 +369,29 @@ async function handleSetConfig(req: Request, db: Database, authenticate: Authent
   try {
     const authResult = await authenticate(req);
     if (!authResult) {
-      return createResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        401,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Unauthorized', 401);
     }
 
     const body = await req.json();
     const { key, value } = body;
 
     if (typeof key !== 'string' || typeof value !== 'string') {
-      return createResponse(
-        JSON.stringify({ error: 'key and value must be strings' }),
-        400,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('key and value must be strings', 400);
     }
 
     if (key.length > 256 || value.length > 256) {
-      return createResponse(
-        JSON.stringify({ error: 'key and value must be at most 256 characters' }),
-        400,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('key and value must be at most 256 characters', 400);
     }
 
     const stored = await db.setAccountConfig(authResult.userId, key, value);
     if (stored) {
-      return createResponse(
-        JSON.stringify({ status: 'ok' }),
-        200,
-        { 'Content-Type': 'application/json' }
-      );
+      return jsonResponse({ status: 'ok' });
     } else {
-      return createResponse(
-        JSON.stringify({ error: 'Could not store config entry (max 64 entries)' }),
-        400,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Could not store config entry (max 64 entries)', 400);
     }
   } catch (error) {
     console.error('Error in setConfig:', error);
-    return createResponse(
-      JSON.stringify({ error: 'Internal server error' }),
-      500,
-      { 'Content-Type': 'application/json' }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -551,37 +402,21 @@ async function handleDeleteConfig(req: Request, db: Database, authenticate: Auth
   try {
     const authResult = await authenticate(req);
     if (!authResult) {
-      return createResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        401,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('Unauthorized', 401);
     }
 
     const body = await req.json();
     const { key } = body;
 
     if (typeof key !== 'string') {
-      return createResponse(
-        JSON.stringify({ error: 'key must be a string' }),
-        400,
-        { 'Content-Type': 'application/json' }
-      );
+      return errorResponse('key must be a string', 400);
     }
 
     await db.deleteAccountConfig(authResult.userId, key);
-    return createResponse(
-      JSON.stringify({ status: 'ok' }),
-      200,
-      { 'Content-Type': 'application/json' }
-    );
+    return jsonResponse({ status: 'ok' });
   } catch (error) {
     console.error('Error in deleteConfig:', error);
-    return createResponse(
-      JSON.stringify({ error: 'Internal server error' }),
-      500,
-      { 'Content-Type': 'application/json' }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -599,34 +434,22 @@ async function handleAllMetadata(req: Request, encodedPubkey: string, db: Databa
     // Get paginated blob metadata from the database
     const result = await db.getAllBlobMetadataPaginated(encodedPubkey, startSeq, maxCount);
     
-    return new Response(
-      JSON.stringify({
-        blobs: result.blobs.map(blob => ({
-          id: blob.id,
-          pubkey: blob.pubkey,
-          hash: blob.hash,
-          prior_hash: blob.prior_hash,
-          signature: blob.signature,
-          sequence_number: blob.sequence_number,
-          created_at: blob.created_at.toISOString(),
-          data: Array.from(blob.data)
-        })),
-        total_count: result.total_count
-      }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return jsonResponse({
+      blobs: result.blobs.map(blob => ({
+        id: blob.id,
+        pubkey: blob.pubkey,
+        hash: blob.hash,
+        prior_hash: blob.prior_hash,
+        signature: blob.signature,
+        sequence_number: blob.sequence_number,
+        created_at: blob.created_at.toISOString(),
+        data: Array.from(blob.data)
+      })),
+      total_count: result.total_count
+    });
   } catch (error) {
     console.error('Error in all metadata function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return errorResponse('Internal server error', 500);
   }
 }
 
@@ -645,23 +468,11 @@ async function handleGetBlobs(req: Request, encodedPubkey: string, db: Database)
     
     // Validate parameters
     if (startSeq !== undefined && (isNaN(startSeq) || startSeq < 0)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid start_sequence parameter' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Invalid start_sequence parameter', 400);
     }
-    
+
     if (isNaN(maxCount) || maxCount <= 0) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid max parameter' }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      return errorResponse('Invalid max parameter', 400);
     }
     
     // Get blobs from database
@@ -722,16 +533,9 @@ async function handleGetBlobs(req: Request, encodedPubkey: string, db: Database)
     });
   } catch (error) {
     console.error('Error in get blobs function:', error);
-    // Return JSON error (not Arrow) for error cases
-    return new Response(
-      JSON.stringify({ 
-        error: 'Internal server error',
-        message: (error as Error).message 
-      }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
+    return jsonResponse({
+      error: 'Internal server error',
+      message: (error as Error).message
+    }, 500);
   }
 }

@@ -317,3 +317,57 @@ Deno.test('Route testing: Get blobs Arrow endpoint', async () => {
     throw error;
   }
 });
+
+Deno.test('Route testing: CORS headers present on all response types', async () => {
+  const db = new Database(true);
+  const handler = createRouteHandler(db, fakeAuthenticator);
+
+  const keyPair = nacl.sign.keyPair();
+  const encodedPubkey = encodeUrlBase64(keyPair.publicKey);
+
+  function assertCors(response: Response, label: string) {
+    assertEquals(
+      response.headers.get('Access-Control-Allow-Origin'),
+      '*',
+      `${label}: missing Access-Control-Allow-Origin`,
+    );
+  }
+
+  // Health (200)
+  const healthRes = await handler(createFakeRequest('/health'));
+  assertEquals(healthRes.status, 200);
+  assertCors(healthRes, 'health');
+
+  // 404 - not found
+  const notFoundRes = await handler(createFakeRequest('/'));
+  assertEquals(notFoundRes.status, 404);
+  assertCors(notFoundRes, '404 not found');
+
+  // Retrieve - blob not found (404)
+  const retrieveRes = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'nonexistent')));
+  assertEquals(retrieveRes.status, 404);
+  assertCors(retrieveRes, 'retrieve 404');
+
+  // Info (200)
+  const infoRes = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'info')));
+  assertEquals(infoRes.status, 200);
+  assertCors(infoRes, 'info');
+
+  // Latest - no blobs (404)
+  const latestRes = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'latest')));
+  assertEquals(latestRes.status, 404);
+  assertCors(latestRes, 'latest 404');
+
+  // Upload - missing headers (400)
+  const uploadRes = await handler(createFakeRequest(createEncodedPath(encodedPubkey), {
+    method: 'POST',
+    body: new TextEncoder().encode('test'),
+  }));
+  assertEquals(uploadRes.status, 400);
+  assertCors(uploadRes, 'upload 400');
+
+  // Blobs - invalid param (400)
+  const blobsRes = await handler(createFakeRequest(createEncodedPath(encodedPubkey, 'blobs') + '?start_sequence=-1'));
+  assertEquals(blobsRes.status, 400);
+  assertCors(blobsRes, 'blobs 400');
+});
