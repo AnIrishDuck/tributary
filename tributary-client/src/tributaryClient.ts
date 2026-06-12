@@ -4,6 +4,7 @@ import { Server } from './server.js';
 import { TributaryStream, SyncStatus, SyncError } from './tributaryStream.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { logger, warn, error, info, debug } from './logger.js';
+import { toError } from './errorUtils.js';
 import { computeHash } from './hashUtils.js';
 import * as base64url from 'urlsafe-base64';
 
@@ -36,7 +37,7 @@ export class TributaryClient {
         try {
           this.defaultStream = await this.addWriteKey(appId, options.privateKey!);
         } catch (err) {
-          warn('Could not create default stream:', err as Error);
+          warn('Could not create default stream:', err);
         }
       });
     }
@@ -86,7 +87,7 @@ export class TributaryClient {
         `CREATE INDEX IF NOT EXISTS sync_errors_stream_id ON tributary.sync_errors (stream_id, occurred_at DESC)`
       );
     } catch (err: unknown) {
-      warn('Could not initialize tributary schema:', err as Error);
+      warn('Could not initialize tributary schema:', err);
     }
   }
 
@@ -113,7 +114,7 @@ export class TributaryClient {
       }
     } catch (err) {
       // If there's an error querying, continue with generated schema ID
-      warn('Error checking for existing stream with same public key:', err as Error);
+      warn('Error checking for existing stream with same public key:', err);
     }
 
     // Generate initial schema ID from public key
@@ -143,7 +144,7 @@ export class TributaryClient {
         }
       } catch (err) {
         // If there's an error querying, assume the schema ID is free
-        warn('[generateSchemaId] query error, assuming schema_id is free:', err as Error);
+        warn('[generateSchemaId] query error, assuming schema_id is free:', err);
         break;
       }
 
@@ -237,7 +238,7 @@ export class TributaryClient {
       );
       debug('Stream verification result:', result.rows);
     } catch (e) {
-      error('Error verifying stream:', e as Error);
+      error('Error verifying stream:', e);
     }
     
     return stream;
@@ -261,7 +262,7 @@ export class TributaryClient {
         return base64url.encode(Buffer.from(result.rows[0].write_key));
       }
     } catch (err: unknown) {
-      warn('Could not get write key:', err as Error);
+      warn('Could not get write key:', err);
     }
 
     return null;
@@ -283,7 +284,7 @@ export class TributaryClient {
 
       return result.rows.map((row) => row.id);
     } catch (err: unknown) {
-      warn('Could not list streams:', err as Error);
+      warn('Could not list streams:', err);
       return [];
     }
   }
@@ -359,7 +360,7 @@ export class TributaryClient {
       }
     } catch (err: unknown) {
       debug("Error retrieving stream:", err)
-      warn('Could not retrieve stream:', err as Error);
+      warn('Could not retrieve stream:', err);
     }
     
     return undefined;
@@ -407,7 +408,7 @@ export class TributaryClient {
       }
     } catch (err: unknown) {
       debug("Error retrieving stream:", err)
-      warn('Could not retrieve local stream:', err as Error);
+      warn('Could not retrieve local stream:', err);
     }
     
     return undefined;
@@ -460,7 +461,7 @@ export class TributaryClient {
         const syncStatus = await stream.sync(max);
         syncStatuses.set(stream.getId(), syncStatus);
       } catch (err: unknown) {
-        const errorObj = err as Error;
+        const errorObj = toError(err);
         error(`Failed to sync stream ${stream.getId()}:`, errorObj);
         syncStatuses.set(stream.getId(), {
           currentIndex: 0,

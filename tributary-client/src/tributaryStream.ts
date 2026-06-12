@@ -6,6 +6,7 @@ import { Server } from './server.js';
 import { TributaryLocal } from './tributaryLocal.js';
 import { TributaryBlob } from './tributaryBlob.js';
 import { logger, warn, error, info, debug } from './logger.js';
+import { toError } from './errorUtils.js';
 import { computeHash } from './hashUtils.js';
 import { deriveEncryptionKey } from './blobHelpers.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
@@ -170,7 +171,7 @@ export class TributaryStream {
       // Properly quote the schema name to handle special characters
       await this.pglite.exec(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
     } catch (error: unknown) {
-      warn('Could not initialize schema:', error as Error);
+      warn('Could not initialize schema:', error);
     }
   }
 
@@ -209,7 +210,7 @@ export class TributaryStream {
       // Load the last sync index from the database
       await this.loadLastSyncIndex();
     } catch (e: unknown) {
-      error('Could not initialize sync state:', e as Error);
+      error('Could not initialize sync state:', e);
     }
   }
 
@@ -420,12 +421,12 @@ export class TributaryStream {
         info('TRANSACTION: About to return from transaction callback');
         return callbackResult;
       } catch (serverError) {
-        error('TRANSACTION: Server persistence failed:', serverError as Error);
+        error('TRANSACTION: Server persistence failed:', serverError);
 
         // If server persistence fails, we throw an error
         // This causes PGlite to automatically rollback the entire transaction
         // The local state is reset as if the transaction never happened
-        throw new Error(`Transaction failed to persist to server: ${(serverError as Error).message}`);
+        throw new Error(`Transaction failed to persist to server: ${toError(serverError).message}`);
       }
     });
 
@@ -464,7 +465,7 @@ export class TributaryStream {
         ]
       );
     } catch (e: unknown) {
-      warn('Failed to record sync error:', e as Error);
+      warn('Failed to record sync error:', e);
     }
   }
 
@@ -506,7 +507,7 @@ export class TributaryStream {
         this.lastSyncIndex = result.rows[0].last_sync_index;
       }
     } catch (error: unknown) {
-      warn('Could not load last sync index from database:', error as Error);
+      warn('Could not load last sync index from database:', error);
     }
   }
 
@@ -523,7 +524,7 @@ export class TributaryStream {
       debug('Successfully updated last sync index');
     } catch (error: unknown) {
       debug('Error updating last sync index:', error);
-      warn('Could not save last sync index to database:', error as Error);
+      warn('Could not save last sync index to database:', error);
     }
   }
 
@@ -630,12 +631,12 @@ export class TributaryStream {
           writeBlobs.push({ entry: transactionEntry, sequenceNumber: blob.sequenceNumber });
         }
       } catch (parseError: unknown) {
-        error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError as Error);
+        error(`Failed to parse blob with sequence ${blob.sequenceNumber}:`, parseError);
         warn(`Skipping blob with sequence ${blob.sequenceNumber} due to parsing error`);
         finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
         await this.recordSyncError(
           'parse_error',
-          parseError instanceof Error ? parseError.message : String(parseError),
+          toError(parseError).message,
           blob.sequenceNumber
         );
       }
@@ -696,10 +697,10 @@ export class TributaryStream {
             await tx.exec(`RELEASE SAVEPOINT blob_${sequenceNumber}`);
           } catch (blobError: unknown) {
             await tx.exec(`ROLLBACK TO SAVEPOINT blob_${sequenceNumber}`);
-            error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError as Error);
+            error(`SYNC: Failed to apply blob ${sequenceNumber}: query=${entry.query}, params=${JSON.stringify(entry.params)}, error=`, blobError);
             pendingErrors.push({
               errorType: 'apply_error',
-              errorMessage: blobError instanceof Error ? blobError.message : String(blobError),
+              errorMessage: toError(blobError).message,
               blobSequence: sequenceNumber,
               query: entry.query,
               params: entry.params,
@@ -864,9 +865,9 @@ export class TributaryStream {
         warn(`ensureServerPersistence: Gap detected - wrote sequence ${this.sequenceNumber} but lastSyncIndex is ${this.lastSyncIndex}. Remote blobs need sync before advancing.`);
       }
     } catch (err: unknown) {
-      error('ensureServerPersistence: Error storing blob:', err as Error);
+      error('ensureServerPersistence: Error storing blob:', err);
       // Re-throw with a more specific error message
-      throw new Error(`Failed to persist transaction on server: ${(err as Error).message}`);
+      throw new Error(`Failed to persist transaction on server: ${toError(err).message}`);
     }
   }
 
