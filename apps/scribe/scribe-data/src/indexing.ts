@@ -95,6 +95,19 @@ export function tryParseImageTitle(body: string): string | null {
 }
 
 /**
+ * Try to extract the thumbBlobHash from an image block's JSON body.
+ * Returns the hash string if present, otherwise undefined.
+ */
+export function tryParseThumbBlobHash(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body)
+    return parsed.thumbBlobHash || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Extract a display title from a block, dispatching by block type.
  * For markdown blocks, extracts the first H1 heading.
  * For image blocks, parses the JSON body for title/altText/fileName.
@@ -504,7 +517,8 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
       title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
-      block_type: blockType
+      block_type: blockType,
+      thumbBlobHash: blockType === 'scribe/image' ? tryParseThumbBlobHash(row.body) : undefined
     }
   })
 }
@@ -559,7 +573,8 @@ export async function getNotesInCollectionWithSlugs(
       title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
-      block_type: blockType
+      block_type: blockType,
+      thumbBlobHash: blockType === 'scribe/image' ? tryParseThumbBlobHash(row.body) : undefined
     }
   })
 }
