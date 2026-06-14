@@ -22,6 +22,7 @@ export async function createNote(
     collection_id?: string | null
     insert_datetime?: string
     slug?: string
+    archived?: boolean
   }
 ): Promise<Note> {
   const now = new Date()
@@ -55,12 +56,13 @@ export async function createNote(
     inserter: noteData.inserter,
     body: noteData.body,
     collection_id,
-    slug
+    slug,
+    archived: noteData.archived ?? false,
   }
 
   await db.exec(
-    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug, archived)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       newNote.block_uuid,
       newNote.block_type,
@@ -70,7 +72,8 @@ export async function createNote(
       newNote.inserter,
       newNote.body,
       newNote.collection_id,
-      newNote.slug
+      newNote.slug,
+      newNote.archived,
     ]
   )
 
@@ -109,6 +112,7 @@ export async function createNotes(
     collection_id?: string | null
     insert_datetime?: string
     slug?: string
+    archived?: boolean
   }>
 ): Promise<Note[]> {
   if (items.length === 0) return []
@@ -150,27 +154,28 @@ export async function createNotes(
       body: noteData.body,
       collection_id,
       slug,
+      archived: noteData.archived ?? false,
     }
   })
 
-  // Build multi-row INSERT: VALUES ($1,...,$9), ($10,...,$18), ...
-  const cols = 9
+  // Build multi-row INSERT: VALUES ($1,...,$10), ($11,...,$20), ...
+  const cols = 10
   const valueClauses: string[] = []
   const params: (string | null)[] = []
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i]
     const base = i * cols
     valueClauses.push(
-      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10})`
     )
     params.push(
       n.block_uuid, n.block_type, n.version_uuid, n.prior_version_uuid,
-      n.insert_datetime, n.inserter, n.body, n.collection_id, n.slug
+      n.insert_datetime, n.inserter, n.body, n.collection_id, n.slug, n.archived
     )
   }
 
   await db.exec(
-    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug)
+    `INSERT INTO block (block_uuid, block_type, version_uuid, prior_version_uuid, insert_datetime, inserter, body, collection_id, slug, archived)
      VALUES ${valueClauses.join(', ')}`,
     params
   )
@@ -195,11 +200,12 @@ export async function createNoteVersion(
     inserter: string
     collection_id?: string | null
     slug?: string
+    archived?: boolean
   }
 ): Promise<Note> {
-  // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id and slug
+  // Get the latest version of this note to set as prior_version_uuid and carry forward collection_id, slug, archived
   const result = await db.query(
-    `SELECT version_uuid, collection_id, slug FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
+    `SELECT version_uuid, collection_id, slug, archived FROM block WHERE block_uuid = $1 ORDER BY insert_datetime DESC LIMIT 1`,
     [block_uuid]
   )
 
@@ -211,6 +217,8 @@ export async function createNoteVersion(
   const collection_id = noteData.collection_id !== undefined ? noteData.collection_id : (versionResult?.collection_id ?? null)
   // Use explicitly provided slug, otherwise carry forward from latest version
   const slug = noteData.slug !== undefined ? noteData.slug : (versionResult?.slug ?? undefined)
+  // Use explicitly provided archived, otherwise carry forward from latest version
+  const archived = noteData.archived !== undefined ? noteData.archived : (versionResult?.archived ?? false)
 
   return createNote(db, {
     block_uuid,
@@ -219,7 +227,8 @@ export async function createNoteVersion(
     inserter: noteData.inserter,
     prior_version_uuid,
     collection_id,
-    slug
+    slug,
+    archived,
   })
 }
 

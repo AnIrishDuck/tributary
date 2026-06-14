@@ -41,7 +41,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
   // Phase 1: Load all collections into memory and build a parent→slug map
   // so we can compute slug paths without N+1 queries.
   const collectionsResult = await db.query(
-    `SELECT collection_uuid, title, slug, parent_collection_uuid
+    `SELECT collection_uuid, title, slug, parent_collection_uuid, archived
      FROM collection`,
     []
   )
@@ -50,6 +50,7 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     title: string
     slug: string
     parent_collection_uuid: string | null
+    archived: boolean
   }>
 
   // Build a lookup map: uuid → collection row
@@ -78,7 +79,8 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     `SELECT b.block_uuid, b.slug, b.body, b.collection_id, b.block_type
      FROM block b
      INNER JOIN authoritative_version av
-       ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid`,
+       ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.archived = FALSE`,
     []
   )
 
@@ -105,9 +107,10 @@ export async function rebuildTitleIndex(db: TributaryLocal): Promise<void> {
     })
   }
 
-  // 2b: Named collections (exclude root which has parent_collection_uuid === null)
+  // 2b: Named collections (exclude root and archived)
   for (const c of collections) {
     if (c.parent_collection_uuid === null) continue
+    if (c.archived) continue
 
     const slugPath = collectionSlugPath(c.collection_uuid).join('/')
     entries.push({

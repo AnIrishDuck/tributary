@@ -60,6 +60,7 @@ export interface Note {
   body: string
   collection_id: string | null
   slug: string
+  archived: boolean
 }
 
 /**
@@ -92,6 +93,7 @@ export interface Collection {
   linked_stream_key: string | null
   slug: string
   options?: string
+  archived: boolean
 }
 
 /**
@@ -109,6 +111,7 @@ export interface CollectionSlugRow {
   slug: string
   title: string
   insert_datetime: string
+  archived: boolean
 }
 
 /**
@@ -160,6 +163,7 @@ export interface NoteSlugRow {
   insert_datetime: string // ISO string - when the note was last edited
   collection_id: string | null
   block_type: string
+  archived: boolean
 }
 
 /**

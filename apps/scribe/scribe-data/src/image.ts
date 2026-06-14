@@ -184,7 +184,7 @@ export async function getImageBySlug(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL AND b.block_type = 'scribe/image'`,
+       WHERE b.slug = $1 AND b.collection_id IS NULL AND b.block_type = 'scribe/image' AND b.archived = FALSE`,
       [slug]
     )
   } else {
@@ -192,7 +192,7 @@ export async function getImageBySlug(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2 AND b.block_type = 'scribe/image'`,
+       WHERE b.slug = $1 AND b.collection_id = $2 AND b.block_type = 'scribe/image' AND b.archived = FALSE`,
       [slug, collectionId]
     )
   }

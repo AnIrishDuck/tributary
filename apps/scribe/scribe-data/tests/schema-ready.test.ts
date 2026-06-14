@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { TributaryClient, FakeServer } from 'tributary-client'
 import { PGlite } from '@electric-sql/pglite'
 import nacl from 'tweetnacl'
-import { syncedMigrations, localMigrations, schemaReady, migrateAddPlugins } from '../src/migrations'
+import { syncedMigrations, localMigrations, schemaReady, migrateAddPlugins, addArchivedColumn } from '../src/migrations'
 import { ensurePluginTable } from '../src/library'
 
 function makeClient(server?: FakeServer) {
@@ -79,13 +79,14 @@ describe('schemaReady', () => {
     const keyPair = nacl.sign.keyPair()
     const stream = await client.addWriteKey('scribe', keyPair.secretKey)
 
-    // Create only block + collection (old schema without library_plugins)
+    // Create only block + collection (old schema without library_plugins or archived)
     await stream.exec(`
       CREATE TABLE IF NOT EXISTS block (
         block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
         version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
         insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
-        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL,
+        archived BOOLEAN NOT NULL DEFAULT FALSE
       )
     `)
     await stream.exec(`
@@ -93,7 +94,8 @@ describe('schemaReady', () => {
         collection_uuid TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL,
         parent_collection_uuid TEXT, insert_datetime TEXT NOT NULL,
         inserter TEXT NOT NULL, linked_stream_id TEXT,
-        linked_stream_key TEXT, slug TEXT NOT NULL
+        linked_stream_key TEXT, slug TEXT NOT NULL,
+        archived BOOLEAN NOT NULL DEFAULT FALSE
       )
     `)
     await localMigrations(stream.local())
@@ -119,7 +121,8 @@ describe('schemaReady', () => {
         block_uuid TEXT NOT NULL, block_type TEXT NOT NULL,
         version_uuid TEXT NOT NULL PRIMARY KEY, prior_version_uuid TEXT,
         insert_datetime TEXT NOT NULL, inserter TEXT NOT NULL,
-        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL
+        body TEXT NOT NULL, collection_id TEXT, slug TEXT NOT NULL,
+        archived BOOLEAN NOT NULL DEFAULT FALSE
       )
     `)
     await stream.exec(`
@@ -127,7 +130,8 @@ describe('schemaReady', () => {
         collection_uuid TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL,
         parent_collection_uuid TEXT, insert_datetime TEXT NOT NULL,
         inserter TEXT NOT NULL, linked_stream_id TEXT,
-        linked_stream_key TEXT, slug TEXT NOT NULL
+        linked_stream_key TEXT, slug TEXT NOT NULL,
+        archived BOOLEAN NOT NULL DEFAULT FALSE
       )
     `)
 
@@ -142,6 +146,23 @@ describe('schemaReady', () => {
     await ensurePluginTable(stream)
     const blobsAfterSecond = server.getAllBlobs().filter(b => b.pubkey === stream.getId()).length
     expect(blobsAfterSecond).toBe(blobsAfterFirst)
+  })
+
+  it('returns false when archived column is missing (pre-archived-migration)', async () => {
+    const { client } = makeClient()
+    const keyPair = nacl.sign.keyPair()
+    const stream = await client.addWriteKey('scribe', keyPair.secretKey)
+
+    // Run synced migrations stopping before the archived column migration
+    await syncedMigrations(stream, { before: addArchivedColumn.name })
+    await localMigrations(stream.local())
+
+    // Schema not ready because archived column is missing
+    expect(await schemaReady(stream)).toBe(false)
+
+    // After running the remaining migrations, schema is ready
+    await syncedMigrations(stream)
+    expect(await schemaReady(stream)).toBe(true)
   })
 
   it('returns true on a fresh client after syncing and running local migrations', async () => {

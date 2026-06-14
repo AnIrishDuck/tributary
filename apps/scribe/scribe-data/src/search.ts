@@ -81,6 +81,11 @@ export interface SearchResult {
    * Relevance score (higher is more relevant)
    */
   rank: number
+
+  /**
+   * Whether this note is archived
+   */
+  archived: boolean
 }
 
 interface UnindexedSearchNote {
@@ -348,7 +353,8 @@ export async function searchNotes(
          ts_rank(bsi.search_vector, query) AS rank,
          ts_headline('english', b.body, query,
            'MaxWords=30, MinWords=15, MaxFragments=1, FragmentDelimiter=" ... "'
-         ) AS snippet
+         ) AS snippet,
+         b.archived
        FROM block_search_index bsi
        INNER JOIN block b
          ON bsi.block_uuid = b.block_uuid
@@ -357,7 +363,7 @@ export async function searchNotes(
          ON b.collection_id = cp.collection_uuid
        CROSS JOIN to_tsquery('english', $1) query
        WHERE bsi.search_vector @@ query
-       ORDER BY rank DESC, b.slug ASC NULLS LAST
+       ORDER BY b.archived ASC, rank DESC, b.slug ASC NULLS LAST
        LIMIT $2 OFFSET $3`,
       [queryTerms, limit, offset]
     )
@@ -367,7 +373,8 @@ export async function searchNotes(
       slug: row.slug || null,
       title: row.title || null,
       snippet: row.snippet || '',
-      rank: parseFloat(row.rank) || 0
+      rank: parseFloat(row.rank) || 0,
+      archived: row.archived ?? false,
     }))
   } catch (error) {
     logError('Error searching notes:', error)

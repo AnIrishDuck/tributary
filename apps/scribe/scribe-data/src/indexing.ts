@@ -370,7 +370,7 @@ export async function getNotesBySlug(
     `SELECT b.block_uuid, b.slug, b.body
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-     WHERE b.slug = $1`,
+     WHERE b.slug = $1 AND b.archived = FALSE`,
     [slug]
   )
 
@@ -487,13 +487,18 @@ export async function getAllTags(db: TributaryLocal): Promise<string[]> {
  * @param db The TributaryLocal database instance
  * @returns Array of notes with titles and slugs, sorted by most recently edited first
  */
-export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlugRow[]> {
+export async function getAllNotesWithTitles(
+  db: TributaryLocal,
+  options?: { archived?: boolean }
+): Promise<NoteSlugRow[]> {
+  const archived = options?.archived ?? false
   const result = await db.query(
-    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+    `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type, b.archived
      FROM block b
      INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
+     WHERE b.archived = $1
      ORDER BY b.insert_datetime DESC`,
-    []
+    [archived]
   )
 
   return (result.rows || []).map((row: any) => {
@@ -504,7 +509,8 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
       title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
-      block_type: blockType
+      block_type: blockType,
+      archived: row.archived,
     }
   })
 }
@@ -520,8 +526,10 @@ export async function getAllNotesWithTitles(db: TributaryLocal): Promise<NoteSlu
  */
 export async function getNotesInCollectionWithSlugs(
   db: TributaryLocal,
-  collectionId: string | null
+  collectionId: string | null,
+  options?: { archived?: boolean }
 ): Promise<NoteSlugRow[]> {
+  const archived = options?.archived ?? false
   let resolvedId = collectionId
   if (resolvedId === null) {
     const library = await getLibrary(db)
@@ -533,21 +541,21 @@ export async function getNotesInCollectionWithSlugs(
   let result
   if (resolvedId === null) {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type, b.archived
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id IS NULL
+       WHERE b.collection_id IS NULL AND b.archived = $1
        ORDER BY b.insert_datetime DESC`,
-      []
+      [archived]
     )
   } else {
     result = await db.query(
-      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type
+      `SELECT b.block_uuid, b.slug, b.body, b.insert_datetime, b.collection_id, b.block_type, b.archived
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.collection_id = $1
+       WHERE b.collection_id = $1 AND b.archived = $2
        ORDER BY b.insert_datetime DESC`,
-      [resolvedId]
+      [resolvedId, archived]
     )
   }
 
@@ -559,7 +567,8 @@ export async function getNotesInCollectionWithSlugs(
       title: extractBlockTitle(row.body, blockType),
       insert_datetime: row.insert_datetime,
       collection_id: row.collection_id,
-      block_type: blockType
+      block_type: blockType,
+      archived: row.archived,
     }
   })
 }
@@ -583,10 +592,12 @@ export async function rebuildSlugCollisions(db: TributaryLocal): Promise<void> {
         ON b.block_uuid = av.block_uuid
         AND b.version_uuid = av.version_uuid
       WHERE b.collection_id IS NOT NULL
+        AND b.archived = FALSE
       UNION ALL
       SELECT c.slug, c.parent_collection_uuid AS parent_id
       FROM collection c
       WHERE c.parent_collection_uuid IS NOT NULL
+        AND c.archived = FALSE
     )
     INSERT INTO slug_collision (slug, parent_id)
     SELECT slug, parent_id FROM all_slugs
@@ -643,7 +654,7 @@ export async function getNotesBySlugInCollection(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id IS NULL`,
+       WHERE b.slug = $1 AND b.collection_id IS NULL AND b.archived = FALSE`,
       [slug]
     )
   } else {
@@ -651,7 +662,7 @@ export async function getNotesBySlugInCollection(
       `SELECT b.block_uuid, b.slug, b.body, b.block_type
        FROM block b
        INNER JOIN authoritative_version av ON b.block_uuid = av.block_uuid AND b.version_uuid = av.version_uuid
-       WHERE b.slug = $1 AND b.collection_id = $2`,
+       WHERE b.slug = $1 AND b.collection_id = $2 AND b.archived = FALSE`,
       [slug, resolvedId]
     )
   }
