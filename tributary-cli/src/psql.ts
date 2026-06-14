@@ -1,11 +1,7 @@
+import { isReadQuery } from 'tributary-client';
 import { loadKeyPair } from './key';
 import { info } from './logger';
 import { getClient, validateAuthToken } from './util';
-
-function isReadQuery(sql: string): boolean {
-  const trimmed = sql.trim().toLowerCase();
-  return trimmed.startsWith('select') || trimmed.startsWith('explain') || trimmed.startsWith('show');
-}
 
 // Execute SQL command
 export async function executeSQL(

@@ -10,6 +10,11 @@ import { computeHash } from './hashUtils.js';
 import { deriveEncryptionKey } from './blobHelpers.js';
 import { estimateStreamStorageBytes, StreamStorageEstimate } from './storage.js';
 
+export function isReadQuery(query: string): boolean {
+  const trimmed = query.trim().toLowerCase();
+  return trimmed.startsWith('select') || trimmed.startsWith('explain') || trimmed.startsWith('show');
+}
+
 // Type definitions for our transaction log
 interface TransactionLogEntry {
   id: string;
@@ -213,6 +218,14 @@ export class TributaryStream {
     }
   }
 
+  private async ensureInitialized(): Promise<void> {
+    if (!this.syncStateInitialized) {
+      await this.initializeSchema();
+      await this.initializeSyncState();
+      this.syncStateInitialized = true;
+    }
+  }
+
   /**
    * Execute SQL query with persistence guarantee
    * @param query SQL query to execute
@@ -220,16 +233,11 @@ export class TributaryStream {
    * @returns Query result
    */
   async query(query: string, params?: any[]) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     // For read operations, wrap in a transaction with SET LOCAL search_path
     // so the search_path is scoped and cannot be changed by concurrent streams.
-    if (this.isReadQuery(query)) {
+    if (isReadQuery(query)) {
       return await this.pglite.transaction(async (tx) => {
         await tx.exec(this.searchPathSQL);
         return await tx.query(query, params);
@@ -276,12 +284,7 @@ export class TributaryStream {
    * @param params Command parameters
    */
   async exec(query: string, params?: any[]) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     // Record the local sync index BEFORE anything (including sync guard).
     const guardIndex = this.lastSyncIndex;
@@ -335,12 +338,7 @@ export class TributaryStream {
    * @returns Transaction result
    */
   async transaction<T>(callback: (tx: any) => Promise<T>) {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
 
     info('TRANSACTION: Starting transaction method');
 
@@ -533,12 +531,7 @@ export class TributaryStream {
    * @returns SyncStatus containing current and final index
    */
   async sync(max: number): Promise<SyncStatus> {
-    // Initialize sync state if not already done
-    if (!this.syncStateInitialized) {
-      await this.initializeSchema();
-      await this.initializeSyncState();
-      this.syncStateInitialized = true;
-    }
+    await this.ensureInitialized();
     
     // Always reload the last sync index from database to ensure consistency
     await this.loadLastSyncIndex();
@@ -626,7 +619,7 @@ export class TributaryStream {
 
         finalSyncIndex = Math.max(finalSyncIndex, blob.sequenceNumber);
 
-        if (!this.isReadQuery(transactionEntry.query)) {
+        if (!isReadQuery(transactionEntry.query)) {
           writeBlobs.push({ entry: transactionEntry, sequenceNumber: blob.sequenceNumber });
         }
       } catch (parseError: unknown) {
@@ -943,13 +936,6 @@ export class TributaryStream {
     // Concatenate prior_hash + body_hash, then compute SHA256 of the result
     const concatenated = `${priorHash}${bodyHash}`;
     return await computeHash(new TextEncoder().encode(concatenated));
-  }
-
-  private isReadQuery(query: string): boolean {
-    const trimmedQuery = query.trim().toLowerCase();
-    return trimmedQuery.startsWith('select') || 
-           trimmedQuery.startsWith('explain') || 
-           trimmedQuery.startsWith('show');
   }
 
   private getPublicKeyBase64(): string {
