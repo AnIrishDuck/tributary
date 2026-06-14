@@ -18,7 +18,7 @@ export async function getClient(options: { db?: string }): Promise<{
 
   const pglite = new PGlite(dbPath);
   const server = await createCliServer();
-  const client = new TributaryClient({ server, db: pglite as any });
+  const client = new TributaryClient({ server, db: pglite });
 
   return { client, db: pglite, server };
 }
